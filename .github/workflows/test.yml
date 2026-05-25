@@ -22,12 +22,12 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
-          cache-dependency-path: shared/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: cd shared && npm ci
+        run: npm ci --workspace shared
 
       - name: Typecheck
         run: cd shared && npm run typecheck
@@ -44,19 +44,22 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
-          cache-dependency-path: server/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: cd server && npm ci
+        run: npm ci --workspace shared && npm ci --workspace server
 
-      - name: Build (tsc + tsc-alias -> dist)
+      - name: Build shared
+        run: npm run build --workspace=shared
+
+      - name: Build server (tsc -> dist)
         run: cd server && npm run build
 
       - name: Typecheck (informational)
-        # Legacy code still has pre-existing type errors; this surfaces them
-        # without blocking the migration. Ratchet to blocking once cleaned up.
+        # Pre-existing type errors in the NestJS rewrite; surfaces them without
+        # blocking CI. Ratchet to blocking once the legacy code is cleaned up.
         continue-on-error: true
         run: cd server && npm run typecheck
 
@@ -80,12 +83,15 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: cd client && npm ci
+        run: npm ci --workspace shared && npm ci --workspace client
+
+      - name: Build shared
+        run: npm run build --workspace=shared
 
       - name: Run tests
         run: cd client && npm run test:coverage
