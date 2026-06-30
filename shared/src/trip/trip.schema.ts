@@ -55,8 +55,21 @@ export const tripMemberSchema = z.object({
   role: z.string().optional(),
   added_at: z.string().nullable().optional(),
   invited_by_username: z.string().nullable().optional(),
+  // Guest members (#1362): accountless participant, assignable but never able to log in.
+  is_guest: z.boolean().optional(),
 });
 export type TripMember = z.infer<typeof tripMemberSchema>;
+
+// Guest CRUD (#1362) — owner-only management of accountless participants.
+export const tripCreateGuestRequestSchema = z.object({
+  name: z.string().min(1).max(50),
+});
+export type TripCreateGuestRequest = z.infer<typeof tripCreateGuestRequestSchema>;
+
+export const tripRenameGuestRequestSchema = z.object({
+  name: z.string().min(1).max(50),
+});
+export type TripRenameGuestRequest = z.infer<typeof tripRenameGuestRequestSchema>;
 
 export const tripCreateRequestSchema = z.object({
   title: z.string().min(1),

@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation, Users, Mountain, TrendingUp } from 'lucide-react'
 import PlaceAvatar from '../shared/PlaceAvatar'
+import GuestBadge from '../shared/GuestBadge'
 import { mapsApi } from '../../api/client'
 import { useSettingsStore } from '../../store/settingsStore'
 import { getCategoryIcon } from '../shared/categoryIcons'
@@ -91,6 +92,7 @@ interface TripMember {
   username: string
   avatar?: string | null
   avatar_url?: string | null
+  is_guest?: boolean
 }
 
 interface PlaceInspectorProps {
@@ -486,7 +488,8 @@ function ParticipantsBox({ tripMembers, participantIds, allJoined, onSetParticip
                     }}>
                       {(member.avatar_url || member.avatar) ? <img src={member.avatar_url || `/uploads/avatars/${member.avatar}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : member.username?.[0]?.toUpperCase()}
                     </div>
-                    {member.username}
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.username}</span>
+                    {member.is_guest && <GuestBadge size="xs" />}
                   </button>
                 ))}
               </div>

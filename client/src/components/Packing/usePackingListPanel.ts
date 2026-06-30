@@ -16,12 +16,14 @@ export interface TripMember {
   username: string
   avatar?: string | null
   avatar_url?: string | null
+  is_guest?: boolean
 }
 
 export interface CategoryAssignee {
   user_id: number
   username: string
   avatar?: string | null
+  is_guest?: boolean
 }
 
 export interface PackingListPanelProps {
@@ -59,8 +61,8 @@ export function usePackingList({ tripId, items, openImportSignal = 0, clearCheck
   useEffect(() => {
     tripsApi.getMembers(tripId).then(data => {
       const all: TripMember[] = []
-      if (data.owner) all.push({ id: data.owner.id, username: data.owner.username, avatar: data.owner.avatar_url })
-      if (data.members) all.push(...data.members.map((m: any) => ({ id: m.id, username: m.username, avatar: m.avatar_url })))
+      if (data.owner) all.push({ id: data.owner.id, username: data.owner.username, avatar: data.owner.avatar_url, is_guest: false })
+      if (data.members) all.push(...data.members.map((m: any) => ({ id: m.id, username: m.username, avatar: m.avatar_url, is_guest: !!m.is_guest })))
       setTripMembers(all)
     }).catch(() => {})
     packingApi.getCategoryAssignees(tripId).then(data => {

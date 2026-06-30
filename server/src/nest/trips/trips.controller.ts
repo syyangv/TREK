@@ -314,6 +314,60 @@ export class TripsController {
     }
   }
 
+  /** Loads the trip or throws 404, then asserts the caller is its owner (guest CRUD, #1362). */
+  private requireOwner(id: string, user: User): void {
+    const access = this.trips.canAccessTrip(id, user.id);
+    if (!access) {
+      throw new HttpException({ error: 'Trip not found' }, 404);
+    }
+    if (access.user_id !== user.id) {
+      throw new HttpException({ error: 'Only the owner can manage guests' }, 403);
+    }
+  }
+
+  @Post(':id/guests')
+  @HttpCode(201)
+  createGuest(@CurrentUser() user: User, @Param('id') id: string, @Body('name') name: unknown) {
+    this.requireOwner(id, user);
+    if (typeof name !== 'string' || !name.trim()) {
+      throw new HttpException({ error: 'Guest name is required' }, 400);
+    }
+    try {
+      // No notifyInvite: a guest has no inbox.
+      return this.trips.createGuest(id, name, user.id);
+    } catch (e: unknown) {
+      if (e instanceof ValidationError) throw new HttpException({ error: e.message }, 400);
+      throw e;
+    }
+  }
+
+  @Put(':id/guests/:userId')
+  renameGuest(@CurrentUser() user: User, @Param('id') id: string, @Param('userId') userId: string, @Body('name') name: unknown) {
+    this.requireOwner(id, user);
+    if (typeof name !== 'string' || !name.trim()) {
+      throw new HttpException({ error: 'Guest name is required' }, 400);
+    }
+    try {
+      if (!this.trips.renameGuest(id, parseInt(userId), name)) {
+        throw new HttpException({ error: 'Guest not found' }, 404);
+      }
+      return { success: true };
+    } catch (e: unknown) {
+      if (e instanceof HttpException) throw e;
+      if (e instanceof ValidationError) throw new HttpException({ error: e.message }, 400);
+      throw e;
+    }
+  }
+
+  @Delete(':id/guests/:userId')
+  deleteGuest(@CurrentUser() user: User, @Param('id') id: string, @Param('userId') userId: string) {
+    this.requireOwner(id, user);
+    if (!this.trips.deleteGuest(id, parseInt(userId))) {
+      throw new HttpException({ error: 'Guest not found' }, 404);
+    }
+    return { success: true };
+  }
+
   @Get(':id/bundle')
   bundle(@CurrentUser() user: User, @Param('id') id: string) {
     const trip = this.trips.get(id, user.id) as { user_id: number } | undefined;

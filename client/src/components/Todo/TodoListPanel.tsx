@@ -479,7 +479,7 @@ function DetailPane({ item, tripId, categories, members, onClose }: {
               { value: '', label: t('todo.unassigned'), icon: <User size={14} className="text-content-faint" /> },
               ...members.map(m => ({
                 value: String(m.id),
-                label: m.username,
+                label: m.is_guest ? `${m.username} · ${t('members.guest')}` : m.username,
                 icon: m.avatar ? (
                   <img src={`/uploads/avatars/${m.avatar}`} style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover' as const }} alt="" />
                 ) : (

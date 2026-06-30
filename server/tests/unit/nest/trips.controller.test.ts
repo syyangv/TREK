@@ -291,6 +291,40 @@ describe('TripsController (parity with the legacy /api/trips route)', () => {
     });
   });
 
+  describe('guests (#1362)', () => {
+    it('404 without access, 403 for a non-owner, 400 without a name; else creates', () => {
+      expect(thrown(() => new TripsController(svc({ canAccessTrip: vi.fn().mockReturnValue(undefined) })).createGuest(user, '9', 'Anna'))).toEqual({ status: 404, body: { error: 'Trip not found' } });
+      // access.user_id (5) ≠ requester (1) → not the owner
+      expect(thrown(() => new TripsController(svc({ canAccessTrip: vi.fn().mockReturnValue({ user_id: 5 }) })).createGuest(user, '9', 'Anna'))).toEqual({ status: 403, body: { error: 'Only the owner can manage guests' } });
+      expect(thrown(() => new TripsController(svc()).createGuest(user, '9', '  '))).toEqual({ status: 400, body: { error: 'Guest name is required' } });
+      const createGuest = vi.fn().mockReturnValue({ member: { id: 7, username: 'Anna', is_guest: true } });
+      const s = svc({ createGuest } as Partial<TripsService>);
+      expect(new TripsController(s).createGuest(user, '9', 'Anna')).toEqual({ member: { id: 7, username: 'Anna', is_guest: true } });
+      expect(createGuest).toHaveBeenCalledWith('9', 'Anna', user.id);
+    });
+
+    it('rename: 403 non-owner, 404 when the guest is missing, else success', () => {
+      expect(thrown(() => new TripsController(svc({ canAccessTrip: vi.fn().mockReturnValue({ user_id: 5 }) })).renameGuest(user, '9', '7', 'Bob'))).toEqual({ status: 403, body: { error: 'Only the owner can manage guests' } });
+      const miss = svc({ renameGuest: vi.fn().mockReturnValue(false) } as Partial<TripsService>);
+      expect(thrown(() => new TripsController(miss).renameGuest(user, '9', '7', 'Bob'))).toEqual({ status: 404, body: { error: 'Guest not found' } });
+      const ok = svc({ renameGuest: vi.fn().mockReturnValue(true) } as Partial<TripsService>);
+      expect(new TripsController(ok).renameGuest(user, '9', '7', 'Bob')).toEqual({ success: true });
+    });
+
+    it('delete: 403 non-owner, 404 when the guest is missing, else success', () => {
+      expect(thrown(() => new TripsController(svc({ canAccessTrip: vi.fn().mockReturnValue({ user_id: 5 }) })).deleteGuest(user, '9', '7'))).toEqual({ status: 403, body: { error: 'Only the owner can manage guests' } });
+      const miss = svc({ deleteGuest: vi.fn().mockReturnValue(false) } as Partial<TripsService>);
+      expect(thrown(() => new TripsController(miss).deleteGuest(user, '9', '7'))).toEqual({ status: 404, body: { error: 'Guest not found' } });
+      const ok = svc({ deleteGuest: vi.fn().mockReturnValue(true) } as Partial<TripsService>);
+      expect(new TripsController(ok).deleteGuest(user, '9', '7')).toEqual({ success: true });
+    });
+
+    it('maps a ValidationError from createGuest to 400', () => {
+      const ve = svc({ createGuest: vi.fn().mockImplementation(() => { throw new ValidationError('Guest name must be 50 characters or fewer'); }) } as Partial<TripsService>);
+      expect(thrown(() => new TripsController(ve).createGuest(user, '9', 'x'.repeat(60)))).toEqual({ status: 400, body: { error: 'Guest name must be 50 characters or fewer' } });
+    });
+  });
+
   it('GET /:id/bundle 404 then aggregates', () => {
     expect(thrown(() => new TripsController(svc({ get: vi.fn().mockReturnValue(undefined) } as Partial<TripsService>)).bundle(user, '9'))).toEqual({ status: 404, body: { error: 'Trip not found' } });
     const bundle = vi.fn().mockReturnValue({ trip: { id: 9 }, days: [] });

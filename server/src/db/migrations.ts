@@ -3147,6 +3147,17 @@ function runMigrations(db: Database.Database): void {
         }
       }
     },
+    // Guest members (#1362): people added to a trip without an account. A guest is a
+    // users row flagged is_guest=1 (no usable credentials) joined into trip_members,
+    // so it's assignable everywhere a member is — but must never authenticate or show
+    // up in the global user directory. The flag is the discriminator for those guards.
+    () => {
+      try {
+        db.exec('ALTER TABLE users ADD COLUMN is_guest INTEGER NOT NULL DEFAULT 0');
+      } catch (err: any) {
+        if (!err.message?.includes('duplicate column name')) throw err;
+      }
+    },
   ];
 
   if (currentVersion < migrations.length) {

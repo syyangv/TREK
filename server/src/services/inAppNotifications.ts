@@ -73,17 +73,22 @@ interface NotificationRow {
 export function resolveRecipients(scope: NotificationScope, target: number, excludeUserId?: number | null): number[] {
   let userIds: number[] = [];
 
+  // Guests (#1362) are trip members for assignment purposes but have no inbox/email,
+  // so they must never be resolved as notification recipients on any scope. This is the
+  // single chokepoint for in-app/email/webhook/ntfy, so filtering here covers all channels.
   if (scope === 'trip') {
     const owner = db.prepare('SELECT user_id FROM trips WHERE id = ?').get(target) as { user_id: number } | undefined;
-    const members = db.prepare('SELECT user_id FROM trip_members WHERE trip_id = ?').all(target) as { user_id: number }[];
+    const members = db.prepare('SELECT m.user_id FROM trip_members m JOIN users u ON u.id = m.user_id WHERE m.trip_id = ? AND COALESCE(u.is_guest, 0) = 0').all(target) as { user_id: number }[];
     const ids = new Set<number>();
     if (owner) ids.add(owner.user_id);
     for (const m of members) ids.add(m.user_id);
     userIds = Array.from(ids);
   } else if (scope === 'user') {
-    userIds = [target];
+    // A guest can be a todo assignee (scope='user'); never notify them.
+    const u = db.prepare('SELECT is_guest FROM users WHERE id = ?').get(target) as { is_guest?: number } | undefined;
+    userIds = u && u.is_guest ? [] : [target];
   } else if (scope === 'admin') {
-    const admins = db.prepare('SELECT id FROM users WHERE role = ?').all('admin') as { id: number }[];
+    const admins = db.prepare("SELECT id FROM users WHERE role = ? AND COALESCE(is_guest, 0) = 0").all('admin') as { id: number }[];
     userIds = admins.map(a => a.id);
   }
 

@@ -23,5 +23,15 @@ const members: TranslationStrings = {
   'members.makeOwner': 'Назначить владельцем',
   'members.confirmTransfer': 'Передать права владельца пользователю {name}? Вы станете обычным участником.',
   'members.transferError': 'Не удалось передать права владельца',
+  'members.guests': 'Гости',
+  'members.guest': 'Гость',
+  'members.guestsHint': 'Люди без учётной записи. Им можно назначать расходы, вещи и задачи, но они не могут войти.',
+  'members.addGuest': 'Добавить гостя',
+  'members.guestNamePlaceholder': 'Имя гостя',
+  'members.guestAdded': 'Гость добавлен',
+  'members.guestAddError': 'Не удалось добавить гостя',
+  'members.guestRenameError': 'Не удалось переименовать гостя',
+  'members.guestRemoved': 'Гость удалён',
+  'members.confirmRemoveGuest': 'Удалить этого гостя? Его назначения и доли расходов также будут удалены.',
 };
 export default members;

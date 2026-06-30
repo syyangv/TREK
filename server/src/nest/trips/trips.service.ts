@@ -99,6 +99,18 @@ export class TripsService {
     return tripSvc.transferOwnership(tripId, newOwnerId, currentOwnerId);
   }
 
+  createGuest(tripId: string, name: string, invitedBy: number) {
+    return tripSvc.createGuest(tripId, name, invitedBy);
+  }
+
+  renameGuest(tripId: string, guestUserId: number, name: string): boolean {
+    return tripSvc.renameGuest(tripId, guestUserId, name);
+  }
+
+  deleteGuest(tripId: string, guestUserId: number): boolean {
+    return tripSvc.deleteGuest(tripId, guestUserId);
+  }
+
   exportICS(tripId: string) {
     return tripSvc.exportICS(tripId);
   }
