@@ -87,7 +87,7 @@ export function ArtikelZeile({ item, tripId, categories, onCategoryChange, onDel
       className="group"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); setShowCatPicker(false); setShowBagPicker(false) }}
-      onDragOver={canDrag ? (e => { if (drag!.isDragging || true) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; drag!.onOver(item.id) } }) : undefined}
+      onDragOver={canDrag ? (e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; drag!.onOver(item.id) }) : undefined}
       onDragLeave={canDrag ? (e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) drag!.onOver(-1) }) : undefined}
       onDrop={canDrag ? (e => { e.preventDefault(); e.stopPropagation(); drag!.onDrop(item.id) }) : undefined}
       style={{
