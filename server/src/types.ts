@@ -19,6 +19,9 @@ export interface User {
   must_change_password?: number | boolean;
   first_seen_version?: string;
   login_count?: number;
+  // Guest members (#1362): accountless trip participants. Flagged guests must never
+  // authenticate or appear in the global user directory.
+  is_guest?: number | boolean;
   created_at?: string;
   updated_at?: string;
 }

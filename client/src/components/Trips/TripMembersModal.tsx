@@ -5,7 +5,7 @@ import { useToast } from '../shared/Toast'
 import { useAuthStore } from '../../store/authStore'
 import { useCanDo } from '../../store/permissionsStore'
 import { useTripStore } from '../../store/tripStore'
-import { Crown, UserMinus, UserPlus, Users, LogOut, Link2, Trash2, Copy, Check } from 'lucide-react'
+import { Crown, UserMinus, UserPlus, Users, LogOut, Link2, Trash2, Copy, Check, UserRound, Pencil, Plus } from 'lucide-react'
 import { useTranslation } from '../../i18n'
 import { getApiErrorMessage } from '../../types'
 import CustomSelect from '../shared/CustomSelect'
@@ -178,6 +178,10 @@ export default function TripMembersModal({ isOpen, onClose, tripId, tripTitle }:
   const [adding, setAdding] = useState(false)
   const [removingId, setRemovingId] = useState(null)
   const [transferringId, setTransferringId] = useState(null)
+  const [newGuestName, setNewGuestName] = useState('')
+  const [addingGuest, setAddingGuest] = useState(false)
+  const [renamingGuestId, setRenamingGuestId] = useState(null)
+  const [renameValue, setRenameValue] = useState('')
   const toast = useToast()
   const { user } = useAuthStore()
   const { t } = useTranslation()
@@ -243,6 +247,48 @@ export default function TripMembersModal({ isOpen, onClose, tripId, tripTitle }:
     }
   }
 
+  const handleAddGuest = async () => {
+    const name = newGuestName.trim()
+    if (!name) return
+    setAddingGuest(true)
+    try {
+      await tripsApi.createGuest(tripId, name)
+      setNewGuestName('')
+      await loadMembers()
+      toast.success(t('members.guestAdded'))
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, t('members.guestAddError')))
+    } finally {
+      setAddingGuest(false)
+    }
+  }
+
+  const handleRenameGuest = async (userId) => {
+    const name = renameValue.trim()
+    if (!name) { setRenamingGuestId(null); return }
+    try {
+      await tripsApi.renameGuest(tripId, userId, name)
+      setRenamingGuestId(null)
+      await loadMembers()
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, t('members.guestRenameError')))
+    }
+  }
+
+  const handleDeleteGuest = async (userId) => {
+    if (!confirm(t('members.confirmRemoveGuest'))) return
+    setRemovingId(userId)
+    try {
+      await tripsApi.deleteGuest(tripId, userId)
+      await loadMembers()
+      toast.success(t('members.guestRemoved'))
+    } catch {
+      toast.error(t('members.removeError'))
+    } finally {
+      setRemovingId(null)
+    }
+  }
+
   const handleRemove = async (userId, isSelf) => {
     const msg = isSelf
       ? t('members.confirmLeave')
@@ -260,18 +306,20 @@ export default function TripMembersModal({ isOpen, onClose, tripId, tripTitle }:
     }
   }
 
-  // Users not yet in the trip
+  // Users not yet in the trip (guests are accountless and never live in the directory)
   const existingIds = new Set([
     data?.owner?.id,
     ...(data?.members?.map(m => m.id) || []),
   ])
-  const availableUsers = allUsers.filter(u => !existingIds.has(u.id))
+  const availableUsers = allUsers.filter(u => !existingIds.has(u.id) && !u.is_guest)
 
   const isCurrentOwner = data?.owner?.id === user?.id
-  const allMembers = data ? [
+  // Real members (owner + accounts) and guests (#1362) are listed separately.
+  const realMembers = data ? [
     { ...data.owner, role: 'owner' },
-    ...data.members,
+    ...data.members.filter(m => !m.is_guest),
   ] : []
+  const guests = data ? data.members.filter(m => m.is_guest) : []
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={t('members.shareTrip')} size="3xl">
@@ -331,7 +379,7 @@ export default function TripMembersModal({ isOpen, onClose, tripId, tripTitle }:
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
             <Users size={13} className="text-content-faint" />
             <span className="text-content-secondary" style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 600 }}>
-              {t('members.access')} ({allMembers.length} {allMembers.length === 1 ? t('members.person') : t('members.persons')})
+              {t('members.access')} ({realMembers.length} {realMembers.length === 1 ? t('members.person') : t('members.persons')})
             </span>
           </div>
 
@@ -343,7 +391,7 @@ export default function TripMembersModal({ isOpen, onClose, tripId, tripTitle }:
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {allMembers.map(member => {
+              {realMembers.map(member => {
                 const isSelf = member.id === user?.id
                 const canRemove = isSelf || (canManageMembers && member.role !== 'owner')
                 return (
@@ -393,6 +441,97 @@ export default function TripMembersModal({ isOpen, onClose, tripId, tripTitle }:
             </div>
           )}
         </div>
+
+        {/* Guests (#1362) — accountless participants, managed by the owner */}
+        {(isCurrentOwner || guests.length > 0) && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <UserRound size={13} className="text-content-faint" />
+            <span className="text-content-secondary" style={{ fontSize: 'calc(12px * var(--fs-scale-body, 1))', fontWeight: 600 }}>
+              {t('members.guests')}{guests.length > 0 ? ` (${guests.length})` : ''}
+            </span>
+          </div>
+          <p className="text-content-faint" style={{ fontSize: 'calc(11px * var(--fs-scale-caption, 1))', margin: '0 0 10px', lineHeight: 1.5 }}>{t('members.guestsHint')}</p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {guests.map(g => (
+              <div key={g.id} className="bg-surface-secondary border border-edge-secondary" style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10,
+              }}>
+                <Avatar username={g.username} avatarUrl={null} />
+                {renamingGuestId === g.id ? (
+                  <input
+                    autoFocus
+                    value={renameValue}
+                    onChange={e => setRenameValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleRenameGuest(g.id); if (e.key === 'Escape') setRenamingGuestId(null) }}
+                    onBlur={() => handleRenameGuest(g.id)}
+                    maxLength={50}
+                    className="bg-surface border border-edge text-content"
+                    style={{ flex: 1, minWidth: 0, fontSize: 'calc(13px * var(--fs-scale-body, 1))', padding: '4px 8px', borderRadius: 8, outline: 'none', fontFamily: 'inherit' }}
+                  />
+                ) : (
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span className="text-content" style={{ fontSize: 'calc(13px * var(--fs-scale-body, 1))', fontWeight: 600 }}>{g.username}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'calc(10px * var(--fs-scale-caption, 1))', fontWeight: 600, color: 'var(--text-muted)', background: 'var(--bg-tertiary)', padding: '1px 6px', borderRadius: 99 }}>
+                      <UserRound size={9} /> {t('members.guest')}
+                    </span>
+                  </div>
+                )}
+                {isCurrentOwner && renamingGuestId !== g.id && (
+                  <>
+                    <button
+                      onClick={() => { setRenamingGuestId(g.id); setRenameValue(g.username) }}
+                      title={t('common.rename')}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: 6, display: 'flex', color: 'var(--text-faint)' }}
+                      onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'}
+                      onMouseLeave={e => e.currentTarget.style.color = '#9ca3af'}
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteGuest(g.id)}
+                      disabled={removingId === g.id}
+                      title={t('members.removeAccess')}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: 6, display: 'flex', color: 'var(--text-faint)', opacity: removingId === g.id ? 0.4 : 1 }}
+                      onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                      onMouseLeave={e => e.currentTarget.style.color = '#9ca3af'}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {isCurrentOwner && (
+            <div style={{ display: 'flex', gap: 8, marginTop: guests.length > 0 ? 8 : 0 }}>
+              <input
+                value={newGuestName}
+                onChange={e => setNewGuestName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddGuest() }}
+                placeholder={t('members.guestNamePlaceholder')}
+                maxLength={50}
+                className="bg-surface border border-edge text-content"
+                style={{ flex: 1, minWidth: 0, fontSize: 'calc(13px * var(--fs-scale-body, 1))', padding: '8px 10px', borderRadius: 10, outline: 'none', fontFamily: 'inherit' }}
+              />
+              <button
+                onClick={handleAddGuest}
+                disabled={addingGuest || !newGuestName.trim()}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px',
+                  background: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-primary)', borderRadius: 10,
+                  fontSize: 'calc(13px * var(--fs-scale-body, 1))', fontWeight: 600, cursor: addingGuest || !newGuestName.trim() ? 'default' : 'pointer',
+                  fontFamily: 'inherit', opacity: addingGuest || !newGuestName.trim() ? 0.4 : 1, flexShrink: 0,
+                }}
+              >
+                <Plus size={13} /> {addingGuest ? '…' : t('members.addGuest')}
+              </button>
+            </div>
+          )}
+        </div>
+        )}
 
         </div>
 

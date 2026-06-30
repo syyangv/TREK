@@ -277,7 +277,7 @@ export function getPendingMfaSecret(userId: number): string | null {
 // ---------------------------------------------------------------------------
 
 export function getAppConfig(authenticatedUser: { id: number } | null) {
-  const userCount = (db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }).count;
+  const userCount = (db.prepare('SELECT COUNT(*) as count FROM users WHERE COALESCE(is_guest, 0) = 0').get() as { count: number }).count;
   const isDemo = process.env.DEMO_MODE?.toLowerCase() === 'true';
   const toggles = resolveAuthToggles();
   const version: string = process.env.APP_VERSION ?? require('../../package.json').version;
@@ -378,7 +378,7 @@ export function registerUser(body: {
   const email = typeof body.email === 'string' ? body.email.trim() : '';
   const { password, invite_token } = body;
 
-  const userCount = (db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }).count;
+  const userCount = (db.prepare('SELECT COUNT(*) as count FROM users WHERE COALESCE(is_guest, 0) = 0').get() as { count: number }).count;
 
   let validInvite: any = null;
   if (invite_token) {
@@ -406,7 +406,8 @@ export function registerUser(body: {
     return { error: 'Invalid email format', status: 400 };
   }
 
-  const existingUser = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)').get(email, username);
+  // Ignore guests (#1362): their synthetic username/email must never block a real signup.
+  const existingUser = db.prepare('SELECT id FROM users WHERE (LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)) AND COALESCE(is_guest, 0) = 0').get(email, username);
   if (existingUser) {
     return { error: 'Registration failed. Please try different credentials.', status: 409 };
   }
@@ -469,7 +470,9 @@ export function loginUser(body: {
     return { error: 'Email and password are required', status: 400 };
   }
 
-  const user = db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?)').get(email) as User | undefined;
+  // Guests (#1362) carry a synthetic email but must never authenticate — treat a
+  // matched guest row exactly like an unknown email (dummy-hash timing preserved).
+  const user = db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?) AND COALESCE(is_guest, 0) = 0').get(email) as User | undefined;
 
   // Always run bcrypt — even for unknown/OIDC-only users — so response time
   // does not reveal whether the email exists in the database (CWE-203/208).
@@ -649,7 +652,7 @@ export function updateSettings(
     if (!/^[a-zA-Z0-9_.-]+$/.test(trimmed)) {
       return { error: 'Username can only contain letters, numbers, underscores, dots and hyphens', status: 400 };
     }
-    const conflict = db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id != ?').get(trimmed, userId);
+    const conflict = db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id != ? AND COALESCE(is_guest, 0) = 0').get(trimmed, userId);
     if (conflict) return { error: 'Username already taken', status: 409 };
   }
 
@@ -658,7 +661,7 @@ export function updateSettings(
     if (!trimmed || !EMAIL_REGEX.test(trimmed)) {
       return { error: 'Invalid email format', status: 400 };
     }
-    const conflict = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id != ?').get(trimmed, userId);
+    const conflict = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id != ? AND COALESCE(is_guest, 0) = 0').get(trimmed, userId);
     if (conflict) return { error: 'Email already taken', status: 409 };
   }
 
@@ -735,8 +738,10 @@ export async function deleteAvatar(userId: number) {
 // ---------------------------------------------------------------------------
 
 export function listUsers(excludeUserId: number) {
+  // The global user directory feeds the trip member-add / contributor pickers —
+  // guests (#1362) are trip-scoped and must never be selectable here.
   const users = db.prepare(
-    'SELECT id, username, avatar FROM users WHERE id != ? ORDER BY username ASC'
+    'SELECT id, username, avatar FROM users WHERE id != ? AND COALESCE(is_guest, 0) = 0 ORDER BY username ASC'
   ).all(excludeUserId) as Pick<User, 'id' | 'username' | 'avatar'>[];
   return users.map(u => ({ ...u, avatar_url: avatarUrl(u) }));
 }
@@ -1201,7 +1206,8 @@ export function requestPasswordReset(rawEmail: string, createdIp: string | null)
     return { tokenForDelivery: null, userId: null, userEmail: null, reason: 'no_user' };
   }
 
-  const user = db.prepare('SELECT id, email, password_hash, oidc_sub FROM users WHERE email = ?').get(email) as
+  // A guest (#1362) must never receive a reset link — treat its synthetic email as unknown.
+  const user = db.prepare('SELECT id, email, password_hash, oidc_sub FROM users WHERE email = ? AND COALESCE(is_guest, 0) = 0').get(email) as
     | { id: number; email: string; password_hash: string | null; oidc_sub: string | null }
     | undefined;
 

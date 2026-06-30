@@ -7,6 +7,7 @@ export interface TripMember {
   id: number
   username: string
   avatar_url?: string | null
+  is_guest?: boolean
 }
 
 // ── Chip with custom tooltip ─────────────────────────────────────────────────

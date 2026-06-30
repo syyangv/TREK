@@ -1,4 +1,4 @@
-import { CheckSquare, Square, ChevronRight, Flag, Calendar, GripVertical } from 'lucide-react'
+import { CheckSquare, Square, ChevronRight, Flag, Calendar, GripVertical, UserRound } from 'lucide-react'
 import type { TodoItem } from '../../types'
 import { katColor, PRIO_CONFIG, type Member } from './todoListModel'
 
@@ -131,6 +131,7 @@ export default function TodoRow({ item, members, categories, today, isSelected, 
                   {assignedUser.username.charAt(0).toUpperCase()}
                 </span>
               )}
+              {assignedUser.is_guest && <UserRound size={11} style={{ opacity: 0.7 }} />}
               {assignedUser.username}
             </span>
           )}

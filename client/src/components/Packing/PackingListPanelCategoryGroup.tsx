@@ -10,6 +10,7 @@ import type { PackingItem, PackingBag } from '../../types'
 import { katColor } from './packingListPanel.helpers'
 import type { TripMember, CategoryAssignee } from './usePackingListPanel'
 import { ArtikelZeile } from './PackingListPanelItemRow'
+import GuestBadge from '../shared/GuestBadge'
 
 interface KategorieGruppeProps {
   kategorie: string
@@ -206,7 +207,10 @@ export function KategorieGruppe({ kategorie, items, tripId, allCategories, onRen
                       }}>
                         {m.username[0]}
                       </div>
-                      <span style={{ flex: 1 }}>{m.username}</span>
+                      <span style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.username}</span>
+                        {m.is_guest && <GuestBadge size="xs" />}
+                      </span>
                       {isAssigned && <Check size={12} className="text-content-muted" />}
                     </button>
                   )

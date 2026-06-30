@@ -367,7 +367,8 @@ export function findOrCreateUser(
   // Try to find existing user by sub, then by email
   let user = db.prepare('SELECT * FROM users WHERE oidc_sub = ? AND oidc_issuer = ?').get(sub, config.issuer) as User | undefined;
   if (!user) {
-    user = db.prepare('SELECT * FROM users WHERE LOWER(email) = ?').get(email) as User | undefined;
+    // Never link/log-in to a guest (#1362) via its synthetic email.
+    user = db.prepare('SELECT * FROM users WHERE LOWER(email) = ? AND COALESCE(is_guest, 0) = 0').get(email) as User | undefined;
   }
 
   if (user) {
@@ -405,7 +406,7 @@ export function findOrCreateUser(
   }
 
   // --- New user registration ---
-  const userCount = (db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }).count;
+  const userCount = (db.prepare('SELECT COUNT(*) as count FROM users WHERE COALESCE(is_guest, 0) = 0').get() as { count: number }).count;
   const isFirstUser = userCount === 0;
 
   let validInvite: any = null;

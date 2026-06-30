@@ -59,8 +59,10 @@ export const isDocker = (() => {
 // ── User CRUD ──────────────────────────────────────────────────────────────
 
 export function listUsers() {
+  // Guests (#1362) are accountless trip participants, not real users — keep them out
+  // of admin user management entirely.
   const users = db.prepare(
-    'SELECT id, username, email, role, avatar, created_at, updated_at, last_login FROM users ORDER BY created_at DESC'
+    'SELECT id, username, email, role, avatar, created_at, updated_at, last_login FROM users WHERE COALESCE(is_guest, 0) = 0 ORDER BY created_at DESC'
   ).all() as (Pick<User, 'id' | 'username' | 'email' | 'role' | 'created_at' | 'updated_at' | 'last_login'> & { avatar?: string | null })[];
   let onlineUserIds = new Set<number>();
   try {
@@ -93,10 +95,11 @@ export function createUser(data: { username: string; email: string; password: st
     return { error: 'Invalid role', status: 400 };
   }
 
-  const existingUsername = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+  // Guests (#1362) live in a reserved synthetic namespace; never let one block a real account.
+  const existingUsername = db.prepare('SELECT id FROM users WHERE username = ? AND COALESCE(is_guest, 0) = 0').get(username);
   if (existingUsername) return { error: 'Username already taken', status: 409 };
 
-  const existingEmail = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  const existingEmail = db.prepare('SELECT id FROM users WHERE email = ? AND COALESCE(is_guest, 0) = 0').get(email);
   if (existingEmail) return { error: 'Email already taken', status: 409 };
 
   const passwordHash = bcrypt.hashSync(password, BCRYPT_COST);
@@ -129,11 +132,11 @@ export function updateUser(id: string, data: { username?: string; email?: string
   }
 
   if (username && username !== user.username) {
-    const conflict = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, id);
+    const conflict = db.prepare('SELECT id FROM users WHERE username = ? AND id != ? AND COALESCE(is_guest, 0) = 0').get(username, id);
     if (conflict) return { error: 'Username already taken', status: 409 };
   }
   if (email && email !== user.email) {
-    const conflict = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(email, id);
+    const conflict = db.prepare('SELECT id FROM users WHERE email = ? AND id != ? AND COALESCE(is_guest, 0) = 0').get(email, id);
     if (conflict) return { error: 'Email already taken', status: 409 };
   }
 
@@ -195,7 +198,7 @@ export function deleteUser(id: string, currentUserId: number) {
 // ── Stats ──────────────────────────────────────────────────────────────────
 
 export function getStats() {
-  const totalUsers = (db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number }).count;
+  const totalUsers = (db.prepare('SELECT COUNT(*) as count FROM users WHERE COALESCE(is_guest, 0) = 0').get() as { count: number }).count;
   const totalTrips = (db.prepare('SELECT COUNT(*) as count FROM trips').get() as { count: number }).count;
   const totalPlaces = (db.prepare('SELECT COUNT(*) as count FROM places').get() as { count: number }).count;
   const totalFiles = (db.prepare('SELECT COUNT(*) as count FROM trip_files').get() as { count: number }).count;
