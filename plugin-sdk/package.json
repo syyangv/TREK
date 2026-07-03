@@ -1,0 +1,29 @@
+{
+  "name": "trek-plugin-sdk",
+  "version": "1.0.0",
+  "description": "SDK for building TREK plugins: types, definePlugin, a mock host, manifest validation, and the create-trek-plugin / trek-plugin CLIs.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./testing": { "types": "./dist/mock-host.d.ts", "import": "./dist/mock-host.js" }
+  },
+  "bin": {
+    "create-trek-plugin": "./dist/cli/create.js",
+    "trek-plugin": "./dist/cli/trek-plugin.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "keywords": ["trek", "plugin", "sdk"]
+}
