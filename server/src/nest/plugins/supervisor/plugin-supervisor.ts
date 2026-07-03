@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { fork, type ChildProcess } from 'node:child_process';
-import { resolveChildEntry, pluginCodeDir, pluginPermissionArgs } from '../paths';
+import { resolveChildEntry, pluginCodeDir, pluginRealCodeDir, pluginPermissionArgs, ensurePluginModuleType } from '../paths';
 import type { Envelope, RpcError, RpcRequest } from '../protocol/envelope';
 import type { PluginRpcHost } from '../host/rpc-host';
 
@@ -177,9 +177,13 @@ export class PluginSupervisor {
     const { entry, execArgv, forkCwd, jsMode } = resolveChildEntry();
     // Prod (compiled) children get the OS permission model — a real kernel-level
     // fs/child_process/native jail on top of the env scrub and RPC boundary.
+    // Use the plugin's REAL path + ensure it has a package.json so the sandboxed
+    // child can resolve its own module type without a broad read grant.
+    const codeDir = jsMode ? pluginRealCodeDir(sup.id) : pluginCodeDir(sup.id);
+    if (jsMode) ensurePluginModuleType(codeDir);
     const argv = jsMode ? [...execArgv, ...pluginPermissionArgs(sup.id)] : execArgv;
-    const child = fork(entry, [sup.id, pluginCodeDir(sup.id)], {
-      cwd: forkCwd ?? pluginCodeDir(sup.id),
+    const child = fork(entry, [sup.id, codeDir], {
+      cwd: forkCwd ?? codeDir,
       execArgv: argv,
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
       // Whitelist env — nothing inherited. No JWT_SECRET, no DB creds, no PATH-leaked secrets.

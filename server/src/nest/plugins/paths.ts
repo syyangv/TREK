@@ -27,6 +27,36 @@ export function pluginCodeDir(id: string): string {
   return path.join(pluginsCodeRoot(), id);
 }
 
+/**
+ * The plugin code dir with symlinks resolved. The data root is often a symlink
+ * (Docker mounts `server/data` -> a volume), and the OS permission model checks
+ * REAL paths — forking the child from the real path keeps path resolution from
+ * ever touching the symlinked parent (which would need a broad read grant).
+ * Falls back to the lexical path if the dir does not exist yet.
+ */
+export function pluginRealCodeDir(id: string): string {
+  try {
+    return fs.realpathSync(pluginCodeDir(id));
+  } catch {
+    return pluginCodeDir(id);
+  }
+}
+
+/**
+ * Give a plugin its own `package.json` (only if it ships none) so Node resolves
+ * the child's module type AT the plugin root and never walks up into the data
+ * dir — which, under the permission model, is denied (that's the whole point).
+ * Defaults to CommonJS, matching the plain `module.exports` plugins ship.
+ */
+export function ensurePluginModuleType(codeDir: string): void {
+  try {
+    const pkg = path.join(codeDir, 'package.json');
+    if (!fs.existsSync(pkg)) fs.writeFileSync(pkg, '{"type":"commonjs"}\n');
+  } catch {
+    /* best effort — a missing package.json only matters under --permission */
+  }
+}
+
 /** A plugin's writable data directory (its own sqlite file + any blobs). */
 export function pluginDataDir(id: string): string {
   return path.join(pluginsDataRoot(), id);
@@ -90,6 +120,7 @@ export function pluginPermissionArgs(pluginId: string): string[] {
     // resolve the child's module type. Grant just that file — never its dir,
     // which also holds the `data` symlink to trek.db and the secret files.
     `--allow-fs-read=${path.join(codeRoot, '..', 'package.json')}`,
-    `--allow-fs-read=${pluginCodeDir(pluginId)}`,
+    // The plugin's own code, by REAL path (see pluginRealCodeDir).
+    `--allow-fs-read=${pluginRealCodeDir(pluginId)}`,
   ];
 }
