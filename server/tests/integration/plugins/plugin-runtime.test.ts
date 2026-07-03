@@ -12,7 +12,7 @@ const { testDb } = vi.hoisted(() => {
   const Database = require('better-sqlite3');
   const db = new Database(':memory:');
   db.exec(`CREATE TABLE plugins (
-    id TEXT PRIMARY KEY, status TEXT, permissions TEXT DEFAULT '[]', granted_permissions TEXT DEFAULT '[]',
+    id TEXT PRIMARY KEY, status TEXT, enabled INTEGER DEFAULT 0, permissions TEXT DEFAULT '[]', granted_permissions TEXT DEFAULT '[]',
     config TEXT DEFAULT '{}', last_error TEXT, updated_at TEXT);
     CREATE TABLE plugin_error_log (id INTEGER PRIMARY KEY AUTOINCREMENT, plugin_id TEXT, level TEXT, message TEXT, ts TEXT);
     CREATE TABLE plugin_settings_fields (plugin_id TEXT, field_key TEXT, scope TEXT, secret INTEGER);
@@ -115,11 +115,19 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
     process.env.TREK_PLUGINS_ENABLED = 'true';
   });
 
-  it('deactivate stops the plugin and marks it inactive', async () => {
+  it('deactivate stops the plugin and clears the enabled intent', async () => {
     await runtime.deactivate('counter');
     expect(runtime.isActive('counter')).toBe(false);
-    const row = testDb.prepare("SELECT status FROM plugins WHERE id = 'counter'").get() as { status: string };
+    const row = testDb.prepare("SELECT status, enabled FROM plugins WHERE id = 'counter'").get() as { status: string; enabled: number };
     expect(row.status).toBe('inactive');
+    expect(row.enabled).toBe(0);
+  });
+
+  it('activate sets the enabled intent so it survives a reboot', async () => {
+    await runtime.deactivate('counter');
+    await runtime.activate('counter');
+    const row = testDb.prepare("SELECT enabled FROM plugins WHERE id = 'counter'").get() as { enabled: number };
+    expect(row.enabled).toBe(1);
   });
 
   it('tolerates malformed granted_permissions / config JSON on activate', async () => {
@@ -132,16 +140,28 @@ describe('PluginRuntimeService (M2 end-to-end)', () => {
     await rt.deactivate('messy');
   });
 
-  it('onModuleInit boots plugins that are active in the DB', async () => {
+  it('onModuleInit boots every ENABLED plugin — even one left in error state', async () => {
     fs.mkdirSync(path.join(codeRoot, 'booter', 'server'), { recursive: true });
     fs.writeFileSync(path.join(codeRoot, 'booter', 'server', 'index.js'), 'module.exports = { async onLoad() {} };');
-    testDb.prepare("INSERT INTO plugins (id, status, granted_permissions, config) VALUES ('booter','active','[]','{}')").run();
+    // status='error' from a previous crash, but enabled=1 → must still boot
+    testDb.prepare("INSERT INTO plugins (id, status, enabled, granted_permissions, config) VALUES ('booter','error',1,'[]','{}')").run();
 
     const rt = new PluginRuntimeService();
     rt.onModuleInit(); // fire-and-forget spawn
     for (let i = 0; i < 40 && !rt.isActive('booter'); i++) await new Promise((r) => setTimeout(r, 50));
     expect(rt.isActive('booter')).toBe(true);
     await rt.deactivate('booter');
+  });
+
+  it('onModuleInit does NOT boot a disabled plugin', async () => {
+    fs.mkdirSync(path.join(codeRoot, 'sleeper', 'server'), { recursive: true });
+    fs.writeFileSync(path.join(codeRoot, 'sleeper', 'server', 'index.js'), 'module.exports = { async onLoad() {} };');
+    testDb.prepare("INSERT INTO plugins (id, status, enabled, granted_permissions, config) VALUES ('sleeper','inactive',0,'[]','{}')").run();
+
+    const rt = new PluginRuntimeService();
+    rt.onModuleInit();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(rt.isActive('sleeper')).toBe(false);
   });
 
   it('outboundHostsOf extracts declared http:outbound hosts', () => {

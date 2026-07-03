@@ -20,6 +20,8 @@ export interface PluginListItem {
   icon: string | null;
   version: string | null;
   status: string;
+  enabled: number;
+  last_error: string | null;
   reviewed_at: string | null;
   source_repo: string | null;
 }
@@ -29,7 +31,7 @@ export class PluginsService {
   list(): { enabled: boolean; plugins: PluginListItem[] } {
     const plugins = db
       .prepare(
-        `SELECT id, name, description, type, icon, version, status, reviewed_at, source_repo
+        `SELECT id, name, description, type, icon, version, status, enabled, last_error, reviewed_at, source_repo
          FROM plugins
          ORDER BY sort_order, name`,
       )
