@@ -52,8 +52,11 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
     } catch {
       /* discovery must never block boot */
     }
-    const active = db.prepare("SELECT id FROM plugins WHERE status = 'active'").all() as Array<{ id: string }>;
-    for (const { id } of active) {
+    // Boot everything the admin left ENABLED, regardless of the last runtime
+    // status — a crash or a bad deploy set status='error' but must not silently
+    // keep the plugin down forever.
+    const enabled = db.prepare('SELECT id FROM plugins WHERE enabled = 1').all() as Array<{ id: string }>;
+    for (const { id } of enabled) {
       this.activate(id).catch(() => {
         /* status is persisted as error by the supervisor hook */
       });
@@ -79,7 +82,8 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
     // Activating IS the consent gate: grant the plugin's DECLARED permissions
     // (the admin reviewed them on the consent screen), persist, then spawn.
     const declared = parseArray(row.permissions).filter(isKnownPermission);
-    db.prepare('UPDATE plugins SET granted_permissions = ? WHERE id = ?').run(JSON.stringify(declared), id);
+    // Mark it enabled (admin intent) so it reboots after restarts/crashes.
+    db.prepare('UPDATE plugins SET granted_permissions = ?, enabled = 1 WHERE id = ?').run(JSON.stringify(declared), id);
     const config = decryptConfig(parseObject(row.config));
     const egress = declared.filter((p) => p.startsWith('http:outbound:')).map((p) => p.slice('http:outbound:'.length));
     await this.supervisor.activate(id, new Set(declared), config, egress);
@@ -88,7 +92,7 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
   async deactivate(id: string): Promise<void> {
     await this.supervisor.disable(id);
     closePluginDataDb(id);
-    db.prepare("UPDATE plugins SET status = 'inactive', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
+    db.prepare("UPDATE plugins SET status = 'inactive', enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
   }
 
   /** Stop the plugin, remove its code, and optionally delete all its data. */
