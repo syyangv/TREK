@@ -2,75 +2,154 @@
 
 Plugins are distributed from a static registry — the
 [TREK-Plugins](https://github.com/mauriceboe/TREK-Plugins) GitHub repo. There is
-no upload server and no account: you host your plugin in your own GitHub repo and
-list it with a pull request.
+no upload server and no account: you host the code in your own public GitHub repo,
+attach a built `plugin.zip` to a release, and list it with a pull request.
 
-## 1. Host your plugin
+The `trek-plugin` CLI (shipped in the `trek-plugin-sdk` package) does almost all
+the mechanical work — you rarely hand-type a hash, size, commit, or JSON field.
 
-Put your plugin in a **public GitHub repo** (convention: `trek-plugin-<id>`). It
-must contain a `trek-plugin.json` at the root, a built `server/index.js`, a
-filled-in `README.md`, and (page/widget) a built `client/`.
+## The short version
 
-## 2. Tag a release
+```bash
+npx trek-plugin validate .                       # manifest + layout sanity
+npx trek-plugin pack .                            # build plugin.zip, print sha256 + size
+gh release create v1.0.0 plugin.zip --repo you/trek-plugin-flight-tracker
+npx trek-plugin entry --repo you/trek-plugin-flight-tracker --tag v1.0.0 \
+  --out registry/plugins/flight-tracker.json     # the ready-to-PR entry
+```
 
-Tag `vX.Y.Z` where `X.Y.Z` **equals** `version` in your manifest. Either attach a
-`plugin.zip` release asset, or rely on the GitHub source archive at that commit.
+…then open a PR to **TREK-Plugins** adding that one
+`registry/plugins/<id>.json` file. `trek-plugin release` collapses the middle
+three steps into one command (see below).
 
-## 3. Validate locally
+## 1. Host and build your plugin
+
+Put your plugin in a **public GitHub repo** (convention: `trek-plugin-<id>`).
+`create-trek-plugin` scaffolds the layout:
+
+```bash
+npx create-trek-plugin flight-tracker --type widget   # integration | page | widget
+```
+
+A publishable plugin has, at the repo root:
+
+- `trek-plugin.json` — the manifest (see [[Plugin Development|Plugin-Development]])
+- `server/index.js` — the built server entry (required)
+- `client/` — the built frontend (only for `page`/`widget` plugins)
+- `README.md` — filled in, with a real screenshot (the quality gate is strict — see below)
+- `docs/screenshot.png` — the store card image, committed to the repo
+
+## 2. Validate
 
 ```bash
 npx trek-plugin validate .
 ```
 
-This runs the exact checks the registry CI runs — a local pass predicts a CI
-pass.
+`validate` runs the manifest checks plus a light layout/README sanity pass:
+it fails if `trek-plugin.json` is invalid or `server/index.js` is missing, and
+warns if the directory name doesn't match the plugin `id`, the README has no
+screenshot, or the README still contains scaffold placeholders. This is a
+**subset** of what CI runs — CI additionally verifies the release, the artifact's
+SHA-256, and the README over the network — so a clean local run predicts a clean
+CI run but doesn't replace it.
 
-## 4. Fork the registry and open a PR
+## 3. Pack
 
-You don't have write access to the registry, so **fork
-[TREK-Plugins](https://github.com/mauriceboe/TREK-Plugins)** to your own account,
-add your entry there, and open a pull request from your fork back to the
-registry's `main` branch.
-
-Add one file, `registry/plugins/<id>.json`:
-
-```jsonc
-{
-  "id": "flight-tracker",
-  "name": "Flight Tracker",
-  "author": "Your Name",
-  "description": "Live flight status widget.",
-  "repo": "you/trek-plugin-flight-tracker",
-  "type": "widget",
-  "versions": [{
-    "version": "1.0.0",
-    "gitTag": "v1.0.0",
-    "commitSha": "<40-hex commit the tag points at>",
-    "downloadUrl": "https://github.com/you/trek-plugin-flight-tracker/releases/download/v1.0.0/plugin.zip",
-    "sha256": "<sha256 of that artifact>",
-    "minTrekVersion": "3.2.0",
-    "apiVersion": 1,
-    "nativeModules": false
-  }]
-}
+```bash
+npx trek-plugin pack .                 # writes ./plugin.zip
+npx trek-plugin pack . --out dist.zip  # custom output path
+npx trek-plugin pack . --json          # machine-readable result
 ```
 
-CI validates the entry and the artifact, and the maintainer reviews the source at
-the pinned commit before merging.
+`pack` validates first, then builds `plugin.zip` in the installer's exact layout
+and prints the **sha256** and **size** you'd otherwise compute by hand. It ships
+only what the runtime needs — `trek-plugin.json`, `README.md`, `LICENSE`,
+`package.json`, and the `server/` and `client/` trees — and drops `node_modules`,
+`.git`, source maps and `.ts` sources. It **refuses native binaries**
+(`.node`, `binding.gyp`, `prebuilds/`) and enforces the same size limits as the
+installer (25 MB per file, 50 MB total, 4000 entries).
+
+> **`docs/` is intentionally not shipped.** The store fetches your
+> `docs/screenshot.png` straight from the repo at the pinned commit, so keep it
+> committed to GitHub but out of the zip — `pack` handles this for you.
+
+## 4. Create the GitHub release
+
+Tag `vX.Y.Z` where `X.Y.Z` **equals** `version` in your manifest, and attach the
+packed `plugin.zip` as a release asset:
+
+```bash
+gh release create v1.0.0 plugin.zip --repo you/trek-plugin-flight-tracker
+```
+
+Prefer the uploaded `plugin.zip` asset — it's the exact bytes you packed and the
+registry pins their hash. Don't rely on GitHub's auto-generated source archives;
+they aren't the installer layout and their bytes aren't stable.
+
+## 5. Generate the registry entry
+
+```bash
+npx trek-plugin entry \
+  --repo you/trek-plugin-flight-tracker \
+  --tag v1.0.0 \
+  --out registry/plugins/flight-tracker.json
+```
+
+`entry` reads your manifest and `plugin.zip` and emits the complete entry —
+deriving `commitSha` (from `git rev-parse <tag>^{commit}`), `downloadUrl`,
+`sha256`, `size`, `apiVersion`, and `minTrekVersion` (the lower bound of the
+manifest's `trek` range, e.g. `">=3.2.0 <4.0.0"` → `3.2.0`). Flags: `--zip`
+(default `plugin.zip`), `--commit <sha>` to override commit resolution, `--asset`
+to name a differently-named release asset, `--merge` for updates (below), and
+`--out` to write a file.
+
+### One-shot: `release`
+
+```bash
+npx trek-plugin release . --repo you/trek-plugin-flight-tracker --tag v1.0.0
+```
+
+`release` does **pack → `gh release create` → entry** in one go and prints the
+entry to stdout. It accepts `--out`, `--notes`, `--commit`, and `--merge`. (It
+requires the `gh` CLI, authenticated.)
+
+## 6. Open a registry PR
+
+You don't have write access, so **fork
+[TREK-Plugins](https://github.com/mauriceboe/TREK-Plugins)**, add your generated
+file as `registry/plugins/<id>.json`, and open a PR back to `main`. Add **only**
+that file — `dist/` is generated on merge, and CI rejects manual edits to it.
+
+The entry follows [`schema/plugin-entry.schema.json`](https://github.com/mauriceboe/TREK-Plugins/blob/main/schema/plugin-entry.schema.json);
+[`schema/example-entry.json`](https://github.com/mauriceboe/TREK-Plugins/blob/main/schema/example-entry.json)
+is the canonical shape. `size` is **required** (a common omission), as are
+`commitSha`, `downloadUrl`, `sha256`, `minTrekVersion`, `apiVersion`, and
+`nativeModules: false` on every version — all of which `trek-plugin entry` fills
+in for you.
 
 ## What CI enforces
 
-**Entry:** valid schema · `id` matches the filename and is a valid slug ·
-reserved namespaces (`trek-`, `official-`) blocked · your `id` is bound to your
-GitHub owner on first registration (nobody can repoint it later) · homoglyph
-check · the release tag exists and points at the pinned commit · manifest parity
-· **the artifact's SHA-256 matches the pin** · **no native binaries** ·
-`egress[]` present when `http:outbound` is declared.
+CI runs `scripts/validate-entry.mjs` and `scripts/check-readme.mjs` on every
+changed `registry/plugins/*.json`.
 
-**README:** must exist, have the required sections (*What it does / Screenshots /
-Permissions / Setup*), contain **at least one screenshot that actually resolves**,
-have real content (not the unfilled template), and explain every declared
-permission.
+**Entry** (`validate-entry.mjs`): valid schema · `id` matches the filename and
+the slug pattern `^[a-z][a-z0-9-]{2,39}$` · your `id` is bound to your GitHub
+owner on first registration, so nobody can repoint it later (owner changes need a
+maintainer override) · homoglyph/mixed-script name check · the release tag exists
+and resolves to `commitSha` · manifest parity at that commit (`id`, `version`,
+`type`, `apiVersion`, and `nativeModules` must not be `true`) · **the downloaded
+artifact's SHA-256 matches the pin** and its size is within bounds · **no native
+binaries** in the archive · `egress[]` present (and no bare `*`) when
+`http:outbound` is declared. Any unique slug is fine — **there are no reserved
+namespaces**.
+
+**README** (`check-readme.mjs`, fetched at the pinned commit): must exist at the
+repo root, contain the sections **What it does / Screenshots / Permissions /
+Setup**, carry **at least one screenshot that resolves to a real image**
+(a relative `docs/screenshot.png` is resolved against the commit), have real
+prose (**≥ 400 characters** after stripping headings/code/images/tables), contain
+no leftover scaffold placeholders, and **explain every permission** your manifest
+declares (each permission string must appear in the README).
 
 ## Provenance & integrity
 
@@ -79,34 +158,36 @@ permission.
 
 TREK verifies the downloaded bytes against `sha256` and refuses to install on a
 mismatch. A `reviewedAt` date on your entry means a maintainer looked at that
-exact commit — it is **not** an ongoing guarantee.
+exact commit — it is **not** an ongoing guarantee. `reviewedAt` and `boundOwner`
+are maintained by CI on merge; don't set them yourself.
 
 ## Signing your releases (optional, recommended)
 
 `sha256` proves the bytes are the ones the *registry* vouches for. An author
-signature additionally proves the bytes were signed by **you** — so a compromised
-registry cannot ship attacker code under your name. TREK verifies the signature
-offline (Ed25519, no external service), and pins your key on first install
-(trust-on-first-use): a later release signed with a different key is refused until
-an admin re-trusts it.
+signature additionally proves the bytes were signed by **you**, so a compromised
+registry can't ship attacker code under your name. The entry schema allows two
+optional fields — `authorPublicKey` on the entry and `signature` on each version.
+TREK verifies the signature offline (minisign / Ed25519, no external service) and
+pins your key on first install (trust-on-first-use): a later release signed with a
+different key is refused until an admin re-trusts it.
 
 **One-time — create a key:**
 
-```
-minisign -G          # writes minisign.key (keep secret) + minisign.pub
+```bash
+minisign -G            # writes minisign.key (keep secret) + minisign.pub
 ```
 
-Put the public key in your registry entry as `authorPublicKey` (the base64 payload
-line from `minisign.pub`). It is stable across versions.
+Put the base64 payload line from `minisign.pub` in your entry as
+`authorPublicKey` (stable across versions).
 
 **Each release — sign the artifact:**
 
-```
-minisign -Sm plugin.zip            # writes plugin.zip.minisig
+```bash
+minisign -Sm plugin.zip   # writes plugin.zip.minisig
 ```
 
-Add the base64 signature line from `plugin.zip.minisig` to that version as
-`signature`, next to its `sha256`. Example entry:
+Add the base64 line from `plugin.zip.minisig` to that version as `signature`,
+next to its `sha256`:
 
 ```jsonc
 {
@@ -121,12 +202,22 @@ Add the base64 signature line from `plugin.zip.minisig` to that version as
 ```
 
 Signing is **opt-in**: an entry without `authorPublicKey`/`signature` installs on
-`sha256` alone, exactly as before. But once a plugin has shipped signed, an
-*unsigned* update for it is refused — don't drop the signature between versions.
+`sha256` alone. But once a plugin has shipped signed, an *unsigned* update is
+refused — don't drop the signature between versions.
 
 ## Updating
 
-Add a new version entry (new `version`/`gitTag`/`commitSha`/`sha256`) to your
-plugin file and PR it. Instances see the update on their next registry poll;
-updating is always an explicit admin action, and if a new version requests **more**
-permissions the admin must re-approve.
+Bump `version` in the manifest, re-`pack`, cut a new `vX.Y.Z` release, then fold
+the new version onto your existing entry with `--merge`:
+
+```bash
+npx trek-plugin entry --repo you/trek-plugin-flight-tracker --tag v1.1.0 \
+  --merge registry/plugins/flight-tracker.json \
+  --out registry/plugins/flight-tracker.json
+```
+
+`--merge` prepends the new version (keeping the array newest-first) and preserves
+the rest of the entry. PR the updated file. Instances see the update on their next
+registry poll; applying it is always an explicit admin action, and if a new
+version requests **more** permissions the admin must re-approve — see
+[[Plugin Permissions|Plugin-Permissions]].
