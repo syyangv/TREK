@@ -461,14 +461,16 @@ export const adminApi = {
   addons: () => apiClient.get('/admin/addons').then(r => r.data),
   updateAddon: (id: number | string, data: Record<string, unknown>) => apiClient.put(`/admin/addons/${id}`, data).then(r => r.data),
   plugins: () => apiClient.get('/admin/plugins').then(r => r.data),
-  pluginBrowse: () => apiClient.get('/admin/plugins/registry').then(r => r.data),
+  pluginBrowse: (refresh?: boolean) => apiClient.get('/admin/plugins/registry', { params: refresh ? { refresh: 1 } : undefined }).then(r => r.data),
   pluginDetail: (id: string) => apiClient.get(`/admin/plugins/registry/${encodeURIComponent(id)}`).then(r => r.data),
-  pluginInstall: (id: string, version?: string) => apiClient.post('/admin/plugins/install', { id, version }).then(r => r.data),
+  pluginInstall: (id: string, opts?: { version?: string; constraint?: string; withDependencies?: boolean }) =>
+    apiClient.post('/admin/plugins/install', { id, ...opts }).then(r => r.data),
   pluginActivate: (id: string, consent?: boolean) => apiClient.post(`/admin/plugins/${id}/activate`, consent ? { consent: true } : {}).then(r => r.data),
   pluginDeactivate: (id: string) => apiClient.post(`/admin/plugins/${id}/deactivate`).then(r => r.data),
   pluginUpdate: (id: string) => apiClient.post(`/admin/plugins/${id}/update`).then(r => r.data),
   pluginUninstall: (id: string, deleteData: boolean) => apiClient.post(`/admin/plugins/${id}/uninstall`, { deleteData }).then(r => r.data),
   pluginRescan: () => apiClient.post('/admin/plugins/rescan').then(r => r.data),
+  pluginUpload: (file: File) => { const fd = new FormData(); fd.append('file', file); return apiClient.post('/admin/plugins/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data) },
   pluginErrors: (id: string) => apiClient.get(`/admin/plugins/${id}/errors`).then(r => r.data),
   pluginAudit: (id: string) => apiClient.get(`/admin/plugins/${id}/audit`).then(r => r.data),
   // Local LLM (Ollama) management for the AI-parsing addon.
@@ -556,9 +558,34 @@ export const addonsApi = {
 export const pluginsApi = {
   // Active plugins the client renders (page nav entries, dashboard widgets).
   active: () => apiClient.get('/plugins').then(r => r.data),
-  // Call one of a plugin's own declared routes through the host proxy.
-  invoke: (id: string, sub: string, init?: { method?: string; body?: unknown }) =>
-    apiClient.request({ url: `/plugins/${id}${sub}`, method: init?.method || 'GET', data: init?.body }).then(r => r.data),
+  // Extra place info contributed by placeDetailProvider plugins (#1429). Fail-safe:
+  // the server skips any slow/failing provider, so this only ever adds rows.
+  placeDetails: (placeId: number) =>
+    apiClient.get(`/place-details/${placeId}`).then(r => r.data as { providers: Array<{ pluginId: string; items: Array<{ label: string; value?: string; url?: string }> }> }),
+  // Validation/warning contributions from warningProvider plugins (#1429). Fail-safe.
+  tripWarnings: (tripId: number) =>
+    apiClient.get(`/trip-warnings/${tripId}`).then(r => r.data as { warnings: Array<{ pluginId: string; level: 'info' | 'warning' | 'error'; message: string; dayId?: number; placeId?: number }> }),
+  // Call one of a plugin's own declared routes through the host proxy. `sub` is
+  // supplied by untrusted plugin code (the trekBridge forwards it verbatim), so it
+  // MUST stay inside the plugin's own /plugins/:id/ namespace. We resolve it with
+  // the URL parser — which normalizes `../`, encoded traversal and backslashes the
+  // same way the browser would before sending — and reject anything that escapes
+  // the prefix or points off-origin. Without this a plugin could send
+  // sub='/../../auth/me' and drive arbitrary authenticated /api routes as the user.
+  invoke: (id: string, sub: string, init?: { method?: string; body?: unknown }) => {
+    const prefix = `/api/plugins/${id}/`
+    let resolved: URL
+    try {
+      resolved = new URL(String(sub).replace(/^\/+/, ''), window.location.origin + prefix)
+    } catch {
+      return Promise.reject(new Error('invalid plugin route'))
+    }
+    if (resolved.origin !== window.location.origin || !resolved.pathname.startsWith(prefix)) {
+      return Promise.reject(new Error('plugin route escapes its namespace'))
+    }
+    const url = resolved.pathname.slice('/api'.length) + resolved.search
+    return apiClient.request({ url, method: init?.method || 'GET', data: init?.body }).then(r => r.data)
+  },
 }
 
 export const airtrailApi = {
@@ -675,8 +702,8 @@ export const budgetApi = {
   setPayers: (tripId: number | string, id: number, payers: { user_id: number; amount: number }[]) => apiClient.put(`/trips/${tripId}/budget/${id}/payers`, { payers }).then(r => r.data),
   perPersonSummary: (tripId: number | string) => apiClient.get(`/trips/${tripId}/budget/summary/per-person`).then(r => r.data),
   settlement: (tripId: number | string, base?: string) => apiClient.get(`/trips/${tripId}/budget/settlement`, base ? { params: { base } } : undefined).then(r => r.data),
-  createSettlement: (tripId: number | string, data: { from_user_id: number; to_user_id: number; amount: number }) => apiClient.post(`/trips/${tripId}/budget/settlements`, data).then(r => r.data),
-  updateSettlement: (tripId: number | string, settlementId: number, data: { from_user_id: number; to_user_id: number; amount: number }) => apiClient.put(`/trips/${tripId}/budget/settlements/${settlementId}`, data).then(r => r.data),
+  createSettlement: (tripId: number | string, data: { from_user_id: number; to_user_id: number; amount: number; currency?: string }) => apiClient.post(`/trips/${tripId}/budget/settlements`, data).then(r => r.data),
+  updateSettlement: (tripId: number | string, settlementId: number, data: { from_user_id: number; to_user_id: number; amount: number; currency?: string }) => apiClient.put(`/trips/${tripId}/budget/settlements/${settlementId}`, data).then(r => r.data),
   deleteSettlement: (tripId: number | string, settlementId: number) => apiClient.delete(`/trips/${tripId}/budget/settlements/${settlementId}`).then(r => r.data),
   reorderItems: (tripId: number | string, orderedIds: number[]) => apiClient.put(`/trips/${tripId}/budget/reorder/items`, { orderedIds }).then(r => r.data),
   reorderCategories: (tripId: number | string, orderedCategories: string[]) => apiClient.put(`/trips/${tripId}/budget/reorder/categories`, { orderedCategories } satisfies BudgetReorderCategoriesRequest).then(r => r.data),

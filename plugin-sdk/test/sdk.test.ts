@@ -87,6 +87,81 @@ describe('createMockHost', () => {
     ctx.log.info('hi');
     expect(logs).toEqual([{ level: 'info', msg: 'hi' }]);
   });
+
+  it('gates costs reads/writes on the grant, addon, membership and edit permission', async () => {
+    const { ctx } = createMockHost({
+      grants: ['db:read:costs', 'db:write:costs'],
+      actingUserId: 42,
+      trips: {
+        1: { members: [42], costs: [{ id: 5, name: 'Hotel' }] },
+        2: { members: [42], costs: [{ id: 6, name: 'Food' }], canEditCosts: false },
+      },
+    });
+    // read: trip-scoped + cross-trip aggregate
+    expect(await ctx.costs.getByTrip(1)).toEqual([{ id: 5, name: 'Hotel' }]);
+    expect(await ctx.costs.listMine()).toEqual([{ id: 5, name: 'Hotel' }, { id: 6, name: 'Food' }]);
+    // write: allowed where the user may edit, refused where they may not
+    expect(await ctx.costs.create(1, { name: 'Taxi' })).toMatchObject({ trip_id: 1, name: 'Taxi' });
+    await expect(ctx.costs.create(2, { name: 'Nope' })).rejects.toThrow(/RESOURCE_FORBIDDEN/);
+    // update: edits an existing item where allowed, refused without edit permission
+    expect(await ctx.costs.update(1, 5, { name: 'Hostel' })).toMatchObject({ id: 5, name: 'Hostel' });
+    await expect(ctx.costs.update(2, 6, { name: 'Nope' })).rejects.toThrow(/RESOURCE_FORBIDDEN/);
+    // update: a missing item is refused
+    await expect(ctx.costs.update(1, 999, { name: 'X' })).rejects.toThrow(/RESOURCE_FORBIDDEN/);
+    // delete: removes where allowed, refused without edit permission / when missing
+    expect(await ctx.costs.delete(1, 5)).toEqual({ deleted: true });
+    await expect(ctx.costs.delete(2, 6)).rejects.toThrow(/RESOURCE_FORBIDDEN/);
+    await expect(ctx.costs.delete(1, 999)).rejects.toThrow(/RESOURCE_FORBIDDEN/);
+  });
+
+  it('gates planner writes (places/days/itinerary/trips) on grant, membership and edit permission', async () => {
+    const { ctx } = createMockHost({
+      grants: ['db:write:places', 'db:write:days', 'db:write:itinerary', 'db:write:trips'],
+      actingUserId: 42,
+      trips: {
+        1: { members: [42], data: { id: 1, title: 'Japan' } },
+        2: { members: [42], canEditPlaces: false },
+      },
+    });
+    // create + assign on a trip the user may edit
+    const place = await ctx.places.create(1, { name: 'Fushimi Inari' });
+    expect(place).toMatchObject({ trip_id: 1, name: 'Fushimi Inari' });
+    const day = await ctx.days.create(1, { notes: 'Day 1' });
+    expect(await ctx.itinerary.assign(1, (day as { id: number }).id, (place as { id: number }).id))
+      .toMatchObject({ day_id: (day as { id: number }).id });
+    expect(await ctx.trips.update(1, { title: 'Renamed' })).toMatchObject({ title: 'Renamed' });
+    // refused where the user may not edit
+    await expect(ctx.places.create(2, { name: 'Nope' })).rejects.toThrow(/RESOURCE_FORBIDDEN/);
+  });
+
+  it('refuses a planner write without the matching write scope', async () => {
+    const { ctx } = createMockHost({ grants: ['db:read:trips'], actingUserId: 42, trips: { 1: { members: [42] } } });
+    await expect(ctx.places.create(1, { name: 'X' })).rejects.toThrow(/PERMISSION_DENIED/);
+  });
+
+  it('ctx.meta stores/reads/lists/deletes namespaced metadata, gated on db:meta', async () => {
+    const { ctx } = createMockHost({ grants: ['db:meta'], actingUserId: 42, trips: { 1: { members: [42] } } });
+    await ctx.meta.set('trip', 1, 'rating', 5);
+    expect(await ctx.meta.get('trip', 1, 'rating')).toBe(5);
+    expect(await ctx.meta.list('trip', 1)).toEqual({ rating: 5 });
+    expect(await ctx.meta.delete('trip', 1, 'rating')).toEqual({ deleted: true });
+    expect(await ctx.meta.get('trip', 1, 'rating')).toBe(null);
+    const ungranted = createMockHost({ grants: [], actingUserId: 42, trips: { 1: { members: [42] } } });
+    await expect(ungranted.ctx.meta.get('trip', 1, 'x')).rejects.toThrow(/PERMISSION_DENIED/);
+  });
+
+  it('refuses costs when the permission is missing or the addon is disabled', async () => {
+    const ungranted = createMockHost({ grants: [], actingUserId: 42, trips: { 1: { members: [42] } } });
+    await expect(ungranted.ctx.costs.getByTrip(1)).rejects.toThrow(/PERMISSION_DENIED/);
+
+    const addonOff = createMockHost({
+      grants: ['db:read:costs'],
+      actingUserId: 42,
+      budgetAddonEnabled: false,
+      trips: { 1: { members: [42], costs: [] } },
+    });
+    await expect(addonOff.ctx.costs.getByTrip(1)).rejects.toThrow(/RESOURCE_FORBIDDEN/);
+  });
 });
 
 describe('scaffold + validate CLIs', () => {
@@ -104,6 +179,33 @@ describe('scaffold + validate CLIs', () => {
     const r = validatePluginDir(dir);
     expect(r.ok).toBe(true); // manifest + files valid
     expect(r.warnings.some((w) => /placeholder|screenshot/.test(w))).toBe(true); // README is the unfilled template
+  });
+
+  it('scaffolds a client that opts into the design kit via the marker (source stays one line)', () => {
+    scaffold('kit-plug', 'widget', tmp);
+    const html = fs.readFileSync(path.join(tmp, 'kit-plug', 'client', 'index.html'), 'utf8');
+    expect(html).toContain('<!-- trek:ui -->'); // the one-line opt-in
+    expect(html).toContain('trek.onContext');   // uses the bridge the marker installs
+    expect(html).not.toContain('--glass-bg');    // kit is NOT pre-inlined in the source
+  });
+
+  it('scaffolds a trip-page plugin (a tab inside the trip) with a client UI', () => {
+    scaffold('trip-diary', 'trip-page', tmp);
+    const dir = path.join(tmp, 'trip-diary');
+    const m = JSON.parse(fs.readFileSync(path.join(dir, 'trek-plugin.json'), 'utf8'));
+    expect(m.type).toBe('trip-page');
+    expect(fs.existsSync(path.join(dir, 'client', 'index.html'))).toBe(true); // non-integration → gets a UI
+    expect(validatePluginDir(dir).ok).toBe(true);
+  });
+
+  it('pack expands the design-kit marker into the archived client HTML', () => {
+    scaffold('kit-plug', 'widget', tmp);
+    const out = path.join(tmp, 'kit-plug.zip');
+    packPluginDir(path.join(tmp, 'kit-plug'), out);
+    const html = readZip(fs.readFileSync(out))['client/index.html'].toString('utf8');
+    expect(html).not.toContain('<!-- trek:ui -->'); // expanded away
+    expect(html).toContain('.trek-glass');          // kit CSS inlined
+    expect(html).toContain('window.trek');          // bridge inlined
   });
 
   it('scaffolds a CommonJS package.json with the SDK as a devDependency only', () => {
@@ -342,5 +444,40 @@ describe('sign + keygen (author signatures, TOFU)', () => {
     const key2 = path.join(tmp, 'k2.pem');
     generateKeypair(key2);
     expect(() => buildEntry({ dir: koffi, repo: 'mauriceboe/trek-plugin-koffi', tag: 'v1.1.0', zipPath: out, commit: 'a'.repeat(40), mergePath: existingPath, signKeyPath: key2, now: '2026-07-04T00:00:00.000Z' })).toThrow(/differs from the one already published/);
+  });
+});
+
+describe('mock-host inter-plugin (plugins.call + events.emit)', () => {
+  it('calls a configured dependency export and records the call', async () => {
+    const { ctx, calls } = createMockHost({
+      pluginExports: { 'dep-lib': { greet: (args: any) => ({ hi: args?.who }) } },
+    });
+    const r = await ctx.plugins.call('dep-lib', 'greet', { who: 'ada' });
+    expect(r).toEqual({ hi: 'ada' });
+    expect(calls.some((c) => c.method === 'plugins.call')).toBe(true);
+  });
+
+  it('throws RESOURCE_FORBIDDEN calling an export that is not configured', async () => {
+    const { ctx } = createMockHost({ pluginExports: { 'dep-lib': {} } });
+    await expect(ctx.plugins.call('dep-lib', 'nope', {})).rejects.toThrow(/RESOURCE_FORBIDDEN/);
+    await expect(ctx.plugins.call('other', 'greet', {})).rejects.toThrow(/RESOURCE_FORBIDDEN/);
+  });
+
+  it('records emitted events', () => {
+    const { ctx, emitted } = createMockHost({});
+    ctx.events.emit('rate.updated', { pair: 'USD/EUR' });
+    expect(emitted).toEqual([{ name: 'rate.updated', payload: { pair: 'USD/EUR' } }]);
+  });
+});
+
+describe('validateManifest capabilities.provides/emits', () => {
+  const base = { id: 'my-plug', name: 'My Plug', version: '1.0.0', type: 'integration', permissions: ['db:own'] };
+  it('accepts well-formed provides + emits', () => {
+    const r = validateManifest({ ...base, capabilities: { provides: ['computeRate'], emits: ['rate.updated'] } });
+    expect(r.ok).toBe(true);
+  });
+  it('rejects a malformed export/event name and a non-array', () => {
+    expect(validateManifest({ ...base, capabilities: { provides: ['bad name!'] } }).ok).toBe(false);
+    expect(validateManifest({ ...base, capabilities: { emits: 'nope' } }).ok).toBe(false);
   });
 });

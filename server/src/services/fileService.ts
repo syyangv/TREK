@@ -12,7 +12,7 @@ import { TripFile } from '../types';
 // ---------------------------------------------------------------------------
 
 export const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
-export const DEFAULT_ALLOWED_EXTENSIONS = 'jpg,jpeg,png,gif,webp,heic,pdf,doc,docx,xls,xlsx,txt,csv,pkpass,md,markdown';
+export const DEFAULT_ALLOWED_EXTENSIONS = 'jpg,jpeg,png,gif,webp,heic,pdf,doc,docx,xls,xlsx,txt,csv,pkpass,pkpasses,md,markdown';
 
 // Video support (#823). Gallery/media uploads accept these in addition to images,
 // independent of the admin doc-types allowlist. Videos are stored as-is and
@@ -164,7 +164,7 @@ export function listFiles(tripId: string | number, showTrash: boolean) {
   const files = db.prepare(`${FILE_SELECT} WHERE ${where} ORDER BY f.starred DESC, f.created_at DESC`).all(tripId) as TripFile[];
 
   const fileIds = files.map(f => f.id);
-  let linksMap: Record<number, FileLink[]> = {};
+  const linksMap: Record<number, FileLink[]> = {};
   if (fileIds.length > 0) {
     const placeholders = fileIds.map(() => '?').join(',');
     const links = db.prepare(`SELECT file_id, reservation_id, place_id FROM file_links WHERE file_id IN (${placeholders})`).all(...fileIds) as FileLink[];

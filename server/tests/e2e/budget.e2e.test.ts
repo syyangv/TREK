@@ -30,8 +30,8 @@ const { svc } = vi.hoisted(() => ({
   svc: {
     verifyTripAccess: vi.fn(), listBudgetItems: vi.fn(), createBudgetItem: vi.fn(), updateBudgetItem: vi.fn(),
     deleteBudgetItem: vi.fn(), updateMembers: vi.fn(), toggleMemberPaid: vi.fn(), getPerPersonSummary: vi.fn(),
-    calculateSettlement: vi.fn(), reorderBudgetItems: vi.fn(), reorderBudgetCategories: vi.fn(),
-    setItemPayers: vi.fn(), listSettlements: vi.fn(), createSettlement: vi.fn(), updateSettlement: vi.fn(), deleteSettlement: vi.fn(),
+    calculateSettlement: vi.fn(), freezeForeignRate: vi.fn(), reorderBudgetItems: vi.fn(), reorderBudgetCategories: vi.fn(),
+    setItemPayers: vi.fn(), listSettlements: vi.fn(() => []), createSettlement: vi.fn(), updateSettlement: vi.fn(), deleteSettlement: vi.fn(),
   },
 }));
 vi.mock('../../src/services/budgetService', () => svc);

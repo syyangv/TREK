@@ -27,7 +27,8 @@ const admin: TranslationStrings = {
   'admin.notifications.adminWebhookPanel.saved': 'Admin webhook URL sparad',
   'admin.notifications.adminWebhookPanel.testSuccess': 'Test webhook har skickats utan problem',
   'admin.notifications.adminWebhookPanel.testFailed': 'Test webhook misslyckades',
-  'admin.notifications.adminWebhookPanel.alwaysOnHint': 'Webhook för administratör aktiveras alltid när en URL konfigureras',
+  'admin.notifications.adminWebhookPanel.alwaysOnHint':
+    'Webhook för administratör aktiveras alltid när en URL konfigureras',
   'admin.notifications.adminNtfyPanel.title': 'Admin Ntfy',
   'admin.notifications.adminNtfyPanel.hint':
     'Detta ntfy-ämne används uteslutande för administratörsmeddelanden (t.ex. versionsvarningar). Det är separat från ämnena för enskilda användare och aktiveras alltid när det är konfigurerat.',
@@ -126,7 +127,8 @@ const admin: TranslationStrings = {
     'Inställningarna för inloggning med lösenord styrs av miljövariabeln OIDC_ONLY och kan inte ändras här.',
   'admin.lockoutWarning': 'Minst en inloggningsmetod måste vara aktiverad',
   'admin.requireMfa': 'Kräv tvåfaktorsautentisering (2FA)',
-  'admin.requireMfaHint': 'Användare som inte har tvåfaktorsautentisering måste slutföra inställningarna under inställningar innan de använder appen.',
+  'admin.requireMfaHint':
+    'Användare som inte har tvåfaktorsautentisering måste slutföra inställningarna under inställningar innan de använder appen.',
   'admin.apiKeys': 'API Nycklar',
   'admin.apiKeysHint': 'Valfritt. Aktiverar utökade platsuppgifter, såsom foton och väderinformation.',
   'admin.mapsKey': 'Google Maps API Nyckel',
@@ -136,6 +138,8 @@ const admin: TranslationStrings = {
   'admin.recommended': 'Rekommenderat',
   'admin.weatherKey': 'OpenWeatherMap API Nyckel',
   'admin.weatherKeyHint': 'För väderdata. Gratis på openweathermap.org',
+  'admin.unsplashKey': 'Unsplash API-nyckel',
+  'admin.unsplashKeyHint': 'För bildsökning. Gratis på unsplash.com/developers',
   'admin.validateKey': 'Test',
   'admin.keyValid': 'Ansluten',
   'admin.keyInvalid': 'Felaktig',
@@ -151,13 +155,15 @@ const admin: TranslationStrings = {
     'När funktionen är aktiverad är endast SSO-inloggning tillåten. Lösenordsbaserad inloggning och registrering blockeras.',
   'admin.fileTypes': 'Tillåtna filtyper',
   'admin.fileTypesHint': 'Ställ in vilka filtyper användarna kan ladda upp.',
-  'admin.fileTypesFormat': 'Filändelser separerade med kommatecken (t.ex. jpg, png, pdf, doc). Använd * för att tillåta alla filtyper.',
+  'admin.fileTypesFormat':
+    'Filändelser separerade med kommatecken (t.ex. jpg, png, pdf, doc). Använd * för att tillåta alla filtyper.',
   'admin.fileTypesSaved': 'Inställningar för filtyper har sparats',
   'admin.placesPhotos.title': 'Plats Foton',
   'admin.placesPhotos.subtitle':
     'Hämta bilder från Google Places API. Inaktivera för att spara API-kvoten. Wikimedia-bilder påverkas inte.',
   'admin.placesAutocomplete.title': 'Automatisk komplettering av plats',
-  'admin.placesAutocomplete.subtitle': 'Använd Google Places API för sökförslag. Inaktivera funktionen för att spara på API-kvoten.',
+  'admin.placesAutocomplete.subtitle':
+    'Använd Google Places API för sökförslag. Inaktivera funktionen för att spara på API-kvoten.',
   'admin.placesDetails.title': 'Platsinformation',
   'admin.placesDetails.subtitle':
     'Hämta detaljerad information om platsen (öppettider, betyg, webbplats) från Google Places API. Inaktivera funktionen för att spara på API-kvoten.',
@@ -169,7 +175,7 @@ const admin: TranslationStrings = {
   'admin.collab.notes.subtitle': 'Delade noteringar och dokument',
   'admin.collab.polls.title': 'Omröstningar',
   'admin.collab.polls.subtitle': 'Grupp omröstningar',
-  'admin.collab.whatsnext.title': "Vad händer härnäst?",
+  'admin.collab.whatsnext.title': 'Vad händer härnäst?',
   'admin.collab.whatsnext.subtitle': 'Förslag på aktiviteter och nästa steg',
   'admin.tabs.config': 'Anpassning',
   'admin.tabs.defaults': 'Användarinställningar',
@@ -214,6 +220,11 @@ const admin: TranslationStrings = {
   'admin.tabs.plugins': 'Plugins',
   'admin.plugins.rescan': 'Skanna om',
   'admin.plugins.rescanned': 'Plugin-mappen har skannats om',
+  'admin.plugins.upload': 'Ladda upp plugin',
+  'admin.plugins.dropToUpload': 'Släpp en plugin-.zip för att installera',
+  'admin.plugins.uploaded': 'Pluginet “{name}” uppladdat — aktivera det för att köra',
+  'admin.plugins.sideloaded': 'Manuellt laddad',
+  'admin.plugins.sideloadedHint': 'Uppladdat manuellt — inte från registret, osignerat och ogranskat',
   'admin.plugins.browse': 'Bläddra bland plugins',
   'admin.plugins.installed': 'Installerat',
   'admin.plugins.install': 'Installera',
@@ -228,11 +239,13 @@ const admin: TranslationStrings = {
   'admin.plugins.noErrors': 'Inga fel loggade.',
   'admin.plugins.uninstalled': 'Pluginet har avinstallerats',
   'admin.plugins.uninstallTitle': 'Avinstallera pluginet?',
-  'admin.plugins.uninstallBody': 'Detta stoppar pluginet, tar bort dess kod och raderar alla dess data. Detta kan inte ångras.',
+  'admin.plugins.uninstallBody':
+    'Detta stoppar pluginet, tar bort dess kod och raderar alla dess data. Detta kan inte ångras.',
   'admin.plugins.status.starting': 'Startar…',
   'admin.plugins.type.widget': 'Widget',
   'admin.plugins.type.page': 'Sida',
   'admin.plugins.type.integration': 'Integration',
+  'admin.plugins.type.trip-page': 'Ressida',
   'admin.plugins.reviewed': 'Granskad',
   'admin.plugins.unreviewed': 'Ej granskad',
   'admin.plugins.updated': 'Pluginet har uppdaterats',
@@ -242,10 +255,12 @@ const admin: TranslationStrings = {
   'admin.plugins.title': 'Plugins',
   'admin.plugins.subtitle': 'Installera och hantera tredjepartsplugins på din instans.',
   'admin.plugins.disabledTitle': 'Plugins är inaktiverade',
-  'admin.plugins.disabledBody': 'Plugin-körmiljön är avstängd (TREK_PLUGINS_ENABLED). Inga plugins kan köras förrän en administratör aktiverar den i serverkonfigurationen.',
+  'admin.plugins.disabledBody':
+    'Plugin-körmiljön är avstängd (TREK_PLUGINS_ENABLED). Inga plugins kan köras förrän en administratör aktiverar den i serverkonfigurationen.',
   'admin.plugins.empty': 'Inga plugins installerade ännu.',
   'admin.plugins.loadError': 'Kunde inte läsa in plugins.',
-  'admin.plugins.scaffoldNote': 'Installation och aktivering av plugins kommer i en senare uppdatering. Denna panel visar för närvarande endast installerade plugins.',
+  'admin.plugins.scaffoldNote':
+    'Installation och aktivering av plugins kommer i en senare uppdatering. Denna panel visar för närvarande endast installerade plugins.',
   'admin.plugins.status.active': 'Aktivt',
   'admin.plugins.status.inactive': 'Inaktivt',
   'admin.plugins.status.disabled': 'Avstängt',
@@ -267,11 +282,31 @@ const admin: TranslationStrings = {
   'admin.plugins.reviewedOn': 'Granskad {date}',
   'admin.plugins.perm.db:own': 'Lagra sina egna data i en isolerad databas',
   'admin.plugins.perm.db:read:trips': 'Läsa resor som den aktiva användaren har åtkomst till',
-  'admin.plugins.perm.db:read:users': 'Läsa grundläggande profilinformation (namn, avatar – aldrig inloggningsuppgifter)',
+  'admin.plugins.perm.db:read:users':
+    'Läsa grundläggande profilinformation (namn, avatar – aldrig inloggningsuppgifter)',
+  'admin.plugins.perm.db:read:costs': 'Läsa kostnader (budgetposter) som den aktiva användaren har åtkomst till',
+  'admin.plugins.perm.db:read:packing': 'Läsa packlistor för resor som den aktiva användaren har åtkomst till',
+  'admin.plugins.perm.db:read:files': 'Läsa filer för resor som den aktiva användaren har åtkomst till',
+  'admin.plugins.perm.db:write:costs': 'Skapa kostnader (budgetposter) på resor som den aktiva användaren kan redigera',
+  'admin.plugins.perm.db:write:places':
+    'Lägga till, redigera och ta bort platser på resor som den aktiva användaren kan redigera',
+  'admin.plugins.perm.db:write:days':
+    'Lägga till, redigera och ta bort dagar på resor som den aktiva användaren kan redigera',
+  'admin.plugins.perm.db:write:itinerary':
+    'Tilldela och ta bort platser på dagar i resor som den aktiva användaren kan redigera',
+  'admin.plugins.perm.db:write:trips':
+    'Redigera resedetaljer (titel, datum, valuta…) på resor som den aktiva användaren kan redigera',
+  'admin.plugins.perm.db:meta':
+    'Koppla egen privat data till resor, platser och dagar som den aktiva användaren har åtkomst till',
   'admin.plugins.perm.ws:broadcast:trip': 'Skicka realtidsuppdateringar till resans medlemmar',
   'admin.plugins.perm.ws:broadcast:user': 'Skicka realtidsuppdateringar till enskilda användare',
   'admin.plugins.perm.hook:photo-provider': 'Tillhandahålla foton till Minnen',
   'admin.plugins.perm.hook:calendar-source': 'Tillhandahålla händelser till kalendern',
+  'admin.plugins.perm.hook:place-detail-provider':
+    'Bidra med extra detaljer (recensioner, betyg, länkar) till en plats',
+  'admin.plugins.perm.hook:trip-warning-provider': 'Visa valideringsvarningar på en resa (visas i planeraren)',
+  'admin.plugins.perm.events:subscribe':
+    'Reagera på grundläggande aktivitetshändelser (endast händelsenamn + resa, aldrig innehållet)',
   'admin.plugins.perm.http:outbound': 'Göra utgående anrop till sina deklarerade värdar',
   'admin.plugins.updateConsentTitle': 'Den här uppdateringen kräver nya behörigheter',
   'admin.plugins.updateConsentBody':
@@ -280,7 +315,8 @@ const admin: TranslationStrings = {
   'admin.plugins.updateNewEgress': 'Nya utgående anslutningar',
   'admin.plugins.updateApprove': 'Godkänn och aktivera',
   'admin.plugins.updateLater': 'Låt vara avstängd tills vidare',
-  'admin.plugins.updateKeptOff': 'Uppdateringen är installerad — förblir avstängd tills du godkänner de nya behörigheterna',
+  'admin.plugins.updateKeptOff':
+    'Uppdateringen är installerad — förblir avstängd tills du godkänner de nya behörigheterna',
   'admin.plugins.reviewedMeaning':
     '”Granskad” betyder att en TREK-underhållare har skannat pluginet efter skadlig kod i varje version — inte efter kvalitet eller om det fungerar. Det är ingen garanti för att ett plugin är ofarligt.',
   'admin.plugins.security.title': 'Så här isoleras plugins — och gränserna för det',
@@ -323,11 +359,36 @@ const admin: TranslationStrings = {
   'admin.plugins.restarted': 'Pluginet har startats om',
   'admin.plugins.cap.readsTrips': 'Läser dina resor',
   'admin.plugins.cap.readsUsers': 'Läser grundläggande profiler',
+  'admin.plugins.cap.readsCosts': 'Läser dina kostnader',
+  'admin.plugins.cap.readsPacking': 'Läser packlistor',
+  'admin.plugins.cap.readsFiles': 'Läser resefiler',
+  'admin.plugins.cap.writesCosts': 'Lägger till kostnader',
+  'admin.plugins.cap.writesPlaces': 'Redigerar platser',
+  'admin.plugins.cap.writesDays': 'Redigerar dagar',
+  'admin.plugins.cap.writesItinerary': 'Redigerar resplan',
+  'admin.plugins.cap.writesTrips': 'Redigerar resor',
+  'admin.plugins.cap.metadata': 'Lägger till metadata',
   'admin.plugins.cap.widget': 'Dashboard-widget',
   'admin.plugins.cap.heroWidget': 'Boardingkort-widget',
+  'admin.plugins.cap.placeSlot': 'Platsdetalj',
   'admin.plugins.cap.realtime': 'Realtidsuppdateringar',
   'admin.plugins.cap.photos': 'Tillhandahåller foton',
   'admin.plugins.cap.calendar': 'Tillhandahåller kalenderhändelser',
+  'admin.plugins.cap.placeDetails': 'Berikar platser',
+  'admin.plugins.cap.warnings': 'Flaggar problem',
+  'admin.plugins.cap.events': 'Reagerar på aktivitet',
+  'admin.plugins.cap.requiresAddon': 'Kräver {addon}',
+  'admin.plugins.cap.dependsOn': 'Kräver {id} {version}',
+  'admin.plugins.dep.addonDisabledToast': 'Aktivera de nödvändiga tilläggen först: {addons}',
+  'admin.plugins.dep.autoEnabled': 'Aktiverade nödvändiga plugin först: {plugins}',
+  'admin.plugins.dep.downloaded': 'Laddade ner {id}',
+  'admin.plugins.dep.resolveTitle': 'Saknade beroenden',
+  'admin.plugins.dep.resolveBody': '”{name}” behöver dessa plugin installerade innan det kan aktiveras.',
+  'admin.plugins.dep.requires': 'Kräver {version}',
+  'admin.plugins.dep.mismatch': 'Kräver {wanted} — {installed} är installerad',
+  'admin.plugins.dep.download': 'Ladda ner',
+  'admin.plugins.dep.update': 'Uppdatera',
+  'admin.plugins.dep.resolveHint': 'Laddar ner den senaste kompatibla versionen, inklusive dess egna beroenden.',
   'admin.plugins.accessTitle': 'Vad det har åtkomst till',
   'admin.plugins.connectsTitle': 'Ansluter till',
   'admin.plugins.detailsTitle': 'Detaljer',
@@ -408,7 +469,8 @@ const admin: TranslationStrings = {
   'admin.oauthSessions.revokeError': 'Kunde inte återkalla session',
   'admin.oauthSessions.loadError': 'Kunde inte ladda OAuth sessions',
   'admin.tabs.github': 'GitHub',
-  'admin.audit.subtitle': 'Säkerhetsrelaterade händelser och administrativa händelser (säkerhetskopieringar, användare, MFA, inställningar).',
+  'admin.audit.subtitle':
+    'Säkerhetsrelaterade händelser och administrativa händelser (säkerhetskopieringar, användare, MFA, inställningar).',
   'admin.audit.empty': 'Inga revisionsposter ännu.',
   'admin.audit.refresh': 'Uppdatera',
   'admin.audit.loadMore': 'Ladda fler',
@@ -437,7 +499,8 @@ const admin: TranslationStrings = {
   'admin.update.confirmTitle': 'Ska uppdateringen installeras?',
   'admin.update.confirmText':
     'TREK kommer att uppdateras från {current} till {version}. Servern startas om automatiskt därefter.',
-  'admin.update.dataInfo': 'Alla dina data (resor, användare, API-nycklar, uppladdningar, Vacay, Atlas, budgetar) kommer att bevaras.',
+  'admin.update.dataInfo':
+    'Alla dina data (resor, användare, API-nycklar, uppladdningar, Vacay, Atlas, budgetar) kommer att bevaras.',
   'admin.update.warning': 'Appen kommer att vara tillfälligt otillgänglig under omstarten.',
   'admin.update.confirm': 'Uppdatera nu',
   'admin.update.installing': 'Uppdaterar…',
@@ -454,15 +517,15 @@ const admin: TranslationStrings = {
   'admin.update.reloadHint': 'Vänligen uppdatera sidan om några sekunder.',
   'admin.tabs.permissions': 'Behörigheter',
   'admin.addons.catalog.journey.name': 'Journey',
-  'admin.addons.catalog.journey.description':
-    'Resespårning och resedagbok med incheckningar, foton och dagliga inlägg',
+  'admin.addons.catalog.journey.description': 'Resespårning och resedagbok med incheckningar, foton och dagliga inlägg',
   'admin.addons.catalog.collections.name': 'Samlingar',
   'admin.addons.catalog.collections.description':
     'Personligt platsbibliotek — spara platser mellan resor i namngivna listor, kopiera till valfri resa, dela med andra',
   'admin.passkey.title': 'Inloggningsnyckel',
   'admin.passkey.cardHint': 'Låter användare att logga in med inloggningsnyckel (WebAuthn). Avstängt som standard.',
   'admin.passkey.login': 'Aktivera inloggningsnyckel',
-  'admin.passkey.loginHint': 'Visa alternativet ”Logga in med en inloggningsnyckel och låt användarna registrera inloggningsnycklar i sina inställningar.',
+  'admin.passkey.loginHint':
+    'Visa alternativet ”Logga in med en inloggningsnyckel och låt användarna registrera inloggningsnycklar i sina inställningar.',
   'admin.passkey.notConfigured':
     'Det finns ännu ingen WebAuthn-domän för denna distribution. Ange APP_URL eller Relying Party ID nedan – inloggningsnycklar förblir dolda tills dess.',
   'admin.passkey.rpId': 'Relying Party ID (domain)',
@@ -473,7 +536,7 @@ const admin: TranslationStrings = {
     'Fullständiga ursprungsadresser separerade med kommatecken, t.ex. https://trek.example.org. Lämna fältet tomt för att använda APP_URL.',
   'admin.passkey.reset': 'Återställ inloggningsnycklar',
   'admin.passkey.resetHint':
-    "Ta bort alla den här användarens inloggningsnycklar (t.ex. om enheten har försvunnit). Användaren kan fortfarande logga in med sitt lösenord.",
+    'Ta bort alla den här användarens inloggningsnycklar (t.ex. om enheten har försvunnit). Användaren kan fortfarande logga in med sitt lösenord.',
   'admin.passkey.resetConfirm': 'Ta bort alla åtkomstnycklar för {name}?',
   'admin.passkey.resetDone': 'Tog bort {count} inloggningsnycklar',
   'admin.group.users': 'Users',
@@ -482,7 +545,8 @@ const admin: TranslationStrings = {
   'admin.group.maintenance': 'Maintenance',
   'admin.invite.tripLabel': 'Lägg till i resa (valfritt)',
   'admin.invite.tripNone': 'Ingen resa',
-  'admin.invite.tripHint': 'Den nya användaren läggs automatiskt till i den här resan när de registrerar sig via länken.',
+  'admin.invite.tripHint':
+    'Den nya användaren läggs automatiskt till i den här resan när de registrerar sig via länken.',
   'admin.invite.boundTo': 'läggs till i {trip}',
 };
 export default admin;

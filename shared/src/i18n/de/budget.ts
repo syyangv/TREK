@@ -52,6 +52,9 @@ const budget: TranslationStrings = {
   'costs.nothingOwed': 'Dir wird nichts geschuldet',
   'costs.yourShare': 'Dein Anteil',
   'costs.youPaid': 'Du zahltest',
+  'costs.outstanding': 'Ausstehender Betrag',
+  'costs.outstandingSub': 'Ausgaben noch ohne Zahler',
+  'costs.outstandingItems': 'Ausgaben ohne Zahler',
   'costs.expenses': 'Ausgaben',
   'costs.entries': '{count} Einträge',
   'costs.searchPlaceholder': 'Ausgaben suchen…',
@@ -119,9 +122,9 @@ const budget: TranslationStrings = {
   'costs.unfinishedHint': 'Nur Gesamtsumme — noch nicht abgerechnet',
   'costs.tapToInclude': 'Zum Einbeziehen tippen',
   'costs.amount': 'Betrag',
-  'costs.split': "Aufteilen",
-  'costs.splitEqually': "Gleichmäßig",
-  'costs.splitCustom': "Individuell",
-  'costs.splitTicket': "Beleg",
+  'costs.split': 'Aufteilen',
+  'costs.splitEqually': 'Gleichmäßig',
+  'costs.splitCustom': 'Individuell',
+  'costs.splitTicket': 'Beleg',
 };
 export default budget;

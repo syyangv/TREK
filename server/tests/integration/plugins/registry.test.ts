@@ -21,7 +21,7 @@ const { testDb } = vi.hoisted(() => {
   const db = new Database(':memory:');
   db.exec(`
     CREATE TABLE plugins (id TEXT PRIMARY KEY, name TEXT, description TEXT, type TEXT, icon TEXT, version TEXT,
-      api_version INTEGER, min_trek_version TEXT, permissions TEXT, capabilities TEXT DEFAULT '{}', granted_permissions TEXT, status TEXT, config TEXT,
+      api_version INTEGER, min_trek_version TEXT, permissions TEXT, capabilities TEXT DEFAULT '{}', dependencies TEXT DEFAULT '{}', granted_permissions TEXT, status TEXT, enabled INTEGER DEFAULT 0, config TEXT,
       source_repo TEXT, source_commit TEXT, sha256 TEXT, reviewed_at TEXT, author_pubkey TEXT, updated_at TEXT);
     CREATE TABLE plugin_settings_fields (plugin_id TEXT, field_key TEXT, label TEXT, input_type TEXT, placeholder TEXT, hint TEXT, required INTEGER, secret INTEGER, scope TEXT, options TEXT, oauth_config TEXT, sort_order INTEGER);
     CREATE TABLE plugin_error_log (id INTEGER PRIMARY KEY AUTOINCREMENT, plugin_id TEXT, level TEXT, message TEXT, ts TEXT);`);
@@ -230,6 +230,56 @@ describe('PluginRegistryService', () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
+  it('force refresh bypasses the cache and busts the CDN', async () => {
+    const spy = vi.fn(async () => ({ ok: true, json: async () => REGISTRY }) as unknown as Response);
+    vi.stubGlobal('fetch', spy);
+    __clearRegistryCacheForTests();
+    await svc.fetchRegistry();       // primes the 30-min cache (fetch #1)
+    await svc.fetchRegistry(true);   // force → refetches despite the warm cache
+    expect(spy).toHaveBeenCalledTimes(2);
+    const [url, opts] = spy.mock.calls[1] as unknown as [string | URL, { headers?: Record<string, string> }];
+    expect(String(url)).toMatch(/[?&]_=\d+/);            // cache-buster query
+    expect(opts.headers?.['Cache-Control']).toBe('no-cache');
+  });
+
+  // ── Sideload (upload your own plugin) ────────────────────────────────────────
+  it('sideload: stage + commit installs an uploaded plugin INACTIVE as local:upload', () => {
+    const zip = makeArtifact({ id: 'my-upload', name: 'Uploaded', version: '2.0.0', type: 'widget', permissions: ['db:own'] });
+    const staged = svc.stageUpload(zip);
+    expect(staged.id).toBe('my-upload');
+    expect(staged.version).toBe('2.0.0');
+
+    svc.commitUpload(staged);
+
+    const row = testDb.prepare('SELECT status, source_repo, reviewed_at, version FROM plugins WHERE id = ?').get('my-upload') as
+      { status: string; source_repo: string | null; reviewed_at: string | null; version: string } | undefined;
+    expect(row?.status).toBe('inactive');       // never auto-activates
+    expect(row?.source_repo).toBe('local:upload');
+    expect(row?.reviewed_at).toBeNull();        // unsigned + unreviewed → flagged in the UI
+    expect(row?.version).toBe('2.0.0');
+    expect(fs.existsSync(path.join(codeRoot, 'my-upload', 'trek-plugin.json'))).toBe(true);
+    expect(fs.existsSync(staged.stagingDir)).toBe(false); // staging cleaned up
+  });
+
+  it('sideload: rejects an oversized archive', () => {
+    expect(() => svc.stageUpload(Buffer.alloc(50 * 1024 * 1024 + 8192))).toThrow(/50MB|exceed/i);
+  });
+
+  it('sideload: rejects an archive without a manifest', () => {
+    const empty = zlib.gzipSync(Buffer.alloc(1024, 0)); // valid gzip, empty tar
+    expect(() => svc.stageUpload(empty)).toThrow(/trek-plugin\.json/);
+  });
+
+  it('sideload: forces INACTIVE even when replacing a plugin that was active', () => {
+    const zip = () => makeArtifact({ id: 'my-upload', name: 'Uploaded', version: '2.0.0', type: 'widget', permissions: ['db:own'] });
+    svc.commitUpload(svc.stageUpload(zip()));                                            // first install
+    testDb.prepare("UPDATE plugins SET status = 'active', enabled = 1 WHERE id = 'my-upload'").run(); // admin activated it
+    svc.commitUpload(svc.stageUpload(zip()));                                            // re-upload replaces the code
+    const row = testDb.prepare('SELECT status, enabled FROM plugins WHERE id = ?').get('my-upload') as { status: string; enabled: number };
+    expect(row.status).toBe('inactive');   // discoverPlugins keeps the old status; commitUpload floors it back to inactive
+    expect(row.enabled).toBe(0);
+  });
+
   it('soft-fails on a non-ok registry response', async () => {
     __clearRegistryCacheForTests();
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500 }) as unknown as Response));
@@ -237,7 +287,7 @@ describe('PluginRegistryService', () => {
   });
 
   it('rejects a version that is not listed', async () => {
-    await expect(svc.install('flight-tracker', '9.9.9')).rejects.toThrow(/not found/);
+    await expect(svc.install('flight-tracker', { version: '9.9.9' })).rejects.toThrow(/not found/);
   });
 
   it('rejects an archive without a manifest', async () => {
@@ -297,5 +347,40 @@ describe('PluginRegistryService', () => {
     delete (REGISTRY.plugins[0].versions[0] as { signature?: string }).signature;
     safeDownload.mockResolvedValue({ bytes: artifact, sha256: REGISTRY.plugins[0].versions[0].sha256 });
     await expect(svc.install('flight-tracker')).rejects.toThrow(/unsigned/);
+  });
+});
+
+describe('PluginRegistryService.resolveVersion (latest compatible)', () => {
+  const MULTI = {
+    schemaVersion: 1,
+    plugins: [{
+      id: 'multi', name: 'Multi', author: 'a', description: 'many versions', repo: 'a/b', type: 'integration',
+      versions: [
+        { version: '2.1.0', gitTag: 'v2.1.0', commitSha: 'a'.repeat(40), downloadUrl: 'https://codeload.github.com/a/b/tar.gz/x', sha256: '', minTrekVersion: '3.4.0' },
+        { version: '2.0.0', gitTag: 'v2.0.0', commitSha: 'a'.repeat(40), downloadUrl: 'https://codeload.github.com/a/b/tar.gz/y', sha256: '', minTrekVersion: '3.2.0' },
+        { version: '1.5.0', gitTag: 'v1.5.0', commitSha: 'a'.repeat(40), downloadUrl: 'https://codeload.github.com/a/b/tar.gz/z', sha256: '', minTrekVersion: '3.0.0' },
+      ],
+    }],
+  };
+  const stub = () => { __clearRegistryCacheForTests(); vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => MULTI }) as unknown as Response)); };
+
+  it('picks the highest version compatible with the running TREK', async () => {
+    process.env.APP_VERSION = '3.3.0'; stub();
+    expect((await svc.resolveVersion('multi')).version).toBe('2.0.0'); // 2.1.0 needs 3.4.0 > host
+    delete process.env.APP_VERSION;
+  });
+  it('picks the highest version satisfying a semver range', async () => {
+    process.env.APP_VERSION = '3.3.0'; stub();
+    expect((await svc.resolveVersion('multi', '>=1.0.0 <2.0.0')).version).toBe('1.5.0');
+    delete process.env.APP_VERSION;
+  });
+  it('throws when nothing satisfies the constraint', async () => {
+    process.env.APP_VERSION = '3.3.0'; stub();
+    await expect(svc.resolveVersion('multi', '>=9.0.0')).rejects.toThrow(RegistryError);
+    delete process.env.APP_VERSION;
+  });
+  it('throws for a plugin not in the registry', async () => {
+    stub();
+    await expect(svc.resolveVersion('nope')).rejects.toThrow(/not in registry/);
   });
 });

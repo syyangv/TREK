@@ -1,9 +1,67 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from '../../i18n'
 import { useAuthStore } from '../../store/authStore'
+import { useSettingsStore } from '../../store/settingsStore'
 import { useToast } from '../shared/Toast'
 import { pluginsApi } from '../../api/client'
+
+// The design-token contract handed to plugins (#4 richer context): non-secret CSS
+// values, resolved for the CURRENT theme, so a plugin can match TREK exactly (and
+// re-match on a theme toggle / accent change) instead of hard-coding a mirror of
+// the palette that drifts. Names mirror index.css so a plugin can apply them
+// verbatim as CSS variables. This is the whole GLOBAL (:root/.dark) palette — the
+// part that a user can recolour via appearance settings (accent scheme, custom
+// accent, high-contrast) flows through here live. The glassy `.trek-dash` layer
+// (--glass-*/--r-*/--sh-*) is intentionally NOT read here: it is scoped to the
+// dashboard subtree, so it resolves EMPTY at documentElement — the SDK design kit
+// bakes those values instead (they don't vary with the accent, only light/dark).
+const TOKEN_VARS = [
+  // surfaces
+  '--bg-primary', '--bg-secondary', '--bg-tertiary', '--bg-elevated',
+  '--bg-card', '--bg-input', '--bg-hover', '--bg-selected', '--bg-inverse',
+  // text
+  '--text-primary', '--text-secondary', '--text-muted', '--text-faint', '--text-inverse',
+  // borders
+  '--border-primary', '--border-secondary', '--border-faint',
+  // accent (recoloured by the chosen scheme / custom accent)
+  '--accent', '--accent-text', '--accent-on', '--accent-hover', '--accent-subtle',
+  // semantic + soft fills
+  '--success', '--success-soft', '--danger', '--danger-soft',
+  '--warning', '--warning-soft', '--info', '--info-soft',
+  // shadows
+  '--shadow-card', '--shadow-elevated', '--shadow-sm', '--shadow-md', '--shadow-lg',
+  // radii, type, misc
+  '--radius-sm', '--radius-md', '--radius-lg', '--radius-xl',
+  '--font-system', '--font-subtext', '--overlay', '--ease-out-quint',
+]
+function readThemeTokens(): Record<string, string> {
+  const cs = getComputedStyle(document.documentElement)
+  const out: Record<string, string> = {}
+  for (const v of TOKEN_VARS) {
+    const val = cs.getPropertyValue(v).trim()
+    if (val) out[v] = val
+  }
+  return out
+}
+
+/**
+ * The host's current appearance state, mirrored from the attributes applyAppearance
+ * writes on <html>, so a plugin can honour the same accessibility/appearance choices
+ * inside its own sandboxed document (it can't read the parent DOM). All booleans/enums
+ * — nothing secret.
+ */
+function readAppearance() {
+  const el = document.documentElement
+  return {
+    scheme: el.dataset.scheme || 'default',
+    density: el.dataset.density === 'compact' ? 'compact' : 'comfortable',
+    noTransparency: el.hasAttribute('data-no-transparency'),
+    reducedMotion:
+      el.hasAttribute('data-reduce-motion') ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  }
+}
 
 /**
  * Renders a plugin's sandboxed page/widget iframe and hosts the trekBridge
@@ -21,6 +79,8 @@ import { pluginsApi } from '../../api/client'
 interface PluginFrameProps {
   pluginId: string
   tripId?: string | null
+  /** The place in view — set for a place-detail slot so the plugin can scope to it. */
+  placeId?: string | null
   className?: string
   title?: string
 }
@@ -33,7 +93,7 @@ type Inbound =
   | { type: 'trek:resize'; height?: number }
   | { type: 'trek:invoke'; requestId: string; sub: string; method?: string; body?: unknown }
 
-export default function PluginFrame({ pluginId, tripId = null, className, title }: PluginFrameProps) {
+export default function PluginFrame({ pluginId, tripId = null, placeId = null, className, title }: PluginFrameProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null)
   // A sandboxed frame may navigate ITSELF (connect-src can't stop that), and its
   // window identity keeps matching our iframe afterwards. Track loads and refuse
@@ -48,22 +108,49 @@ export default function PluginFrame({ pluginId, tripId = null, className, title 
   const navigate = useNavigate()
   const toast = useToast()
   const userId = useAuthStore((s) => s.user?.id)
+  const userName = useAuthStore((s) => s.user?.username ?? null)
+  const userAvatar = useAuthStore((s) => s.user?.avatar_url ?? null)
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
+  const settings = useSettingsStore((s) => s.settings)
   const [height, setHeight] = useState<number | null>(null)
+
+  // opaque frame -> targetOrigin must be '*'. Hoisted so the iframe's onLoad can
+  // deliver the context too: the trek:ready handshake alone is racy — if the frame
+  // boots before the effect's listener attaches, the plugin never learns the theme
+  // and falls back to the OS scheme (dark mode looking "off" until a toggle).
+  const postFrame = useCallback((msg: unknown) => frameRef.current?.contentWindow?.postMessage(msg, '*'), [])
+  const buildContext = useCallback(() => ({
+    type: 'trek:context',
+    tripId,
+    placeId,
+    userId: userId != null ? String(userId) : null,
+    theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+    locale,
+    hostOrigin: window.location.origin,
+    // #4 richer context — non-secret display data so plugins render natively:
+    // who the user is (name/avatar/isAdmin — never email/role beyond a boolean),
+    // how TREK formats things, the resolved theme tokens, and the appearance state
+    // (accent scheme, density, reduced-motion / no-transparency) so a plugin can
+    // mirror the same look and accessibility choices as the host.
+    user: userName != null ? { name: userName, avatar: userAvatar, isAdmin } : null,
+    appearance: readAppearance(),
+    formats: {
+      locale,
+      currency: settings.default_currency,
+      timeFormat: settings.time_format,
+      distanceUnit: settings.distance_unit,
+      temperatureUnit: settings.temperature_unit,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    },
+    tokens: readThemeTokens(),
+  }), [tripId, placeId, userId, locale, userName, userAvatar, isAdmin, settings])
 
   useEffect(() => {
     const frame = frameRef.current
     if (!frame) return
 
-    const post = (msg: unknown) => frame.contentWindow?.postMessage(msg, '*') // opaque frame -> targetOrigin must be '*'
-
-    const context = () => ({
-      type: 'trek:context',
-      tripId,
-      userId: userId != null ? String(userId) : null,
-      theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
-      locale,
-      hostOrigin: window.location.origin,
-    })
+    const post = postFrame
+    const context = buildContext
 
     const onMessage = async (ev: MessageEvent) => {
       // The ONLY trusted identity: the message came from OUR iframe's window.
@@ -109,14 +196,50 @@ export default function PluginFrame({ pluginId, tripId = null, className, title 
     }
 
     window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
-  }, [pluginId, tripId, userId, locale, navigate, toast])
+
+    // The frame is opaque-origin and can't read our DOM, and we otherwise send the
+    // context (incl. theme + tokens) only once on trek:ready — so a plugin can't
+    // follow an in-app appearance change. Watch the <html> element for anything
+    // applyAppearance touches (the `dark` class, the data-* appearance attributes,
+    // and inline style for the custom-accent vars) and re-post the context when the
+    // resulting look actually changes, so plugins restyle live. A compact signature
+    // dedupes: unrelated mutations don't trigger a repost. (Plugins re-apply on
+    // trek:context.)
+    const htmlEl = document.documentElement
+    const appearanceSig = () => {
+      const cs = getComputedStyle(htmlEl)
+      return [
+        htmlEl.classList.contains('dark'),
+        htmlEl.dataset.scheme || '',
+        htmlEl.dataset.density || '',
+        htmlEl.hasAttribute('data-no-transparency'),
+        htmlEl.hasAttribute('data-reduce-motion'),
+        cs.getPropertyValue('--accent').trim(),
+      ].join('|')
+    }
+    let prevSig = appearanceSig()
+    const themeObserver = new MutationObserver(() => {
+      const sig = appearanceSig()
+      if (sig === prevSig) return
+      prevSig = sig
+      if (loadsRef.current <= 1) post(context())
+    })
+    themeObserver.observe(htmlEl, {
+      attributes: true,
+      attributeFilter: ['class', 'style', 'data-scheme', 'data-density', 'data-no-transparency', 'data-reduce-motion'],
+    })
+
+    return () => { window.removeEventListener('message', onMessage); themeObserver.disconnect() }
+  }, [pluginId, navigate, toast, postFrame, buildContext])
 
   return (
     <iframe
       ref={frameRef}
       src={`/plugin-frame/${pluginId}/index.html`}
-      onLoad={() => { loadsRef.current += 1 }}
+      // Deliver the context as soon as the document is parsed (the plugin sets up its
+      // message listener during parse), closing the trek:ready race so the theme is
+      // right on first paint. A 2nd load is a self-navigation — don't bridge to it.
+      onLoad={() => { loadsRef.current += 1; if (loadsRef.current === 1) postFrame(buildContext()) }}
       sandbox="allow-scripts allow-forms"
       referrerPolicy="no-referrer"
       loading="lazy"

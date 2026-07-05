@@ -23,12 +23,20 @@ const pluginId = process.argv[2] || process.env.TREK_PLUGIN_ID || 'unknown';
 const pluginDir = process.argv[3] || '';
 
 let pluginConfig: Record<string, unknown> = {};
+// Guards `init` against re-entry (see the message handler). Set the first time a
+// legitimate `init` arrives from the host.
+let initialized = false;
 
 const pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 let seq = 0;
 
+// Capture the raw IPC write ONCE, before installIpcGuard() locks `process.send`
+// to a throwing stub. The transport keeps sending through this closure; plugin
+// code no longer has any path to the channel. See installIpcGuard().
+const realSend: (msg: Envelope) => void =
+  typeof process.send === 'function' ? process.send.bind(process) : () => {};
 function send(msg: Envelope): void {
-  process.send?.(msg);
+  realSend(msg);
 }
 
 const transport: ChildTransport = {
@@ -73,6 +81,10 @@ function installSdkInjection(requirePlugin: NodeJS.Require): void {
 
 async function boot(config: Record<string, unknown>): Promise<void> {
   try {
+    // Seal the raw IPC surface BEFORE any plugin code is required — this is the
+    // first moment untrusted code runs (requirePlugin below). After this, the
+    // plugin can only reach the host through the capability-checked SDK.
+    installIpcGuard();
     // createRequire works whether this bootstrap runs as CJS (prod dist) or ESM
     // (tsx in tests), so `require` being undefined in ESM never bites us.
     const entry = path.join(pluginDir, 'server', 'index.js');
@@ -86,7 +98,13 @@ async function boot(config: Record<string, unknown>): Promise<void> {
     // host can proxy HTTP and schedule jobs without re-parsing the manifest.
     const routes = (def.routes ?? []).map((r, i) => ({ i, method: r.method, path: r.path, auth: r.auth !== false }));
     const jobs = (def.jobs ?? []).map((j) => j.id);
-    send({ k: 'evt', topic: 'loaded', data: { routes, jobs } });
+    const hooks = Object.keys((def.hooks ?? {}) as Record<string, unknown>);
+    const events = (def.events ?? []).map((e) => e.on);
+    // Inter-plugin surface: the callable exports this plugin implements, and the
+    // other-plugin events it subscribes to (so the host can route fan-out).
+    const exportNames = Object.keys((def.exports ?? {}) as Record<string, unknown>);
+    const subscriptions = (def.subscriptions ?? []).map((s) => ({ plugin: s.plugin, event: s.event }));
+    send({ k: 'evt', topic: 'loaded', data: { routes, jobs, hooks, events, exports: exportNames, subscriptions } });
     // An immediate first heartbeat confirms liveness without waiting a full interval.
     send({ k: 'evt', topic: 'heartbeat', data: { rss: process.memoryUsage().rss } });
   } catch (e) {
@@ -119,6 +137,50 @@ async function handleInvoke(req: { id: string; method: string; params: Record<st
       const job = def.jobs?.find((j) => j.id === jobId);
       if (!job) throw new Error(`no job ${jobId}`);
       await job.handler(invCtx);
+      respond(true, { ok: true });
+    } else if (req.method === 'invoke.hook') {
+      // Host→plugin provider call: core asks a hook the plugin implements (e.g.
+      // placeDetailProvider) for data. The hook method gets its args + the per-
+      // invocation ctx (so any trip reads it makes bind to the authenticated user).
+      const hookName = req.params.hook as string;
+      const fnName = req.params.fn as string;
+      const args = (req.params.args as unknown[]) ?? [];
+      const hooks = def.hooks as Record<string, Record<string, (...a: unknown[]) => unknown> | undefined> | undefined;
+      const impl = hooks?.[hookName];
+      if (!impl || typeof impl[fnName] !== 'function') throw new Error(`no hook ${hookName}.${fnName}`);
+      const result = await impl[fnName](...args, invCtx);
+      respond(true, result);
+    } else if (req.method === 'invoke.event') {
+      // A core event fired for a trip. Run every matching subscription. invCtx carries
+      // NO user (delivered like a job), so trip reads are refused — the handler reacts
+      // to the fact of the event, using the plugin's own db / outbound / broadcasts.
+      const eventName = req.params.event as string;
+      const tripId = req.params.tripId as number;
+      const payload = { event: eventName, tripId };
+      for (const sub of def.events ?? []) {
+        if (sub.on === '*' || sub.on === eventName) await sub.handler(payload, invCtx);
+      }
+      respond(true, { ok: true });
+    } else if (req.method === 'invoke.export') {
+      // Another plugin (a declared dependent) called one of our exports. The host has
+      // already authorized the caller + the export name; run it with the per-invocation
+      // ctx so any trip reads bind to the CALLER's acting user (propagated by the host).
+      const fnName = req.params.fn as string;
+      const args = req.params.args;
+      const impl = (def.exports ?? {})[fnName];
+      if (typeof impl !== 'function') throw new Error(`no export ${fnName}`);
+      const result = await impl(args, invCtx);
+      respond(true, result);
+    } else if (req.method === 'invoke.pluginEvent') {
+      // Another plugin (a declared dependency of ours) emitted an event we subscribed
+      // to. Run every matching subscription. invCtx carries NO user (fire-and-forget),
+      // like a core event, but delivers the emitter's payload.
+      const source = req.params.source as string;
+      const eventName = req.params.event as string;
+      const payload = req.params.payload;
+      for (const sub of def.subscriptions ?? []) {
+        if (sub.plugin === source && sub.event === eventName) await sub.handler(payload, invCtx);
+      }
       respond(true, { ok: true });
     } else {
       respond(false, `unknown invoke ${req.method}`);
@@ -160,6 +222,11 @@ process.on('message', (raw: unknown) => {
   }
   if (msg.k === 'evt') {
     if (msg.topic === 'init') {
+      // One-shot: the host sends `init` exactly once. Refuse any second `init`
+      // so a forged one (e.g. a pre-seal race) can't re-run installEgressGuard
+      // with a widened egress list or re-boot the plugin.
+      if (initialized) return;
+      initialized = true;
       const d = msg.data as { config?: Record<string, unknown>; egress?: string[] };
       pluginConfig = d.config ?? {};
       installEgressGuard(d.egress ?? []);
@@ -167,6 +234,82 @@ process.on('message', (raw: unknown) => {
     } else if (msg.topic === 'shutdown') void shutdown();
   }
 });
+
+/**
+ * Sever the raw host<->child IPC surface from plugin code. The plugin runs in
+ * THIS process and shares the global `process`, so without this it could bypass
+ * the SDK entirely and talk to the host directly:
+ *  - `process.send(...)` — forge lifecycle/RPC envelopes (fake `loaded`/`heartbeat`,
+ *    or a `req` carrying another invocation's `_inv` to act as that user).
+ *  - `process.on('message', ...)` — eavesdrop on every host→child `req`/`res`
+ *    (other invocations' request bodies, user objects, DB results).
+ *  - `process.removeAllListeners('message')` — kill the trusted handler and hijack.
+ *
+ * We do NOT override `process.emit`: Node delivers inbound IPC by calling
+ * `process.emit('message', ...)` internally, so a throwing override would break
+ * message delivery to the trusted listener. A plugin synthesizing
+ * `process.emit('message', forged)` is instead defanged elsewhere — a forged
+ * `init` is ignored by the one-shot `initialized` guard, and a forged `req`/`res`/
+ * `shutdown` only affects the plugin's own process (self-harm, no host impact).
+ *
+ * The transport keeps working because `send()` uses the captured `realSend`
+ * closure, and the trusted message listener + crash handlers are already
+ * registered at module-eval (before this runs). Mirrors the `process.binding`
+ * lock in installEgressGuard: same `Object.defineProperty(..., writable:false,
+ * configurable:false)` idiom, same "already locked" swallow. This is a JS-level
+ * defense-in-depth layer; in prod the OS `--permission` model is the real jail.
+ *
+ * MUST run once, before the plugin module is required.
+ */
+function installIpcGuard(): void {
+  const lock = (obj: object, key: string, value: unknown): void => {
+    try {
+      Object.defineProperty(obj, key, { value, writable: false, configurable: false });
+    } catch {
+      /* already locked / non-configurable */
+    }
+  };
+
+  // Outbound: kill the raw write and channel teardown. `realSend` (captured
+  // above) is unaffected — it holds the bound original, not `process.send`.
+  lock(process, 'send', () => {
+    throw new Error('ipc: process.send is disabled for plugins');
+  });
+  lock(process, 'disconnect', () => {
+    throw new Error('ipc: process.disconnect is disabled for plugins');
+  });
+  // NOTE: we intentionally do NOT lock `process.channel`/`process._channel`.
+  // Node's own outbound send (`realSend`, the bound original) reads the pipe
+  // handle back off `process`, so overriding it to `undefined` breaks the
+  // legitimate transport (verified: child→host RPC hangs). Without a working
+  // `process.send`, framing raw IPC through the handle directly is impractical,
+  // so leaving it readable costs nothing.
+
+  // Inbound: the trusted 'message' listener is already installed. Forbid the
+  // plugin adding/removing/replacing a 'message' listener so it can't eavesdrop
+  // on host→child traffic or unhook the trusted handler. Only 'message'/
+  // 'internalMessage' are gated — plugins may still use other process events
+  // (e.g. 'SIGTERM', 'beforeExit'). `emit` is deliberately NOT gated (Node uses
+  // it to deliver inbound IPC; see the header comment).
+  const GUARDED = new Set(['message', 'internalMessage']);
+  const ee = process as unknown as Record<string, (...a: unknown[]) => unknown>;
+  const emitterMethods = [
+    'on', 'addListener', 'prependListener', 'once', 'prependOnceListener',
+    'off', 'removeListener', 'removeAllListeners',
+  ] as const;
+  for (const m of emitterMethods) {
+    const real = ee[m].bind(process);
+    lock(process, m, (event: unknown, ...rest: unknown[]) => {
+      // `removeAllListeners()` with no event would also strip the trusted
+      // 'message' listener (and the crash handlers), so block the bare form.
+      const bareRemoveAll = m === 'removeAllListeners' && event === undefined;
+      if (bareRemoveAll || (typeof event === 'string' && GUARDED.has(event))) {
+        throw new Error(`ipc: process.${m}('${String(event)}') is disabled for plugins`);
+      }
+      return real(event, ...rest);
+    });
+  }
+}
 
 /**
  * Restrict the plugin's outbound network to its declared egress hosts. With no

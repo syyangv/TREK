@@ -49,6 +49,10 @@ interface Supervised {
   lastRss: number; // last reported resident set size (bytes)
   routes: PluginRouteInfo[];
   jobs: string[];
+  hooks: string[]; // provider hooks the plugin implements (e.g. 'placeDetailProvider')
+  events: string[]; // core events the plugin subscribes to (names or '*')
+  exports: string[]; // functions the plugin exposes to dependents (ctx.plugins.call)
+  subscriptions: Array<{ plugin: string; event: string }>; // other-plugin events it listens to
   pending: Map<string, Pending>; // host→child invokes awaiting a response
   invocations: Map<string, number | undefined>; // reqId -> acting user of that invoke (undefined = no user, e.g. a job)
   activation?: { resolve: () => void; reject: (e: Error) => void };
@@ -80,6 +84,17 @@ const DEFAULTS: Required<SupervisorTuning> = {
   maxRssBytes: (Number(process.env.TREK_PLUGIN_MAX_RSS_MB) || 300) * 1024 * 1024,
 };
 
+// A plugin may only act as a provider for a hook it BOTH implements (reported by
+// the child at load) AND was granted the matching hook:* permission for. The child
+// reports Object.keys(def.hooks) with no knowledge of grants, so the grant check
+// must happen host-side here — otherwise the hook:* consent is never enforced.
+const HOOK_PERMISSION: Readonly<Record<string, string>> = {
+  photoProvider: 'hook:photo-provider',
+  calendarSource: 'hook:calendar-source',
+  placeDetailProvider: 'hook:place-detail-provider',
+  warningProvider: 'hook:trip-warning-provider',
+};
+
 export class PluginSupervisor {
   private running = new Map<string, Supervised>();
   private sweep: ReturnType<typeof setInterval> | null = null;
@@ -109,6 +124,10 @@ export class PluginSupervisor {
       lastRss: 0,
       routes: [],
       jobs: [],
+      hooks: [],
+      events: [],
+      exports: [],
+      subscriptions: [],
       pending: new Map(),
       invocations: new Map(),
     };
@@ -162,6 +181,52 @@ export class PluginSupervisor {
   /** The plugin's declared HTTP routes (populated once it reports `loaded`). */
   routesOf(id: string): PluginRouteInfo[] {
     return this.running.get(id)?.routes ?? [];
+  }
+
+  /**
+   * Ids of ACTIVE plugins that may act as a given provider hook — they implement it
+   * (reported at load) AND hold the matching hook:* grant the admin consented to.
+   * An unknown hook, or one with no permission mapping, resolves to nobody.
+   */
+  providersOf(hook: string): string[] {
+    const perm = HOOK_PERMISSION[hook];
+    if (!perm) return [];
+    const out: string[] = [];
+    for (const [id, sup] of this.running) {
+      if (sup.status === 'active' && sup.hooks.includes(hook) && sup.granted.has(perm)) out.push(id);
+    }
+    return out;
+  }
+
+  /** Callable export names an ACTIVE plugin reported at load (ctx.plugins.call target). */
+  exportsOf(id: string): string[] {
+    const sup = this.running.get(id);
+    return sup && sup.status === 'active' ? sup.exports : [];
+  }
+
+  /** Ids of ACTIVE plugins that subscribed to `event` emitted by `sourceId`. */
+  subscribersOf(sourceId: string, event: string): string[] {
+    const out: string[] = [];
+    for (const [id, sup] of this.running) {
+      if (sup.status === 'active' && sup.subscriptions.some((s) => s.plugin === sourceId && s.event === event)) out.push(id);
+    }
+    return out;
+  }
+
+  /**
+   * Announce a core event to every plugin that subscribed to it (or to '*') AND holds
+   * the 'events:subscribe' grant. Fire-and-forget: the invoke is NOT awaited (a core
+   * broadcast must never block on a plugin) and carries no user (trip reads refused).
+   * Only the event name + tripId are sent — never the payload.
+   */
+  deliverEvent(tripId: number, event: string): void {
+    for (const [id, sup] of this.running) {
+      if (sup.status !== 'active' || !sup.granted.has('events:subscribe')) continue;
+      if (!sup.events.includes(event) && !sup.events.includes('*')) continue;
+      this.invoke(id, 'invoke.event', { event, tripId }, { actingUserId: undefined, timeoutMs: 5000 }).catch(() => {
+        /* a subscriber that errors or times out is ignored — events are best-effort */
+      });
+    }
   }
 
   /**
@@ -279,10 +344,22 @@ export class PluginSupervisor {
           break;
         }
         case 'loaded': {
+          // Ignore a duplicate/forged `loaded` after activation — a plugin must
+          // not be able to re-register its route table once it is live.
+          if (sup.status === 'active') break;
           sup.lastBeat = Date.now();
-          const d = msg.data as { routes?: PluginRouteInfo[]; jobs?: string[] };
+          const d = msg.data as {
+            routes?: PluginRouteInfo[]; jobs?: string[]; hooks?: string[]; events?: string[];
+            exports?: string[]; subscriptions?: Array<{ plugin: string; event: string }>;
+          };
           sup.routes = d.routes ?? [];
           sup.jobs = d.jobs ?? [];
+          sup.hooks = d.hooks ?? [];
+          sup.events = d.events ?? [];
+          sup.exports = Array.isArray(d.exports) ? d.exports.filter((e): e is string => typeof e === 'string') : [];
+          sup.subscriptions = Array.isArray(d.subscriptions)
+            ? d.subscriptions.filter((s): s is { plugin: string; event: string } => !!s && typeof s.plugin === 'string' && typeof s.event === 'string')
+            : [];
           this.clearActivationTimer(sup);
           this.setStatus(sup, 'active');
           sup.activation?.resolve();
@@ -305,7 +382,13 @@ export class PluginSupervisor {
           break;
         }
         default:
-          this.hooks.onEvent?.(sup.id, msg.topic, msg.data);
+          // Strict inbound whitelist: the legitimate child→host `evt` topics all
+          // have explicit cases above. Anything else is a compromised/buggy child
+          // (or, historically, code that reached the raw channel) — drop it rather
+          // than forward it blindly. `onEvent` stays on SupervisorHooks, reserved
+          // for a future SDK-sanctioned custom-event channel, but is not invoked
+          // for arbitrary topics.
+          this.hooks.onLog?.(sup.id, 'warn', `dropped unknown plugin event topic: ${msg.topic}`);
       }
     }
   }

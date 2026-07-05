@@ -33,7 +33,7 @@ describe('createPluginContext', () => {
     expect(rpc).toHaveBeenCalledWith('ws.broadcastToTrip', { tripId: 1, event: 'ping', data: { a: 1 } });
 
     await ctx.users.getById(3);
-    expect(rpc).toHaveBeenCalledWith('users.getById', { id: 3 });
+    expect(rpc).toHaveBeenCalledWith('users.getById', { id: 3, _inv: 'inv-1' });
 
     await ctx.db.exec('DELETE FROM t');
     expect(rpc).toHaveBeenCalledWith('db.exec', { sql: 'DELETE FROM t', args: [] });
@@ -43,6 +43,21 @@ describe('createPluginContext', () => {
 
     await ctx.trips.getReservations(1);
     expect(rpc).toHaveBeenCalledWith('trips.getReservations', { tripId: 1, _inv: 'inv-1' });
+
+    await ctx.costs.getByTrip(1);
+    expect(rpc).toHaveBeenCalledWith('costs.getByTrip', { tripId: 1, _inv: 'inv-1' });
+
+    await ctx.costs.listMine();
+    expect(rpc).toHaveBeenCalledWith('costs.listMine', { _inv: 'inv-1' });
+
+    await ctx.costs.create(1, { name: 'Hotel' });
+    expect(rpc).toHaveBeenCalledWith('costs.create', { tripId: 1, input: { name: 'Hotel' }, _inv: 'inv-1' });
+
+    await ctx.costs.update(1, 5, { name: 'Hostel' });
+    expect(rpc).toHaveBeenCalledWith('costs.update', { tripId: 1, itemId: 5, input: { name: 'Hostel' }, _inv: 'inv-1' });
+
+    await ctx.costs.delete(1, 5);
+    expect(rpc).toHaveBeenCalledWith('costs.delete', { tripId: 1, itemId: 5, _inv: 'inv-1' });
 
     await ctx.ws.broadcastToUser(9, 'poke', { x: 2 });
     expect(rpc).toHaveBeenCalledWith('ws.broadcastToUser', { userId: 9, event: 'poke', data: { x: 2 } });

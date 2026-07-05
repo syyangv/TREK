@@ -8,7 +8,7 @@ import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus
 import PlaceAvatar from '../shared/PlaceAvatar'
 import GuestBadge from '../shared/GuestBadge'
 import StatusBadge from '../Collections/StatusBadge'
-import { mapsApi } from '../../api/client'
+import { mapsApi, pluginsApi } from '../../api/client'
 import { collectionsApi } from '../../api/collections'
 import { useSettingsStore } from '../../store/settingsStore'
 import { useAddonStore } from '../../store/addonStore'
@@ -16,6 +16,8 @@ import { useSaveToCollectionStore } from '../../store/saveToCollectionStore'
 import { getCategoryIcon } from '../shared/categoryIcons'
 import { useToast } from '../shared/Toast'
 import { useTranslation, translateApiError } from '../../i18n'
+import { usePluginStore } from '../../store/pluginStore'
+import PluginFrame from '../Plugins/PluginFrame'
 import type { Place, Category, Day, Assignment, Reservation, TripFile, AssignmentsMap } from '../../types'
 import type { CollectionStatus } from '@trek/shared'
 import { splitReservationDateTime, formatTime } from '../../utils/formatters'
@@ -142,6 +144,21 @@ export default function PlaceInspector({
   leftWidth = 0, rightWidth = 0,
   collectionStatus, onCopyToTrip, onSetStatus, onRemoveFromList,
 }: PlaceInspectorProps) {
+  // Plugins that declared a place-detail slot mount at the bottom of this panel,
+  // scoped to the open place (trip mode only). Inline-filter like the other sites.
+  const placeDetailPlugins = usePluginStore((s) => s.plugins).filter((p) => p.type === 'widget' && p.slot === 'place-detail')
+  // Extra native rows contributed by placeDetailProvider plugins (#1429). Fail-safe:
+  // any provider error/timeout is dropped server-side, so this only ever adds rows.
+  const [providerDetails, setProviderDetails] = useState<Array<{ pluginId: string; items: Array<{ label: string; value?: string; url?: string }> }>>([])
+  const placeIdForDetails = mode === 'trip' ? place?.id : undefined
+  useEffect(() => {
+    if (placeIdForDetails == null) { setProviderDetails([]); return }
+    let cancelled = false
+    pluginsApi.placeDetails(placeIdForDetails)
+      .then((d) => { if (!cancelled) setProviderDetails((d.providers || []).filter((p) => Array.isArray(p.items) && p.items.length > 0)) })
+      .catch(() => { if (!cancelled) setProviderDetails([]) })
+    return () => { cancelled = true }
+  }, [placeIdForDetails])
   const { t, locale, language } = useTranslation()
   const toast = useToast()
   const timeFormat = useSettingsStore(s => s.settings.time_format) || '24h'
@@ -356,6 +373,34 @@ export default function PlaceInspector({
             fileInputRef={fileInputRef} handleFileUpload={handleFileUpload} isUploading={isUploading}
             distanceUnit={distanceUnit} />
 
+          {/* Extra native rows from placeDetailProvider plugins (#1429). */}
+          {mode === 'trip' && providerDetails.length > 0 && (
+            <div className="bg-surface-hover" style={{ borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {providerDetails.flatMap((p) => p.items.map((it, i) => (
+                <div key={`${p.pluginId}-${i}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, fontSize: 'calc(12.5px * var(--fs-scale-body, 1))' }}>
+                  <span className="text-content-secondary" style={{ fontWeight: 500, flexShrink: 0 }}>{it.label}</span>
+                  {it.url
+                    ? <a href={it.url} target="_blank" rel="noreferrer noopener" className="text-accent" style={{ textDecoration: 'none', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.value ?? '↗'}</a>
+                    : <span className="text-content-muted" style={{ textAlign: 'right' }}>{it.value}</span>}
+                </div>
+              )))}
+            </div>
+          )}
+
+          {/* Place-detail plugin slots (#1429): sandboxed, scoped to this place. */}
+          {mode === 'trip' && placeDetailPlugins.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {placeDetailPlugins.map((p) => {
+                const tid = (place as { trip_id?: number | string }).trip_id
+                return (
+                  <div key={p.id} className="bg-surface-hover" style={{ borderRadius: 10, overflow: 'hidden' }}>
+                    <PluginFrame pluginId={p.id} tripId={tid != null ? String(tid) : null} placeId={String(place.id)} title={p.name} />
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
         </div>
 
         {/* Footer actions */}
@@ -372,7 +417,7 @@ export default function PlaceInspector({
           {mode === 'trip' && selectedDayId && (
             assignmentInDay ? (
               <ActionButton onClick={() => onRemoveAssignment?.(selectedDayId, assignmentInDay.id)} variant="ghost" icon={<Minus size={13} />}
-                label={<><span className="hidden sm:inline">{t('inspector.removeFromDay')}</span><span className="sm:hidden">{t('inspector.remove')}</span></>} />
+                label={<span className="hidden sm:inline">{t('inspector.removeFromDay')}</span>} />
             ) : (
               <ActionButton onClick={() => onAssignToDay?.(place.id)} variant="primary" icon={<Plus size={13} />} label={t('inspector.addToDay')} />
             )

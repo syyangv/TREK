@@ -3419,6 +3419,70 @@ function runMigrations(db: Database.Database): void {
       db.exec('CREATE INDEX IF NOT EXISTS idx_collection_place_labels_place ON collection_place_labels(collection_place_id);');
       db.exec('CREATE INDEX IF NOT EXISTS idx_collection_place_labels_label ON collection_place_labels(label_id);');
     },
+    // Migration 161: plugin-owned metadata on core entities (#1429). A namespaced
+    // key/value store so a plugin can attach data to a trip/place/day WITHOUT
+    // forking the core schema. One row per (plugin, entity, key); a plugin only
+    // ever sees its own rows. entity_type is polymorphic (no cross-table FK), so
+    // rows are purged by plugin_id on uninstall; entity deletes leave harmless
+    // orphans that the plugin's own reads never surface.
+    () => {
+      db.exec(`CREATE TABLE IF NOT EXISTS plugin_entity_metadata (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        plugin_id TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id INTEGER NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE (plugin_id, entity_type, entity_id, key)
+      );`);
+      db.exec('CREATE INDEX IF NOT EXISTS idx_plugin_meta_entity ON plugin_entity_metadata (plugin_id, entity_type, entity_id);');
+    },
+
+    // Freeze the FX rate on settle-up transfers too (#1445). budget_settlements
+    // stored only a bare `amount` in whatever display currency the payer was
+    // viewing, so a later live-rate drift re-opened an already-settled position
+    // with a few-cent residual. Capture the display `currency` and the rate frozen
+    // at settle time (units of that currency per 1 trip currency), mirroring the
+    // budget_items columns. Legacy rows keep currency = NULL / rate = 1 and stay on
+    // live rates until re-edited.
+    () => {
+      try {
+        db.exec('ALTER TABLE budget_settlements ADD COLUMN currency TEXT');
+      } catch (err: any) {
+        if (!err.message?.includes('duplicate column name')) throw err;
+      }
+      try {
+        db.exec('ALTER TABLE budget_settlements ADD COLUMN exchange_rate REAL NOT NULL DEFAULT 1');
+      } catch (err: any) {
+        if (!err.message?.includes('duplicate column name')) throw err;
+      }
+    },
+
+    // #1446: guests are per-trip people, but their display name lived in the globally
+    // UNIQUE users.username, so a second "Jake" on another trip was auto-renamed to
+    // "Jake 2". Add a non-unique display_name; new guests store the human name here and
+    // get a uuid-based username that is never shown (the member views COALESCE to it).
+    () => {
+      try {
+        db.exec('ALTER TABLE users ADD COLUMN display_name TEXT');
+      } catch (err: any) {
+        if (!err.message?.includes('duplicate column name')) throw err;
+      }
+    },
+
+    // Plugin dependencies (#plugins): a plugin's trek-plugin.json can now declare
+    // `requiredAddons` (addon ids that must be enabled to activate) and
+    // `pluginDependencies` ({id, version-range} of other plugins that must be
+    // installed + satisfied). Stored as one JSON blob and populated by the
+    // discovery upsert on every install path. Legacy rows default to '{}' (no deps).
+    () => {
+      try {
+        db.exec("ALTER TABLE plugins ADD COLUMN dependencies TEXT NOT NULL DEFAULT '{}'");
+      } catch (err: any) {
+        if (!err.message?.includes('duplicate column name')) throw err;
+      }
+    },
   ];
 
   if (currentVersion < migrations.length) {
