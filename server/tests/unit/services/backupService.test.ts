@@ -18,6 +18,7 @@ const fsMock = vi.hoisted(() => ({
   createReadStream: vi.fn(),
   rmSync: vi.fn(),
   copyFileSync: vi.fn(),
+  renameSync: vi.fn(),
   cpSync: vi.fn(),
   // Identity by default: when uploadsDir is a plain directory, realpathSync
   // returns it unchanged. Tests that exercise the symlink case override this.
@@ -466,9 +467,10 @@ describe('BACKUP-036 createBackup', () => {
 
     await createBackup();
 
-    // archive.file should have been called with the db path
+    // the core DB is snapshotted (VACUUM INTO) and archived under the name travel.db
+    expect(dbMock.db.exec).toHaveBeenCalledWith(expect.stringContaining('VACUUM INTO'));
     expect(archiverInstanceMock.file).toHaveBeenCalledWith(
-      expect.stringContaining('travel.db'),
+      expect.any(String),
       { name: 'travel.db' }
     );
   });

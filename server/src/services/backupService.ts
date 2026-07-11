@@ -169,6 +169,7 @@ export async function createBackup(): Promise<BackupInfo> {
   const filename = `backup-${timestamp}.zip`;
   const outputPath = path.join(backupsDir, filename);
   const pdataSnap = path.join(backupsDir, `.plugins-snap-${timestamp}`);
+  const dbSnap = path.join(backupsDir, `.travel-snap-${timestamp}.db`);
 
   try {
     try { db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch (e) {}
@@ -184,7 +185,21 @@ export async function createBackup(): Promise<BackupInfo> {
 
       const dbPath = path.join(dataDir, 'travel.db');
       if (fs.existsSync(dbPath)) {
-        archive.file(dbPath, { name: 'travel.db' });
+        // Archive a point-in-time snapshot, not the live file. The archiver reads entries
+        // lazily during finalize(), so a WAL auto-checkpoint writing pages back into
+        // travel.db mid-stream would tear the archived copy — and the -wal that would make
+        // it recoverable isn't in the zip. VACUUM INTO takes a consistent snapshot even
+        // under concurrent writes — the same guarantee the plugin DBs get below.
+        let dbToArchive = dbPath;
+        try {
+          if (fs.existsSync(dbSnap)) fs.rmSync(dbSnap, { force: true });
+          db.exec(`VACUUM INTO '${dbSnap.replace(/'/g, "''")}'`);
+          dbToArchive = dbSnap;
+        } catch (e) {
+          // Snapshot failed (disk/lock) — fall back to the checkpointed live file rather
+          // than drop the core DB from the backup entirely.
+        }
+        archive.file(dbToArchive, { name: 'travel.db' });
       }
 
       // Bundle the at-rest encryption key so the backup is self-contained: the
@@ -267,9 +282,11 @@ export async function createBackup(): Promise<BackupInfo> {
     if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
     throw err;
   } finally {
-    // The snapshot was a staging copy for the archiver only; drop it once streaming is done
-    // (the await above resolves on the output stream's 'close', so the archive is complete).
+    // The snapshots were staging copies for the archiver only; drop them once streaming is
+    // done (the await above resolves on the output stream's 'close', so the archive is
+    // complete).
     fs.rmSync(pdataSnap, { recursive: true, force: true });
+    fs.rmSync(dbSnap, { force: true });
   }
 }
 
@@ -374,10 +391,17 @@ export async function restoreFromZip(zipPath: string): Promise<RestoreResult> {
 
     try {
       const dbDest = path.join(dataDir, 'travel.db');
-      for (const ext of ['', '-wal', '-shm']) {
+      // Swap the core DB atomically: copy the restored DB to a temp file on the SAME
+      // filesystem, drop the old -wal/-shm sidecars (they belong to the DB being replaced
+      // and would corrupt the new one if left), then rename into place. A rename is atomic,
+      // so a crash mid-swap leaves either the old or the new travel.db intact — never the
+      // deleted-and-not-yet-copied gap that a plain unlink-then-copy could leave.
+      const dbTmp = dbDest + '.restore-tmp';
+      fs.copyFileSync(extractedDb, dbTmp);
+      for (const ext of ['-wal', '-shm']) {
         try { fs.unlinkSync(dbDest + ext); } catch (e) {}
       }
-      fs.copyFileSync(extractedDb, dbDest);
+      fs.renameSync(dbTmp, dbDest);
 
       // Restore the bundled at-rest encryption key (if the archive carries one)
       // so the restored DB's encrypted secrets can be decrypted. Only the file
