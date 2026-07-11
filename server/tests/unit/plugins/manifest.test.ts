@@ -78,8 +78,35 @@ describe('parseManifest capabilities', () => {
     expect(pd.capabilities.widget?.slot).toBe('place-detail');
   });
 
+  it('accepts the day-detail widget slot (mounts in the day panel)', () => {
+    const dd = parseManifest({ ...base, capabilities: { widget: { slot: 'day-detail' } } });
+    expect(dd.capabilities.widget?.slot).toBe('day-detail');
+  });
+
+  it('accepts the reservation-detail widget slot (mounts on a booking card)', () => {
+    const rd = parseManifest({ ...base, capabilities: { widget: { slot: 'reservation-detail' } } });
+    expect(rd.capabilities.widget?.slot).toBe('reservation-detail');
+  });
+
   it('rejects an unknown widget slot', () => {
     expect(() => parseManifest({ ...base, capabilities: { widget: { slot: 'floating' } } })).toThrow(ManifestError);
+  });
+
+  it('parses tripPage replaces + position, deduplicated', () => {
+    const m = parseManifest({ ...base, capabilities: { tripPage: { replaces: ['transports', 'buchungen', 'transports'], position: 1 } } });
+    expect(m.capabilities.tripPage).toEqual({ replaces: ['transports', 'buchungen'], position: 1 });
+    // either half stands alone
+    expect(parseManifest({ ...base, capabilities: { tripPage: { position: 0 } } }).capabilities.tripPage).toEqual({ position: 0 });
+    expect(parseManifest({ ...base, capabilities: { tripPage: {} } }).capabilities.tripPage).toBeUndefined();
+  });
+
+  it("refuses to replace 'plan', unknown tabs and out-of-range positions", () => {
+    expect(() => parseManifest({ ...base, capabilities: { tripPage: { replaces: ['plan'] } } })).toThrow(ManifestError);
+    expect(() => parseManifest({ ...base, capabilities: { tripPage: { replaces: ['settings'] } } })).toThrow(ManifestError);
+    expect(() => parseManifest({ ...base, capabilities: { tripPage: { replaces: 'transports' } } })).toThrow(ManifestError);
+    expect(() => parseManifest({ ...base, capabilities: { tripPage: { position: -1 } } })).toThrow(ManifestError);
+    expect(() => parseManifest({ ...base, capabilities: { tripPage: { position: 2.5 } } })).toThrow(ManifestError);
+    expect(() => parseManifest({ ...base, capabilities: { tripPage: { position: 99 } } })).toThrow(ManifestError);
   });
 });
 

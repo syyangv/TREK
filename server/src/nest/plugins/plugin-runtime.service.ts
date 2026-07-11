@@ -3,14 +3,20 @@ import semver from 'semver';
 import { db } from '../../db/database';
 import { pluginsEnabled } from './kill-switch';
 import { setPluginEventSink } from '../../plugin-event-sink';
+import { setUserDeletedSink } from '../../plugin-user-lifecycle';
+import { applyStagedPluginTrees, setStagedRestoreApplier } from './plugin-backup';
 import { decrypt_api_key } from '../../services/apiKeyCrypto';
 import { PluginSupervisor, type PluginRouteInfo } from './supervisor/plugin-supervisor';
 import fs from 'node:fs';
+import path from 'node:path';
 import { createRealRpcHost, closePluginDataDb } from './host/create-rpc-host';
 import { ForbiddenResource } from './host/rpc-host';
 import { removePluginData } from './host/plugin-data.service';
 import { isKnownPermission } from './protocol/envelope';
 import { discoverPlugins } from './install/discovery';
+import { parseJsonText, parseManifest } from './install/manifest';
+import { scanForNativeBinaries } from './install/native-scan';
+import { devLinkEnabled, DEV_LINK_SOURCE } from './dev-link';
 import { pluginCodeDir } from './paths';
 import { PluginRegistryService } from './registry/registry.service';
 import { isAddonEnabled } from '../../services/adminService';
@@ -19,6 +25,37 @@ import type { VersionMismatch, PluginDepRow } from './dependencies';
 import { parseDependencies, disabledRequiredAddons, resolveDependencyState, enableOrder, findDependentsTransitive, DependencyCycleError } from './dependencies';
 
 const HTTP_OUTBOUND = 'http:outbound:';
+
+/**
+ * Remove `<plugins>/<id>` whether it is a real directory, a POSIX symlink or a
+ * Windows junction — WITHOUT ever following a dev-link into (and deleting) the
+ * author's source. A symlink is unlinked; a junction (which lstats as a directory
+ * on Windows) is rmdir'd (drops the reparse point, not the target); a real dir is
+ * recursively removed. A no-op if nothing is there.
+ */
+function removePluginCodeEntry(dest: string): void {
+  let lst: fs.Stats;
+  try {
+    lst = fs.lstatSync(dest);
+  } catch {
+    return; // nothing to remove
+  }
+  if (lst.isSymbolicLink()) {
+    fs.unlinkSync(dest); // POSIX symlink -> drop the link only
+    return;
+  }
+  if (process.platform === 'win32' && lst.isDirectory()) {
+    // A junction lstats as a directory; rmdir removes the junction itself, not the
+    // target. A REAL non-empty dir throws ENOTEMPTY -> fall through to a full remove.
+    try {
+      fs.rmdirSync(dest);
+      return;
+    } catch {
+      /* real, non-empty directory */
+    }
+  }
+  fs.rmSync(dest, { recursive: true, force: true });
+}
 
 /** Thrown when (re-)activating would grant permissions the admin hasn't consented to. */
 export class PluginConsentRequired extends Error {
@@ -59,19 +96,36 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
   // plugin's ctx.plugins.call / ctx.events.emit resolve through callPlugin/
   // emitPluginEvent below (which own the dependency-edge authorization).
   private readonly supervisor = new PluginSupervisor((id, granted) => createRealRpcHost(id, granted, this), {
+    // Both hooks run from child lifecycle EventEmitter callbacks (exit / stderr 'data'),
+    // so a throw here becomes an uncaughtException that has no host-side handler. During a
+    // restore the core DB is briefly CLOSED (closeDb → the db proxy throws on access), so a
+    // status/log write in that window would otherwise take the whole process down mid-
+    // restore. Swallow any DB error — a missed status row / log line is never worth a crash.
     onStatus: (id, status, error) => {
-      db.prepare('UPDATE plugins SET status = ?, last_error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
-        status,
-        error ?? null,
-        id,
-      );
+      try {
+        db.prepare('UPDATE plugins SET status = ?, last_error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, error ?? null, id);
+      } catch { /* DB unavailable (e.g. mid-restore) — a status write must never crash the host */ }
     },
     onLog: (id, level, msg) => {
-      if (level === 'error' || level === 'warn') {
+      if (level !== 'error' && level !== 'warn') return;
+      try {
         db.prepare('INSERT INTO plugin_error_log (plugin_id, level, message) VALUES (?, ?, ?)').run(id, level, msg);
-      }
+        // Retention: a crash-looping plugin emits a stderr line per restart, so an
+        // uncapped table grows without bound in the shared trek.db. Keep only the
+        // most recent LOG_RETENTION rows per plugin (the admin view shows 200).
+        pruneErrorLog(id);
+      } catch { /* DB unavailable — a log line must never crash the host */ }
     },
   });
+
+  // Filesystem watchers for dev-linked plugins (id -> watcher), so a rebuild of the
+  // author's source auto-reloads. Empty unless dev-link is used.
+  private readonly linkWatchers = new Map<string, fs.FSWatcher>();
+
+  // Sweeps plugin_scheduled_tasks for due callbacks and fires them on active plugins.
+  private schedulerSweep: ReturnType<typeof setInterval> | null = null;
+  // Coalesces overlapping erasure drains (the sweep and enqueue both trigger one).
+  private drainInFlight: Promise<void> | null = null;
 
   // Optional at the type level so tests can `new PluginRuntimeService()` without a
   // registry; Nest always injects the real one (the provider is in the module).
@@ -79,9 +133,27 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     if (!pluginsEnabled()) return;
+    // If a restore staged plugin trees, swap them into place NOW — before we open any
+    // plugin DB below. This is where a restored backup's plugin data/code actually
+    // takes effect (the restore itself only stages, since the runtime holds the DBs
+    // open). No-op when nothing was staged. Defensive: never blocks boot.
+    try {
+      const applied = applyStagedPluginTrees();
+      if (applied.length) console.log(`[plugins] applied staged restore: ${applied.join(', ')}`);
+    } catch { /* reconcile must never stop the server from starting */ }
+    // Let a live restore apply its staged plugin trees IMMEDIATELY instead of leaving
+    // them for an arbitrary future boot: quiesce every plugin (closing its DB handles)
+    // then swap. Plugins stay down until the app restart the restore already requires.
+    setStagedRestoreApplier(async () => {
+      await this.supervisor.shutdownAll();
+      applyStagedPluginTrees();
+    });
     // Forward core trip events to plugins that subscribed (events:subscribe). The
     // sink is name-only + fire-and-forget, so it can never block a core broadcast.
-    setPluginEventSink((tripId, event) => this.supervisor.deliverEvent(tripId, event));
+    setPluginEventSink((tripId, event, meta) => this.supervisor.deliverEvent(tripId, event, meta));
+    // Fan a deleted account out to plugins so they can erase their own per-user data.
+    // Enqueued durably (survives restart), so nothing is lost if a plugin is offline.
+    setUserDeletedSink((userId) => this.enqueueUserErasure(userId));
     // Discover plugins placed on the volume (registers new ones inactive), then
     // boot the ones an admin had already activated — in dependency order so a
     // plugin's dependencies come up before it does. The whole block is defensive:
@@ -112,6 +184,158 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
     } catch {
       /* discovery/boot must never block app init */
     }
+    // Fire due scheduled tasks (persistent, userless) on a coarse tick — the
+    // scheduler is minute-granularity by contract, so 30s precision is plenty and
+    // cheap. Unref'd so it never holds the process open.
+    this.schedulerSweep = setInterval(() => {
+      this.fireDueScheduled();
+      void this.drainUserErasures();
+    }, 30_000);
+    this.schedulerSweep.unref?.();
+  }
+
+  /** Fire every scheduled task that is due on an ACTIVE plugin; re-arm recurring
+   * ones, delete one-shots. The row is re-armed/deleted BEFORE the fire so a crash
+   * mid-callback can't double-fire; an inactive plugin's tasks are left untouched so
+   * they run on the next sweep after it reactivates. Never throws. */
+  private fireDueScheduled(): void {
+    if (!pluginsEnabled()) return;
+    try {
+      // Scope the window to ACTIVE plugins so a backlog of past-due rows belonging to
+      // inactive plugins can't fill the LIMIT and starve active plugins' timers.
+      const active = this.supervisor.activeIds();
+      if (active.length === 0) return;
+      const now = Date.now();
+      const ph = active.map(() => '?').join(',');
+      const due = db
+        .prepare(`SELECT id, plugin_id, name, payload, every_ms FROM plugin_scheduled_tasks WHERE due_at <= ? AND plugin_id IN (${ph}) ORDER BY due_at LIMIT 200`)
+        .all(now, ...active) as Array<{ id: number; plugin_id: string; name: string; payload: string; every_ms: number | null }>;
+      for (const t of due) {
+        if (!this.supervisor.isActive(t.plugin_id)) continue; // leave for a later sweep
+        if (t.every_ms) db.prepare('UPDATE plugin_scheduled_tasks SET due_at = ? WHERE id = ?').run(now + t.every_ms, t.id);
+        else db.prepare('DELETE FROM plugin_scheduled_tasks WHERE id = ?').run(t.id);
+        let payload: unknown = null;
+        try { payload = JSON.parse(t.payload); } catch { /* corrupt payload -> null */ }
+        this.supervisor.deliverScheduled(t.plugin_id, t.name, payload);
+      }
+    } catch {
+      /* a sweep must never break the runtime */
+    }
+  }
+
+  /** Queue a GDPR erasure for every installed plugin that holds hook:user-data, then
+   * try to deliver immediately. Persisted first (INSERT OR IGNORE, idempotent) so the
+   * erasure survives a restart and reaches a plugin that is offline right now. Never
+   * throws — a bookkeeping error must not fail the account deletion that triggered it. */
+  private enqueueUserErasure(userId: number): void {
+    try {
+      const rows = db.prepare('SELECT id, permissions FROM plugins').all() as Array<{ id: string; permissions: string | null }>;
+      const insert = db.prepare('INSERT OR IGNORE INTO plugin_user_erasure_queue (plugin_id, user_id) VALUES (?, ?)');
+      for (const r of rows) {
+        let perms: unknown;
+        try { perms = JSON.parse(r.permissions ?? '[]'); } catch { perms = []; }
+        if (Array.isArray(perms) && perms.includes('hook:user-data')) insert.run(r.id, userId);
+      }
+    } catch {
+      /* enqueue is best-effort; a later sweep reconciles from whatever landed */
+    }
+    void this.drainUserErasures();
+  }
+
+  /** Deliver queued erasures to active plugins, dropping each row only once the plugin
+   * ACKs. Rows for inactive plugins are left for a later sweep / their reactivation.
+   * Never throws. */
+  private drainUserErasures(): Promise<void> {
+    // Coalesce onto the drain already in flight. Both the 30s sweep and enqueue trigger
+    // a drain, and a pass awaits per-row delivery (up to the invoke timeout each), so
+    // running two concurrently would select the SAME rows and deliver an erasure twice.
+    // A caller that awaits still waits for a full pass (the in-flight one).
+    if (this.drainInFlight) return this.drainInFlight;
+    this.drainInFlight = this.runDrainOnce().finally(() => { this.drainInFlight = null; });
+    return this.drainInFlight;
+  }
+
+  private async runDrainOnce(): Promise<void> {
+    if (!pluginsEnabled()) return;
+    try {
+      // Reap rows whose plugin no longer exists (uninstalled): its data dir was removed
+      // with it, so the erasure is already satisfied, and the plugin will never reactivate
+      // to ACK the row — left alone it would linger in the queue forever.
+      db.prepare('DELETE FROM plugin_user_erasure_queue WHERE plugin_id NOT IN (SELECT id FROM plugins)').run();
+      // Only ACTIVE plugins can be delivered to; scope the window to them so a backlog
+      // of erasures for permanently-inactive plugins can't starve deliverable ones.
+      const active = this.supervisor.activeIds();
+      if (active.length === 0) return;
+      const ph = active.map(() => '?').join(',');
+      const pending = db
+        .prepare(`SELECT id, plugin_id, user_id FROM plugin_user_erasure_queue WHERE plugin_id IN (${ph}) ORDER BY id LIMIT 200`)
+        .all(...active) as Array<{ id: number; plugin_id: string; user_id: number }>;
+      for (const row of pending) {
+        if (!this.supervisor.isActive(row.plugin_id)) continue; // retry after it reactivates
+        const done = await this.supervisor.deliverUserErasure(row.plugin_id, row.user_id);
+        if (done) db.prepare('DELETE FROM plugin_user_erasure_queue WHERE id = ?').run(row.id);
+      }
+    } catch {
+      /* a drain pass must never break the runtime */
+    }
+  }
+
+  /** GDPR portability: aggregate what every granted plugin holds about a user. An active
+   * plugin whose export ERRORED and an inactive granted plugin are both flagged `pending`
+   * (rather than silently omitted), so the export never reads as complete while missing data. */
+  async exportUserData(userId: number): Promise<Array<{ pluginId: string; data?: unknown; pending?: boolean; settings?: Record<string, unknown>; oauthConnected?: boolean }>> {
+    const out: Array<{ pluginId: string; data?: unknown; pending?: boolean; settings?: Record<string, unknown>; oauthConnected?: boolean }> = [];
+    if (!pluginsEnabled()) return out;
+    const rows = db.prepare('SELECT id, permissions FROM plugins').all() as Array<{ id: string; permissions: string | null }>;
+    for (const r of rows) {
+      if (this.supervisor.isActive(r.id)) {
+        const res = await this.supervisor.collectUserExport(r.id, userId);
+        if (res === undefined) continue;                       // not granted → nothing to export
+        if (res.ok) out.push({ pluginId: r.id, data: res.data });
+        else out.push({ pluginId: r.id, pending: true });      // errored/timed out → incomplete, retryable
+      } else {
+        // An inactive plugin can't export now — but if it holds hook:user-data it MAY
+        // hold this user's data. Flag it as pending (rather than silently omitting it)
+        // so the admin knows to reactivate it to complete a data-access request.
+        let perms: unknown;
+        try { perms = JSON.parse(r.permissions ?? '[]'); } catch { perms = []; }
+        if (Array.isArray(perms) && perms.includes('hook:user-data')) out.push({ pluginId: r.id, pending: true });
+      }
+    }
+
+    // Fold in the host-side per-user data TREK stores itself (what erasePluginUserData
+    // deletes) so an access request isn't asymmetric with erasure: the user's plugin
+    // settings (secret fields masked) and which plugins they OAuth-linked. Raw tokens
+    // are never exported. This is supplementary to each plugin's own-db export above, so
+    // an unexpected failure here must not drop that primary data — it's best-effort.
+    try {
+      const byId = new Map(out.map((o) => [o.pluginId, o]));
+      const entryFor = (pluginId: string) => {
+        let e = byId.get(pluginId);
+        if (!e) { e = { pluginId }; out.push(e); byId.set(pluginId, e); }
+        return e;
+      };
+      const secretKeys = new Map<string, Set<string>>();
+      for (const f of db.prepare("SELECT plugin_id, field_key FROM plugin_settings_fields WHERE scope = 'user' AND secret = 1").all() as Array<{ plugin_id: string; field_key: string }>) {
+        let s = secretKeys.get(f.plugin_id);
+        if (!s) { s = new Set(); secretKeys.set(f.plugin_id, s); }
+        s.add(f.field_key);
+      }
+      for (const c of db.prepare('SELECT plugin_id, config FROM plugin_user_config WHERE user_id = ?').all(userId) as Array<{ plugin_id: string; config: string }>) {
+        let cfg: Record<string, unknown> = {};
+        try { cfg = JSON.parse(c.config || '{}'); } catch { /* ignore */ }
+        const secrets = secretKeys.get(c.plugin_id) ?? new Set<string>();
+        const masked: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(cfg)) masked[k] = secrets.has(k) ? '***' : v;
+        entryFor(c.plugin_id).settings = masked;
+      }
+      for (const t of db.prepare('SELECT DISTINCT plugin_id FROM plugin_oauth_tokens WHERE user_id = ?').all(userId) as Array<{ plugin_id: string }>) {
+        entryFor(t.plugin_id).oauthConnected = true;
+      }
+    } catch (err) {
+      console.warn('[plugins] GDPR export: host-side settings/oauth fold failed', err);
+    }
+    return out;
   }
 
   /**
@@ -140,6 +364,13 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     setPluginEventSink(null);
+    setUserDeletedSink(null);
+    setStagedRestoreApplier(null);
+    if (this.schedulerSweep) { clearInterval(this.schedulerSweep); this.schedulerSweep = null; }
+    for (const w of this.linkWatchers.values()) {
+      try { w.close(); } catch { /* ignore */ }
+    }
+    this.linkWatchers.clear();
     await this.supervisor.shutdownAll();
   }
 
@@ -326,19 +557,124 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * DEV-ONLY: register a plugin from a LOCAL built directory and hot-reload it
+   * against this instance's REAL data. Symlinks `<plugins>/<id>` at the author's
+   * dir (so the supervisor forks the local code with ZERO loader change), validates
+   * the manifest + refuses native binaries like a sideload, registers it INACTIVE,
+   * and starts an fs.watch that re-forks on rebuild. Gated behind TREK_PLUGINS_DEV_LINK
+   * on top of the controller's admin + kill-switch gates — see dev-link.ts for why.
+   */
+  async link(sourceDir: string): Promise<{ id: string; version: string; replaced: boolean }> {
+    if (!devLinkEnabled()) throw new Error('dev-link is disabled (set TREK_PLUGINS_DEV_LINK=1)');
+    if (!path.isAbsolute(sourceDir)) throw new Error('the dev-link path must be absolute');
+    const manifestPath = path.join(sourceDir, 'trek-plugin.json');
+    if (!fs.existsSync(manifestPath)) throw new Error(`no trek-plugin.json at ${sourceDir}`);
+    const manifest = parseManifest(parseJsonText(fs.readFileSync(manifestPath, 'utf8')));
+    if (!fs.existsSync(path.join(sourceDir, 'server', 'index.js'))) {
+      throw new Error('no built server/index.js — build the plugin first (the loader runs the compiled artifact, not TS source)');
+    }
+    if (scanForNativeBinaries(sourceDir).length) throw new Error('directory contains native binaries');
+
+    const id = manifest.id;
+    const existing = db.prepare('SELECT source_repo FROM plugins WHERE id = ?').get(id) as { source_repo?: string } | undefined;
+    // Never clobber a REAL installed plugin (registry/sideload) — only re-point a link.
+    if (existing && existing.source_repo !== DEV_LINK_SOURCE) {
+      throw new Error(`a plugin '${id}' is already installed — uninstall it before dev-linking that id`);
+    }
+
+    const dest = pluginCodeDir(id);
+    const replaced = !!existing;
+    if (replaced) await this.deactivate(id); // stop the child (stale code / file locks) before re-pointing
+    this.stopWatch(id);
+    removePluginCodeEntry(dest); // drop any prior link — never follows into the author's source
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.symlinkSync(sourceDir, dest, 'junction'); // Windows junction (no elevation); POSIX ignores the type -> dir symlink
+    discoverPlugins(db); // registers/updates the row from the linked manifest, INACTIVE
+    db.prepare(
+      `UPDATE plugins SET source_repo = ?, source_commit = NULL, sha256 = NULL, author_pubkey = NULL, status = 'inactive', enabled = 0 WHERE id = ?`,
+    ).run(DEV_LINK_SOURCE, id);
+    this.watchLinked(id, sourceDir);
+    return { id, version: manifest.version, replaced };
+  }
+
+  /**
+   * DEV-ONLY: re-fork a dev-linked plugin so it picks up freshly-built code. This is
+   * the same deactivate->activate primitive the supervisor uses; the acting-user +
+   * capability gates are unchanged, so it keeps running against real, membership-gated
+   * data. Only re-activates if it was active (preserving the admin's on/off intent);
+   * a manifest that widened its permissions still requires explicit re-consent.
+   */
+  async reload(id: string): Promise<void> {
+    if (!devLinkEnabled()) throw new Error('dev-link is disabled (set TREK_PLUGINS_DEV_LINK=1)');
+    const row = db.prepare('SELECT source_repo FROM plugins WHERE id = ?').get(id) as { source_repo?: string } | undefined;
+    if (!row) throw new Error(`plugin ${id} not found`);
+    if (row.source_repo !== DEV_LINK_SOURCE) throw new Error(`plugin ${id} is not dev-linked`);
+    const wasActive = this.isActive(id);
+    await this.deactivate(id);
+    if (wasActive) await this.activate(id);
+  }
+
+  /** Best-effort fs.watch on a linked plugin's built output that debounces -> reload. */
+  private watchLinked(id: string, sourceDir: string): void {
+    this.stopWatch(id);
+    const serverDir = path.join(sourceDir, 'server'); // the loader runs server/index.js
+    try {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const watcher = fs.watch(serverDir, { recursive: true }, () => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          if (this.isActive(id)) void this.reload(id).catch(() => {}); // only re-fork a running plugin
+        }, 400); // debounce a rebuild's write burst into one re-fork
+        timer.unref?.();
+      });
+      watcher.on('error', () => this.stopWatch(id));
+      this.linkWatchers.set(id, watcher);
+    } catch {
+      /* fs.watch(recursive) is best-effort; POST /:id/reload still works */
+    }
+  }
+
+  private stopWatch(id: string): void {
+    const w = this.linkWatchers.get(id);
+    if (w) {
+      try { w.close(); } catch { /* ignore */ }
+      this.linkWatchers.delete(id);
+    }
+  }
+
   /** Stop the plugin, remove its code, and optionally delete all its data. */
   async uninstall(id: string, deleteData: boolean): Promise<void> {
     await this.supervisor.disable(id);
+    this.stopWatch(id);
     closePluginDataDb(id);
     // Code always goes; the DB metadata + fields go so it disappears from the UI.
-    fs.rmSync(pluginCodeDir(id), { recursive: true, force: true });
+    // Link-safe: a dev-linked plugin only drops the symlink, never the author's source.
+    removePluginCodeEntry(pluginCodeDir(id));
     db.prepare('DELETE FROM plugins WHERE id = ?').run(id);
     db.prepare('DELETE FROM plugin_settings_fields WHERE plugin_id = ?').run(id);
+    // Scheduled tasks are operational (not user data), so they go unconditionally —
+    // a scheduled callback for a plugin that no longer exists must never fire.
+    db.prepare('DELETE FROM plugin_scheduled_tasks WHERE plugin_id = ?').run(id);
     if (deleteData) {
       removePluginData(id);
       db.prepare('DELETE FROM plugin_error_log WHERE plugin_id = ?').run(id);
       db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`plugin:${id}:%`);
       db.prepare('DELETE FROM plugin_entity_metadata WHERE plugin_id = ?').run(id);
+      // Per-user secrets + OAuth tokens/state live in their own tables, NOT under
+      // settings — without these a "delete all data" leaves encrypted API keys and
+      // refresh tokens behind, silently re-adopted if a plugin with the same id is
+      // reinstalled. The migration ledger goes too, so a reinstall re-runs cleanly.
+      db.prepare('DELETE FROM plugin_user_config WHERE plugin_id = ?').run(id);
+      db.prepare('DELETE FROM plugin_oauth_tokens WHERE plugin_id = ?').run(id);
+      db.prepare('DELETE FROM plugin_oauth_state WHERE plugin_id = ?').run(id);
+      db.prepare('DELETE FROM plugin_meta_migrations WHERE plugin_id = ?').run(id);
+      db.prepare('DELETE FROM plugin_capability_audit WHERE plugin_id = ?').run(id);
+      // The plugin's data dir is gone now, so any pending GDPR erasure for it is moot.
+      // But when deleteData is FALSE we deliberately KEEP the queue rows: the data dir
+      // (which may still hold a deleted user's rows) survives, so the erasure obligation
+      // must survive too — a reinstall of the same id drains the queue and honours it.
+      db.prepare('DELETE FROM plugin_user_erasure_queue WHERE plugin_id = ?').run(id);
     }
   }
 
@@ -471,4 +807,15 @@ function decryptConfig(config: Record<string, unknown>): Record<string, unknown>
     out[k] = typeof v === 'string' ? decrypt_api_key(v) : v;
   }
   return out;
+}
+
+const LOG_RETENTION = 500; // rows kept per plugin (the admin view shows the newest 200)
+/** Trim a plugin's error log to the most recent LOG_RETENTION rows. Cheap: onLog
+ * only fires on warn/error, so this never runs on the hot path. */
+function pruneErrorLog(pluginId: string): void {
+  db.prepare(
+    `DELETE FROM plugin_error_log WHERE plugin_id = ? AND id NOT IN (
+       SELECT id FROM plugin_error_log WHERE plugin_id = ? ORDER BY id DESC LIMIT ${LOG_RETENTION}
+     )`,
+  ).run(pluginId, pluginId);
 }

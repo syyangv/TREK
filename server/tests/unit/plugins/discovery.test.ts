@@ -94,6 +94,31 @@ describe('discoverPlugins', () => {
     expect(discoverPlugins(db).skipped).toEqual(['native']);
   });
 
+  it('follows a symlinked dev-link plugin only when dev-link mode is on', () => {
+    const srcRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'disc-src-'));
+    const prev = process.env.TREK_PLUGINS_DEV_LINK;
+    try {
+      const src = path.join(srcRoot, 'linked');
+      fs.mkdirSync(path.join(src, 'server'), { recursive: true });
+      fs.writeFileSync(path.join(src, 'trek-plugin.json'), JSON.stringify({ id: 'linked', name: 'Linked', version: '1.0.0', type: 'integration', permissions: ['db:own'] }));
+      fs.writeFileSync(path.join(src, 'server', 'index.js'), 'module.exports={}');
+      fs.symlinkSync(src, path.join(codeRoot, 'linked'), 'junction'); // junction on Windows, symlink on POSIX
+
+      // Off (default): a stale dev-link symlink is not discovered or registered.
+      delete process.env.TREK_PLUGINS_DEV_LINK;
+      expect(discoverPlugins(db).discovered).toEqual([]);
+      expect(db.prepare("SELECT status FROM plugins WHERE id='linked'").get()).toBeUndefined();
+
+      // On: the dev-link is followed and registered inactive.
+      process.env.TREK_PLUGINS_DEV_LINK = '1';
+      expect(discoverPlugins(db).discovered).toEqual(['linked']);
+      expect(db.prepare("SELECT status FROM plugins WHERE id='linked'").get()).toMatchObject({ status: 'inactive' });
+    } finally {
+      if (prev === undefined) delete process.env.TREK_PLUGINS_DEV_LINK; else process.env.TREK_PLUGINS_DEV_LINK = prev;
+      fs.rmSync(srcRoot, { recursive: true, force: true });
+    }
+  });
+
   it('is a no-op when the plugins dir is absent', () => {
     process.env.TREK_PLUGINS_DIR = path.join(codeRoot, 'does-not-exist');
     expect(discoverPlugins(db)).toEqual({ discovered: [], skipped: [] });

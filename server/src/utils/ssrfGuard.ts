@@ -101,6 +101,55 @@ export async function checkSsrf(rawUrl: string, bypassInternalIpAllowed: boolean
   return { allowed: true, isPrivate: false, resolvedIp };
 }
 
+/** Link-local / cloud-metadata addresses — never a legitimate model host. */
+function isLinkLocal(ip: string): boolean {
+  const addr = (ip.startsWith('[') ? ip.slice(1, -1) : ip).toLowerCase();
+  // IPv4 link-local — AWS, GCP, Azure and OpenStack all serve credentials from 169.254.169.254.
+  if (addr.startsWith('169.254.')) return true;
+  // IPv4-mapped (::ffff:169.254.x) and IPv4-compatible (::a9fe:xxxx = ::169.254.x) spellings.
+  if (/^::ffff:169\.254\./.test(addr) || /^::(ffff:)?a9fe:/.test(addr)) return true;
+  // IPv6 link-local fe80::/10 — the whole range (fe80: … febf:), not just the fe80: prefix.
+  if (/^fe[89ab][0-9a-f]:/.test(addr)) return true;
+  // AWS IMDSv6 sits in a fixed ULA slot; block it specifically while leaving the rest of
+  // fc00::/7 reachable (a self-hosted model server may legitimately sit on a ULA address).
+  if (addr === 'fd00:ec2::254' || addr.startsWith('fd00:ec2:')) return true;
+  return false;
+}
+
+/**
+ * SSRF-safe fetch for a user-configurable LLM endpoint. Unlike safeFetch() this
+ * deliberately ALLOWS loopback and private/LAN targets — a local Ollama on
+ * localhost or a model server on the LAN is the normal, supported config, so
+ * blocking them would break a legitimate setup. It blocks only the link-local /
+ * cloud-metadata range (169.254.0.0/16, fe80::/10), which is never a real LLM
+ * host but is the credential-theft SSRF target. The connection is pinned to the
+ * resolved IP, so a hostname cannot rebind to the metadata address between the
+ * check and the request.
+ */
+export async function safeFetchLlm(url: string, init?: RequestInit): Promise<Response> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new SsrfBlockedError('Invalid URL');
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new SsrfBlockedError('Only HTTP and HTTPS URLs are allowed');
+  }
+  let resolvedIp: string;
+  try {
+    resolvedIp = (await dns.lookup(parsed.hostname)).address;
+  } catch (error_) {
+    const code = error_ instanceof Error && 'code' in error_ ? String(error_.code) : 'unknown';
+    throw new SsrfBlockedError(`Could not resolve hostname (${code})`);
+  }
+  if (isLinkLocal(resolvedIp)) {
+    throw new SsrfBlockedError('Requests to link-local / cloud-metadata addresses are not allowed');
+  }
+  const dispatcher = createPinnedDispatcher(resolvedIp, true);
+  return fetch(url, { ...init, dispatcher } as any);
+}
+
 /**
  * Thrown by safeFetch() when the URL is blocked by the SSRF guard.
  */

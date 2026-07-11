@@ -46,12 +46,26 @@ export const KNOWN_ADDONS = [
 // no spaces (mirrors the server manifest validator).
 const HOST_RE = /^(\*\.[a-z0-9-]+(\.[a-z0-9-]+)+|[a-z0-9-]+(\.[a-z0-9-]+)*)$/i;
 const TYPES = ['integration', 'page', 'widget', 'trip-page'];
+// Mirror of the server's KNOWN_PERMISSIONS (server envelope.ts) — the host hard-rejects
+// anything not in this list at activation, so validate must know the full set.
 const KNOWN_PERMISSIONS = [
-  'db:own', 'db:read:trips', 'db:read:users', 'db:read:costs', 'db:read:packing', 'db:read:files', 'db:write:costs',
-  'db:write:places', 'db:write:days', 'db:write:itinerary', 'db:write:trips',
+  'db:own',
+  'db:read:trips', 'db:read:users', 'db:read:costs', 'db:read:packing', 'db:read:files',
+  'db:read:files:content', 'db:read:collab',
+  'db:read:journal', 'db:read:atlas', 'db:read:vacay', 'db:read:daynotes', 'db:read:collections',
+  'db:read:categories', 'db:read:tags', 'db:read:todos',
+  'db:write:costs', 'db:write:places', 'db:write:days', 'db:write:itinerary', 'db:write:trips',
+  'db:write:reservations', 'db:write:accommodations', 'db:write:packing', 'db:write:files',
+  'db:write:collab', 'db:write:members', 'db:write:collections', 'db:write:atlas', 'db:write:vacay',
+  'db:write:journal', 'db:write:tags', 'db:write:todos', 'db:write:daynotes',
+  'db:create:trips',
   'db:meta',
   'ws:broadcast:trip', 'ws:broadcast:user',
-  'hook:photo-provider', 'hook:calendar-source', 'hook:place-detail-provider', 'hook:trip-warning-provider', 'events:subscribe', 'http:outbound',
+  'hook:photo-provider', 'hook:calendar-source', 'hook:place-detail-provider', 'hook:trip-warning-provider',
+  'hook:table-contributor', 'hook:map-marker-provider', 'hook:pdf-section-provider', 'hook:atlas-layer-provider',
+  'hook:journal-entry-provider', 'hook:trip-card-provider', 'hook:user-data',
+  'events:subscribe', 'jobs:run', 'http:outbound',
+  'weather:read', 'rates:read', 'notify:send', 'ai:invoke', 'oauth:client',
 ];
 
 function isKnownPermission(p: string): boolean {
@@ -89,10 +103,24 @@ export function validateManifest(raw: unknown): ValidationResult {
   if (egress.includes('*')) errors.push('egress[] must not contain a bare "*"');
   for (const h of egress) if (!HOST_RE.test(h)) errors.push(`invalid egress host "${h}"`);
 
-  const capabilities = (m.capabilities ?? undefined) as { widget?: { slot?: unknown }; provides?: unknown; emits?: unknown } | undefined;
+  const capabilities = (m.capabilities ?? undefined) as { widget?: { slot?: unknown }; tripPage?: { replaces?: unknown; position?: unknown }; provides?: unknown; emits?: unknown } | undefined;
   const widget = capabilities?.widget;
-  if (widget?.slot !== undefined && widget.slot !== 'sidebar' && widget.slot !== 'hero' && widget.slot !== 'place-detail') {
-    errors.push(`widget slot must be "sidebar", "hero" or "place-detail", got "${String(widget.slot)}"`);
+  if (widget?.slot !== undefined && widget.slot !== 'sidebar' && widget.slot !== 'hero' && widget.slot !== 'place-detail' && widget.slot !== 'day-detail' && widget.slot !== 'reservation-detail') {
+    errors.push(`widget slot must be "sidebar", "hero", "place-detail", "day-detail" or "reservation-detail", got "${String(widget.slot)}"`);
+  }
+  // Mirrors the server's REPLACEABLE_TABS — 'plan' is never replaceable.
+  const tripPage = capabilities?.tripPage;
+  if (tripPage !== undefined) {
+    const REPLACEABLE = ['transports', 'buchungen', 'listen', 'finanzplan', 'dateien', 'collab'];
+    if (tripPage.replaces !== undefined) {
+      if (!Array.isArray(tripPage.replaces)) errors.push('capabilities.tripPage.replaces must be an array');
+      else for (const t of tripPage.replaces) {
+        if (typeof t !== 'string' || !REPLACEABLE.includes(t)) errors.push(`capabilities.tripPage.replaces: "${String(t)}" is not a replaceable tab (${REPLACEABLE.join(', ')})`);
+      }
+    }
+    if (tripPage.position !== undefined && (typeof tripPage.position !== 'number' || !Number.isInteger(tripPage.position) || tripPage.position < 0 || tripPage.position > 50)) {
+      errors.push('capabilities.tripPage.position must be an integer between 0 and 50');
+    }
   }
   validateCapabilityNames(capabilities?.provides, 'provides', errors);
   validateCapabilityNames(capabilities?.emits, 'emits', errors);

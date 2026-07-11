@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import {
   Blocks, AlertTriangle, PackageOpen, RefreshCw, Trash2, Download, Bug, X, ShieldCheck, UploadCloud,
-  ArrowUpCircle, Github, ExternalLink, ChevronDown, Check, Lock, Search,
+  ArrowUpCircle, Github, ExternalLink, ChevronDown, Check, Lock, Search, Link2,
   SlidersHorizontal, ArrowUpDown, CircleDot, MoreHorizontal, RotateCw, ArrowRight, Database, Users, LayoutDashboard,
   Radio, Luggage, Plane, Globe, Image, CalendarDays, Map, Bell, Cloud, Camera, Compass,
   BookOpen, Wallet, Puzzle, MapPin, ListChecks, Pencil, Tag, FileText,
 } from 'lucide-react'
 import { adminApi } from '../../api/client'
+import { usePluginStore } from '../../store/pluginStore'
 import { useTranslation } from '../../i18n'
 import { useToast } from '../shared/Toast'
 import ConfirmDialog from '../shared/ConfirmDialog'
@@ -56,6 +57,7 @@ interface RegistryItem {
   latest: string | null
   minTrekVersion: string | null
   reviewedAt: string | null
+  downloadCount?: number | null
   screenshotUrl: string | null
   requiredAddons?: string[]
   pluginDependencies?: PluginDep[]
@@ -85,7 +87,7 @@ interface ActivateErr {
 type T = (k: string, p?: Record<string, unknown>) => string
 type TypeFilter = 'all' | 'widget' | 'page' | 'integration' | 'trip-page'
 type StatusFilter = 'all' | 'on' | 'off' | 'update' | 'err'
-type SortKey = 'name' | 'recent' | 'updates'
+type SortKey = 'name' | 'recent' | 'updates' | 'downloads'
 
 // Runtime health → dot colour on the icon tile.
 const HEALTH: Record<string, string> = {
@@ -104,12 +106,19 @@ const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: 
 
 // Known permissions → human-readable i18n key; unknown ones render as raw code.
 const PERM_KEYS = [
-  'db:own', 'db:read:trips', 'db:read:users', 'db:read:costs', 'db:read:packing', 'db:read:files', 'db:write:costs',
-  'db:write:places', 'db:write:days', 'db:write:itinerary', 'db:write:trips',
+  'db:own', 'db:read:trips', 'db:read:users', 'db:read:costs', 'db:read:packing', 'db:read:files', 'db:read:files:content',
+  'db:read:collab', 'db:read:journal', 'db:read:atlas', 'db:read:vacay', 'db:read:daynotes', 'db:read:collections',
+  'db:read:categories', 'db:read:tags', 'db:read:todos', 'weather:read', 'rates:read', 'db:write:costs',
+  'db:write:places', 'db:write:days', 'db:write:itinerary', 'db:write:trips', 'db:write:reservations', 'db:write:accommodations', 'db:write:daynotes', 'db:write:packing',
+  'db:write:tags', 'db:write:todos', 'db:write:atlas', 'db:write:vacay', 'db:write:journal', 'db:write:collections',
+  'db:write:files', 'db:write:collab', 'db:write:members',
+  'db:create:trips',
   'db:meta',
-  'events:subscribe',
+  'notify:send', 'ai:invoke', 'oauth:client',
+  'events:subscribe', 'jobs:run',
   'ws:broadcast:trip', 'ws:broadcast:user',
-  'hook:photo-provider', 'hook:calendar-source', 'hook:place-detail-provider', 'hook:trip-warning-provider', 'http:outbound',
+  'hook:photo-provider', 'hook:calendar-source', 'hook:place-detail-provider', 'hook:trip-warning-provider', 'hook:table-contributor', 'hook:map-marker-provider',
+  'hook:pdf-section-provider', 'hook:atlas-layer-provider', 'hook:journal-entry-provider', 'hook:trip-card-provider', 'hook:user-data', 'http:outbound',
 ]
 
 const KNOWN_TYPES = ['widget', 'page', 'integration', 'trip-page']
@@ -132,7 +141,7 @@ interface Cap { icon: React.ComponentType<{ size?: number; className?: string }>
 
 // Turn a plugin's declared permissions + capabilities into the at-a-glance chips
 // that make its real reach legible without opening the detail dialog.
-function deriveCaps(perms: string[], caps: { widget?: { slot?: string } }, t: T): Cap[] {
+function deriveCaps(perms: string[], caps: { widget?: { slot?: string }; tripPage?: { replaces?: string[] } }, t: T): Cap[] {
   const out: Cap[] = []
   if (perms.includes('db:read:trips')) out.push({ icon: Database, label: t('admin.plugins.cap.readsTrips') })
   if (perms.includes('db:read:users')) out.push({ icon: Users, label: t('admin.plugins.cap.readsUsers') })
@@ -148,9 +157,13 @@ function deriveCaps(perms: string[], caps: { widget?: { slot?: string } }, t: T)
   if (caps.widget) {
     const slotKey = caps.widget.slot === 'hero' ? 'admin.plugins.cap.heroWidget'
       : caps.widget.slot === 'place-detail' ? 'admin.plugins.cap.placeSlot'
+      : caps.widget.slot === 'day-detail' ? 'admin.plugins.cap.daySlot'
+      : caps.widget.slot === 'reservation-detail' ? 'admin.plugins.cap.reservationSlot'
       : 'admin.plugins.cap.widget'
     out.push({ icon: LayoutDashboard, label: t(slotKey as never) })
   }
+  // Replacing planner tabs is the one capability that HIDES core UI — always chip it.
+  if (caps.tripPage?.replaces?.length) out.push({ icon: LayoutDashboard, label: t('admin.plugins.cap.replacesTabs') })
   if (perms.some(p => p.startsWith('ws:broadcast'))) out.push({ icon: Radio, label: t('admin.plugins.cap.realtime') })
   if (perms.includes('hook:photo-provider')) out.push({ icon: Image, label: t('admin.plugins.cap.photos') })
   if (perms.includes('hook:calendar-source')) out.push({ icon: CalendarDays, label: t('admin.plugins.cap.calendar') })
@@ -204,6 +217,16 @@ function SideloadedBadge({ t }: { t: T }) {
   )
 }
 
+/** Marks a dev-linked plugin: loaded from a local build dir + hot-reloaded (dev only). */
+function DevLinkBadge({ t }: { t: T }) {
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-[2px] rounded-md text-[11px] font-medium bg-accent-soft text-accent border border-accent/25"
+      title={t('admin.plugins.devLinkHint')}>
+      <Link2 size={11} /> {t('admin.plugins.devLinkBadge')}
+    </span>
+  )
+}
+
 function TypeBadge({ type, t }: { type: string; t: T }) {
   return (
     <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wide bg-accent-subtle text-content-muted">
@@ -216,6 +239,8 @@ export default function AdminPluginsPanel() {
   const { t, locale } = useTranslation()
   const toast = useToast()
   const [runtimeOn, setRuntimeOn] = useState(false)
+  const [devLink, setDevLink] = useState(false) // dev-link enabled server-side (TREK_PLUGINS_DEV_LINK)
+  const [linkPath, setLinkPath] = useState('')
   const [plugins, setPlugins] = useState<PluginRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -239,15 +264,27 @@ export default function AdminPluginsPanel() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [sort, setSort] = useState<SortKey>('name')
 
+  // 'updates' only ranks installed plugins, 'downloads' only the registry — snap
+  // the key back to name when switching tabs so the dropdown never carries a label
+  // for an option the active tab can't offer.
+  useEffect(() => {
+    if (view === 'discover' && sort === 'updates') setSort('name')
+    else if (view === 'installed' && sort === 'downloads') setSort('name')
+  }, [view, sort])
+
   // Sideload upload: drag a plugin .zip onto the panel or use the toolbar button.
   const [dragActive, setDragActive] = useState(false)
   const uploadInputRef = useRef<HTMLInputElement>(null)
   const dragDepth = useRef(0)
 
   const refresh = () => {
+    // Keep the app-wide active-plugin store in sync so widget/hero/tab consumers
+    // (e.g. the dashboard) reflect an activate/deactivate without a full reload (F5).
+    void usePluginStore.getState().loadPlugins()
     adminApi.plugins()
-      .then((d: { enabled: boolean; plugins: PluginRow[] }) => {
+      .then((d: { enabled: boolean; devLink?: boolean; plugins: PluginRow[] }) => {
         setRuntimeOn(!!d.enabled)
+        setDevLink(!!d.devLink)
         setPlugins(d.plugins || [])
         if ((d.plugins || []).length) {
           adminApi.pluginBrowse()
@@ -322,6 +359,23 @@ export default function AdminPluginsPanel() {
   const updateAvailable = (p: PluginRow) => !!(p.version && latest[p.id] && isNewer(latest[p.id], p.version))
   const install = (id: string) => act(id, () => adminApi.pluginInstall(id), t('admin.plugins.installed'))
   const restart = (id: string) => act(id, async () => { await adminApi.pluginDeactivate(id); await adminApi.pluginActivate(id) }, t('admin.plugins.restarted'))
+  // Dev-link: register a plugin from a local built directory (dev only). Reuses the
+  // same busy/toast/refresh loop as uploadPlugin; the server gates it.
+  const linkLocal = async () => {
+    const p = linkPath.trim()
+    if (!p) return
+    setBusy('__link'); setMenu(null)
+    try {
+      const res = await adminApi.pluginLink(p)
+      setView('installed')
+      setLinkPath('')
+      toast.success(t('admin.plugins.devLinkLinked', { id: res.id }))
+    } catch (e) {
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error || t('admin.plugins.actionError'))
+    } finally {
+      setBusy(null); refresh()
+    }
+  }
   const installedIds = new Set(plugins.map(p => p.id))
 
   // Installed-but-disabled direct deps that enabling `p` will auto-enable first.
@@ -431,9 +485,13 @@ export default function AdminPluginsPanel() {
       const matchesType = typeFilter === 'all' || r.type === typeFilter
       return matchesText && matchesType
     })
-    items = [...items].sort((a, b) => a.name.localeCompare(b.name))
+    items = [...items].sort((a, b) => {
+      if (sort === 'downloads') return (b.downloadCount ?? 0) - (a.downloadCount ?? 0) || a.name.localeCompare(b.name)
+      if (sort === 'recent') return (Date.parse(b.reviewedAt ?? '') || 0) - (Date.parse(a.reviewedAt ?? '') || 0) || a.name.localeCompare(b.name)
+      return a.name.localeCompare(b.name)
+    })
     return items
-  }, [registry, q, typeFilter])
+  }, [registry, q, typeFilter, sort])
 
   const anyFilter = q.trim() !== '' || typeFilter !== 'all' || statusFilter !== 'all'
 
@@ -476,6 +534,24 @@ export default function AdminPluginsPanel() {
             <p className="text-xs text-content-muted mt-0.5">{t('admin.plugins.disabledBody')}</p>
           </div>
         </div>
+      )}
+
+      {/* Dev-link: register + hot-reload a plugin from a local build dir (dev only). */}
+      {devLink && runtimeOn && !loading && !error && (
+        <form onSubmit={(e) => { e.preventDefault(); void linkLocal() }}
+          className="mx-4 sm:mx-6 mt-4 p-3 rounded-xl border border-accent/30 bg-accent-soft flex flex-col sm:flex-row sm:items-center gap-2.5">
+          <div className="flex items-center gap-2 shrink-0 text-accent" title={t('admin.plugins.devLinkHint')}>
+            <Link2 size={15} />
+            <span className="text-xs font-semibold">{t('admin.plugins.devLinkTitle')}</span>
+          </div>
+          <input value={linkPath} onChange={(e) => setLinkPath(e.target.value)} spellCheck={false}
+            placeholder={t('admin.plugins.devLinkPathPlaceholder')}
+            className="flex-1 min-w-0 h-[34px] px-2.5 rounded-lg border border-edge bg-surface-card text-sm text-content placeholder:text-content-faint focus:outline-none focus:border-accent" />
+          <button type="submit" disabled={!linkPath.trim() || busy === '__link'}
+            className="h-[34px] px-3.5 shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors">
+            <Link2 size={14} /> {t('admin.plugins.devLinkButton')}
+          </button>
+        </form>
       )}
 
       {/* Toolbar — on mobile: tabs+rescan, then full-width search, then a
@@ -530,7 +606,9 @@ export default function AdminPluginsPanel() {
             )}
 
             <FilterMenu id="sort" label={t('admin.plugins.sortBy')} value={sort} menu={menu} setMenu={setMenu} icon={<ArrowUpDown size={14} />}
-              options={[['name', t('admin.plugins.sortName')], ['recent', t('admin.plugins.sortRecent')], ['updates', t('admin.plugins.sortUpdates')]]}
+              options={view === 'discover'
+                ? [['name', t('admin.plugins.sortName')], ['recent', t('admin.plugins.sortRecent')], ['downloads', t('admin.plugins.sortDownloads')]]
+                : [['name', t('admin.plugins.sortName')], ['recent', t('admin.plugins.sortRecent')], ['updates', t('admin.plugins.sortUpdates')]]}
               valueLabel={sortLabel(sort, t)}
               onPick={v => setSort(v as SortKey)} />
 
@@ -654,7 +732,10 @@ function statusLabel(s: StatusFilter, t: T): string {
     : s === 'off' ? t('admin.plugins.stateOff') : s === 'update' ? t('admin.plugins.filterUpdate') : t('admin.plugins.status.error')
 }
 function sortLabel(s: SortKey, t: T): string {
-  return s === 'name' ? t('admin.plugins.sortName') : s === 'recent' ? t('admin.plugins.sortRecent') : t('admin.plugins.sortUpdates')
+  return s === 'name' ? t('admin.plugins.sortName')
+    : s === 'recent' ? t('admin.plugins.sortRecent')
+    : s === 'downloads' ? t('admin.plugins.sortDownloads')
+    : t('admin.plugins.sortUpdates')
 }
 
 function SegBtn({ active, onClick, label, count }: { active: boolean; onClick: () => void; label: string; count?: number }) {
@@ -742,6 +823,7 @@ function InstalledRow({ p, t, busy, menu, setMenu, hasUpdate, latestVer, onToggl
           {p.version && <span className="text-[11.5px] text-content-faint font-medium tabular-nums">v{p.version}</span>}
           {p.reviewed_at && <ReviewedBadge t={t} compact />}
           {p.source_repo === 'local:upload' && <SideloadedBadge t={t} />}
+          {p.source_repo === 'local:link' && <DevLinkBadge t={t} />}
         </div>
         {p.description && <p className="text-[12.5px] text-content-muted mt-0.5 truncate">{p.description}</p>}
         {p.status === 'error' && p.last_error ? (
@@ -792,11 +874,17 @@ function InstalledRow({ p, t, busy, menu, setMenu, hasUpdate, latestVer, onToggl
                 <MenuItem icon={<RotateCw size={14} />} label={t('admin.plugins.restart')} onClick={onRestart} />
               )}
               <MenuItem icon={<Bug size={14} />} label={t('admin.plugins.viewErrors')} onClick={onErrors} />
-              {p.source_repo && p.source_repo !== 'local:upload' && (
-                <a href={`https://github.com/${p.source_repo}`} target="_blank" rel="noreferrer" onClick={() => setMenu(null)}
-                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-content-secondary hover:bg-surface-tertiary transition-colors">
-                  <Github size={14} /> {t('admin.plugins.sourceRepo')}
-                </a>
+              {p.source_repo && p.source_repo !== 'local:upload' && p.source_repo !== 'local:link' && (
+                <>
+                  <a href={`https://github.com/${p.source_repo}`} target="_blank" rel="noreferrer" onClick={() => setMenu(null)}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-content-secondary hover:bg-surface-tertiary transition-colors">
+                    <Github size={14} /> {t('admin.plugins.sourceRepo')}
+                  </a>
+                  <a href={`https://github.com/${p.source_repo}/issues`} target="_blank" rel="noreferrer" onClick={() => setMenu(null)}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-content-secondary hover:bg-surface-tertiary transition-colors">
+                    <CircleDot size={14} /> {t('admin.plugins.reportIssue')}
+                  </a>
+                </>
               )}
               <div className="my-1 border-t border-edge-secondary" />
               <MenuItem icon={<Trash2 size={14} />} label={t('common.delete')} danger onClick={onUninstall} />
@@ -876,6 +964,11 @@ function RegistryGrid({ items, onInstall, onOpenDetail, busy, t, installedIds, f
               <div className="flex items-center gap-2 mt-3">
                 <TypeBadge type={item.type} t={t} />
                 {item.latest && <span className="text-[10.5px] text-content-faint tabular-nums">v{item.latest}</span>}
+                {typeof item.downloadCount === 'number' && item.downloadCount > 0 && (
+                  <span className="inline-flex items-center gap-1 text-[10.5px] text-content-faint tabular-nums" title={t('admin.plugins.downloads')}>
+                    <Download size={11} /> {formatCompactCount(item.downloadCount)}
+                  </span>
+                )}
                 <button onClick={e => { e.stopPropagation(); onInstall(item.id) }} disabled={busy === item.id || installed}
                   className="ml-auto text-xs font-semibold px-3.5 py-1.5 rounded-lg bg-accent text-accent-text hover:bg-accent-hover disabled:opacity-50 disabled:bg-surface-tertiary disabled:text-content-faint transition-colors">
                   {installed ? t('admin.plugins.installed') : t('admin.plugins.install')}
@@ -887,6 +980,14 @@ function RegistryGrid({ items, onInstall, onOpenDetail, busy, t, installedIds, f
       })}
     </div>
   )
+}
+
+// 1234 -> "1.2k" — GitHub-style compact download counts for the browse cards.
+// The M threshold sits at the k-rounding boundary so 999 950 is "1M", not "1000k".
+function formatCompactCount(n: number): string {
+  if (n >= 999_500) return `${Math.round(n / 100_000) / 10}M`
+  if (n >= 1000) return `${Math.round(n / 100) / 10}k`
+  return String(n)
 }
 
 // A permission rendered human-readable when known, else as its raw code.
@@ -1002,6 +1103,9 @@ function PluginDetailModal({ item, installed, busy, onInstall, onClose, t, local
               {sizeKb && <Meta k={t('admin.plugins.metaSize')} v={`${sizeKb} KB`} />}
               {item.minTrekVersion && <Meta k={t('admin.plugins.metaRequires')} v={`TREK ${item.minTrekVersion}+`} />}
               {item.reviewedAt && <Meta k={t('admin.plugins.metaReviewed')} v={new Date(item.reviewedAt).toLocaleDateString(locale)} />}
+              {typeof item.downloadCount === 'number' && item.downloadCount > 0 && (
+                <Meta k={t('admin.plugins.downloads')} v={item.downloadCount.toLocaleString(locale)} />
+              )}
             </div>
           </div>
         </div>
@@ -1010,6 +1114,10 @@ function PluginDetailModal({ item, installed, busy, onInstall, onClose, t, local
           <a href={repoUrl} target="_blank" rel="noreferrer"
             className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-edge bg-surface-card text-content-secondary hover:text-content hover:border-content-faint transition-colors">
             <Github size={13} /> {t('admin.plugins.sourceRepo')}
+          </a>
+          <a href={`${repoUrl}/issues`} target="_blank" rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-edge bg-surface-card text-content-secondary hover:text-content hover:border-content-faint transition-colors">
+            <CircleDot size={13} /> {t('admin.plugins.reportIssue')}
           </a>
           {homepage && (
             <a href={homepage} target="_blank" rel="noreferrer"
