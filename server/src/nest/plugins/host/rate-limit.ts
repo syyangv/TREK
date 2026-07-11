@@ -57,6 +57,16 @@ export const DEFAULT_RPC_LIMIT: RpcLimitConfig = {
   maxInFlight: Number(process.env.TREK_PLUGIN_RPC_INFLIGHT) || 16,
 };
 
+// Plugin log volume (ctx.log.*, stdout/stderr, unknown evt topics) reaches the
+// host's synchronous error-log INSERT+prune, and — unlike ctx.* calls — bypasses
+// the RpcRateLimiter above. A separate, generous bucket throttles it so a
+// `while (true) ctx.log.error(...)` loop can't pin the host thread; a legitimate
+// plugin logs far below this and never notices. Excess lines are dropped.
+export const DEFAULT_LOG_LIMIT = {
+  burst: Number(process.env.TREK_PLUGIN_LOG_BURST) || 50,
+  perSec: Number(process.env.TREK_PLUGIN_LOG_PER_SEC) || 10,
+};
+
 /** Per-plugin limiter: a token bucket + an in-flight gauge. */
 export class RpcRateLimiter {
   private readonly bucket: TokenBucket;

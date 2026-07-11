@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { PluginSupervisor } from '../../../src/nest/plugins/supervisor/plugin-supervisor';
-import { RpcRateLimiter } from '../../../src/nest/plugins/host/rate-limit';
+import { RpcRateLimiter, TokenBucket } from '../../../src/nest/plugins/host/rate-limit';
 
 function makeSupervisor() {
   const dispose = vi.fn();
@@ -267,5 +267,46 @@ describe('supervisor rate-limits ctx.* dispatch', () => {
     expect(dispatch).toHaveBeenCalledTimes(1);
     const last = send.mock.calls[send.mock.calls.length - 1][0];
     expect(last).toMatchObject({ k: 'res', id: 'r2', ok: false, error: { code: 'HOST_ERROR' } });
+  });
+});
+
+describe('supervisor throttles plugin log/stderr volume (host-thread DoS guard)', () => {
+  // Regression: the rpcLimiter only covers the `req` (ctx.*) channel. Log lines
+  // (ctx.log.*, stderr, unknown evt topics) reach a SYNCHRONOUS INSERT+prune on the
+  // host thread through a different branch, so a `while(true) ctx.log.error(...)` loop
+  // would freeze the instance unless that path is throttled too.
+  it('drops evt/log lines beyond the per-plugin bucket so a ctx.log flood cannot pin the host thread', async () => {
+    const onLog = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const s = new PluginSupervisor((() => ({ dispose: vi.fn() })) as any, { onLog }, {});
+    const sup = { id: 'p', status: 'active', logLimiter: new TokenBucket(3, 0, Date.now()), droppedLogs: 0 };
+    // 10 rapid error lines through the real evt→log path; the bucket holds only 3
+    // tokens (refill 0/sec for the test), so only 3 reach onLog's INSERT+prune.
+    for (let i = 0; i < 10; i++) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (s as any).onMessage(sup, { k: 'evt', topic: 'log', data: { level: 'error', msg: `line ${i}` } });
+    }
+    expect(onLog).toHaveBeenCalledTimes(3);
+    expect(sup.droppedLogs).toBe(7);
+  });
+
+  it('surfaces a single "N dropped" summary when logging resumes after throttling', () => {
+    const onLog = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const s = new PluginSupervisor((() => ({ dispose: vi.fn() })) as any, { onLog }, {});
+    const sup = { id: 'p', logLimiter: new TokenBucket(1, 0, Date.now()), droppedLogs: 0 };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rec = (level: string, msg: string) => (s as any).recordLog(sup, level, msg);
+    rec('error', 'a'); // spends the only token
+    rec('error', 'b'); // dropped
+    rec('error', 'c'); // dropped
+    expect(sup.droppedLogs).toBe(2);
+    // Simulate a refill; the next accepted line first reports the drop, then itself.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (sup.logLimiter as any).tokens = 1;
+    rec('error', 'd');
+    expect(onLog).toHaveBeenCalledWith('p', 'warn', expect.stringContaining('2 log line(s) dropped'));
+    expect(onLog).toHaveBeenCalledWith('p', 'error', 'd', undefined);
+    expect(sup.droppedLogs).toBe(0);
   });
 });

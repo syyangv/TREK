@@ -6,7 +6,7 @@ import type { Envelope, RpcError, RpcRequest } from '../protocol/envelope';
 import type { PluginRpcHost } from '../host/rpc-host';
 import { scheduleJobs, stopJobs, type ScheduledJob } from '../host/plugin-jobs';
 import { SNAPSHOT_GRANT, type PluginEventMeta } from '../../../plugin-event-sink';
-import { RpcRateLimiter, DEFAULT_RPC_LIMIT } from '../host/rate-limit';
+import { RpcRateLimiter, DEFAULT_RPC_LIMIT, TokenBucket, DEFAULT_LOG_LIMIT } from '../host/rate-limit';
 
 export interface PluginRouteInfo {
   i: number;
@@ -60,6 +60,8 @@ interface Supervised {
   pending: Map<string, Pending>; // host→child invokes awaiting a response
   invocations: Map<string, number | undefined>; // reqId -> acting user of that invoke (undefined = no user, e.g. a job)
   rpcLimiter: RpcRateLimiter; // caps this plugin's ctx.* call rate + concurrency (host-loop DoS guard)
+  logLimiter: TokenBucket; // caps this plugin's log/stderr volume (host-loop DoS guard, separate from rpcLimiter)
+  droppedLogs: number; // count of log lines dropped by logLimiter since the last one got through
   activation?: { resolve: () => void; reject: (e: Error) => void };
   activationTimer?: ReturnType<typeof setTimeout>; // deadline for the plugin to reach 'active'
   respawnTimer?: ReturnType<typeof setTimeout>; // crash-backoff restart timer (identity-guarded)
@@ -162,6 +164,8 @@ export class PluginSupervisor {
       pending: new Map(),
       invocations: new Map(),
       rpcLimiter: new RpcRateLimiter(DEFAULT_RPC_LIMIT, Date.now()),
+      logLimiter: new TokenBucket(DEFAULT_LOG_LIMIT.burst, DEFAULT_LOG_LIMIT.perSec, Date.now()),
+      droppedLogs: 0,
     };
     this.running.set(id, sup);
     this.ensureSweep();
@@ -486,8 +490,29 @@ export class PluginSupervisor {
     child.on('message', (raw: unknown) => this.onMessage(sup, raw as Envelope));
     child.on('exit', (code, signal) => this.onExit(sup, code, signal));
     child.on('error', (e) => this.hooks.onLog?.(sup.id, 'error', `child error: ${e.message}`));
-    child.stdout?.on('data', (b) => this.hooks.onLog?.(sup.id, 'info', String(b).trimEnd()));
-    child.stderr?.on('data', (b) => this.hooks.onLog?.(sup.id, 'error', String(b).trimEnd()));
+    child.stdout?.on('data', (b) => this.recordLog(sup, 'info', String(b).trimEnd()));
+    child.stderr?.on('data', (b) => this.recordLog(sup, 'error', String(b).trimEnd()));
+  }
+
+  /**
+   * Funnel a plugin-driven log line (ctx.log.*, stdout/stderr, unknown evt topics)
+   * to the host log sink through a per-plugin token bucket. onLog persists warn/error
+   * with a synchronous INSERT + prune, and this path is NOT covered by rpcLimiter, so
+   * an unthrottled log flood (`while (true) ctx.log.error(...)`) would pin the host
+   * thread. Excess lines are dropped; when logging resumes, one summary line reports
+   * how many were dropped so the throttling is visible to an operator.
+   */
+  private recordLog(sup: Supervised, level: string, msg: string, meta?: unknown): void {
+    if (!sup.logLimiter.take(Date.now())) {
+      sup.droppedLogs += 1;
+      return;
+    }
+    if (sup.droppedLogs > 0) {
+      const dropped = sup.droppedLogs;
+      sup.droppedLogs = 0;
+      this.hooks.onLog?.(sup.id, 'warn', `[trek] ${dropped} log line(s) dropped (plugin log rate limit exceeded)`);
+    }
+    this.hooks.onLog?.(sup.id, level, msg, meta);
   }
 
   private async onMessage(sup: Supervised, msg: Envelope): Promise<void> {
@@ -598,7 +623,7 @@ export class PluginSupervisor {
         }
         case 'log': {
           const d = msg.data as { level?: string; msg?: string; meta?: unknown };
-          this.hooks.onLog?.(sup.id, d.level || 'info', d.msg || '', d.meta);
+          this.recordLog(sup, d.level || 'info', d.msg || '', d.meta);
           break;
         }
         default:
@@ -608,7 +633,7 @@ export class PluginSupervisor {
           // than forward it blindly. `onEvent` stays on SupervisorHooks, reserved
           // for a future SDK-sanctioned custom-event channel, but is not invoked
           // for arbitrary topics.
-          this.hooks.onLog?.(sup.id, 'warn', `dropped unknown plugin event topic: ${msg.topic}`);
+          this.recordLog(sup, 'warn', `dropped unknown plugin event topic: ${msg.topic}`);
       }
     }
   }
