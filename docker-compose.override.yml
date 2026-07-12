@@ -6,3 +6,5 @@ services:
     environment:
       - APP_URL=${APP_URL:-https://home-macbook-air.tailcd6e49.ts.net}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://home-macbook-air.tailcd6e49.ts.net}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@trek.local}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
