@@ -71,7 +71,11 @@ export const CHANNEL_EVENTS = [
 ];
 // Mirror of the server's KNOWN_PERMISSIONS (server envelope.ts) — the host hard-rejects
 // anything not in this list at activation, so validate must know the full set.
-const KNOWN_PERMISSIONS = [
+//
+// This is THE list. `create`'s permission picker is built from it (see PERMISSION_FAMILIES
+// in cli/ui.ts, which only supplies the grouping and hints), so a permission added here can
+// never again go missing from the scaffolder — test/cli.test.ts fails until it has an entry.
+export const KNOWN_PERMISSIONS = [
   'db:own',
   'db:read:trips', 'db:read:users', 'db:read:costs', 'db:read:packing', 'db:read:files',
   'db:read:files:content', 'db:read:collab',

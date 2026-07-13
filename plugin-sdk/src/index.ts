@@ -623,6 +623,13 @@ export function definePlugin(def: PluginDefinition): PluginDefinition {
 
 export { validateManifest, CHANNEL_EVENTS, type PluginManifest, type ValidationResult } from './manifest.js';
 export { createMockHost, type MockHostOptions } from './mock-host.js';
+// The permissions TREK enforces OUTSIDE ctx — hooks, events, jobs, egress. An entry
+// point you implement without its grant is never called in production, silently; these
+// are what `dev` and the mock driver use to make that loud.
+export {
+  PermissionDenied, HOOK_PERMISSION, USER_DATA_PERMISSION, EVENTS_PERMISSION, JOBS_PERMISSION,
+  grantGaps, grantedHosts, type GrantGap, type PluginEntryPoints,
+} from './permissions.js';
 // The design kit for page/widget UIs: inline these into your client/index.html
 // (or drop a `<!-- trek:ui -->` marker and let `dev`/`pack` expand it) to get the
 // native TREK look — glass, hover, buttons, inputs — plus a `window.trek` bridge.

@@ -11,8 +11,8 @@ import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import {
   intro, outro, note, logInfo, logSuccess, logWarn, spinner,
-  promptText, promptSelect, promptMultiselect, promptConfirm,
-  PERMISSION_CATALOG,
+  promptText, promptSelect, promptMultiselect, promptGroupMultiselect, promptConfirm,
+  PERMISSION_FAMILIES,
 } from './ui.js';
 import { KNOWN_ADDONS } from '../manifest.js';
 import { LUCIDE_ICON_NAMES } from '../lucide-icon-names.js';
@@ -483,11 +483,21 @@ export async function interactiveScaffold(defaultDir: string, presetName?: strin
     defaultValue: 'Describe what your plugin does.',
   });
 
-  const permissions = await promptMultiselect<string>({
-    message: 'Which permissions does it need?',
-    options: PERMISSION_CATALOG.map((p) => ({ value: p.value, label: p.label, hint: p.hint })),
+  // ONE prompt, grouped by area. 58 permissions in a flat list is unreadable, but asking in
+  // two steps (areas → permissions) was worse: Clack has no "back", so picking the wrong
+  // areas was a dead end you could only escape with ^C. A grouped multiselect is a single
+  // scrollable screen — space toggles a permission, or a whole area from its header.
+  const permissions = await promptGroupMultiselect<string>({
+    message: 'Which permissions does it need? (space toggles; a group header toggles the whole area)',
+    options: Object.fromEntries(
+      PERMISSION_FAMILIES.map((f) => [
+        `${f.label} — ${f.hint}`,
+        f.permissions.map((p) => ({ value: p.value, label: p.value, hint: p.hint })),
+      ]),
+    ),
     initialValues: ['db:own'],
     required: false,
+    selectableGroups: true,
   });
 
   let egress: string[] | undefined;

@@ -12,6 +12,9 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { validateManifest, isSatisfiableRange, isUnboundedRange, KNOWN_ADDONS } from '../../manifest.js';
+// The hosts a plugin can ACTUALLY reach. See `code.egress-reachable` for why this is the
+// only list that counts — and permissions.ts for why dev's egress guard uses the same one.
+import { grantedHosts } from '../../permissions.js';
 import { LUCIDE_ICON_NAMES } from '../../lucide-icon-names.js';
 import { listZipNames } from '../../zip.js';
 import { checkSignatureShape } from '../verify-signature.js';
@@ -32,11 +35,6 @@ const NATIVE_RE = /(^|\/)[^/]+\.node$|(^|\/)binding\.gyp$|(^|\/)prebuilds?\//i;
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const arr = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
-
-/** The hosts a plugin can ACTUALLY reach. See `code.egress-reachable` for why this is the only list that counts. */
-function grantedHosts(permissions: string[]): string[] {
-  return permissions.filter((p) => p.startsWith('http:outbound:')).map((p) => p.slice('http:outbound:'.length)).filter(Boolean);
-}
 
 // ── manifest ────────────────────────────────────────────────────────────────────
 

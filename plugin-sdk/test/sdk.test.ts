@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { createRequire } from 'node:module';
-import { definePlugin, PLUGIN_API_VERSION, validateManifest, createMockHost } from '../src/index.js';
+import { definePlugin, PLUGIN_API_VERSION, validateManifest, createMockHost, PermissionDenied } from '../src/index.js';
 import { isUnboundedRange } from '../src/manifest.js';
 import { scaffold } from '../src/cli/create.js';
 import { validatePluginDir } from '../src/cli/validate.js';
@@ -285,7 +285,12 @@ describe('createMockHost', () => {
       async exportUserData({ userId }) { return { userId, rows: 2 }; },
       hooks: { tripCardProvider: { async getCards(tripIds) { return tripIds.map((id) => ({ tripId: id, id: 'b', label: 'X' })); } } },
     });
-    const host = createMockHost({ grants: ['jobs:run', 'hook:trip-card-provider'], actingUserId: 7 });
+    // Every entry point needs the grant TREK would gate it on — events and the GDPR
+    // handlers included, or the driver refuses them exactly as the host would.
+    const host = createMockHost({
+      grants: ['jobs:run', 'events:subscribe', 'hook:user-data', 'hook:trip-card-provider'],
+      actingUserId: 7,
+    });
     const d = host.run(def);
 
     const res = await d.route({ method: 'GET', path: '/ping' });
@@ -303,6 +308,52 @@ describe('createMockHost', () => {
     // missing handlers / unknown ids throw a clear error, not a silent no-op
     await expect(d.job('nope')).rejects.toThrow(/no job/);
     await expect(host.run(definePlugin({})).scheduled('x')).rejects.toThrow(/no scheduled handler/);
+  });
+
+  // TREK gates hooks, events, jobs and the GDPR handlers on a permission BEFORE the plugin
+  // is reached, and skips an ungranted plugin silently — no error, no log, it just never
+  // runs. The driver must refuse them, or a green unit test still means a dead plugin.
+  it('refuses every entry point the manifest did not grant, the way TREK would', async () => {
+    const ran: string[] = [];
+    const def = definePlugin({
+      jobs: [{ id: 'refresh', schedule: '* * * * *', async handler() { ran.push('job'); } }],
+      async scheduled() { ran.push('scheduled'); },
+      events: [{ on: 'place:created', handler() { ran.push('event'); } }],
+      async deleteUserData() { ran.push('delete'); },
+      async exportUserData() { ran.push('export'); return {}; },
+      hooks: {
+        warningProvider: { async getWarnings() { ran.push('warn'); return []; } },
+        notificationChannel: { async send() { ran.push('send'); }, async test() { ran.push('test'); } },
+      },
+    });
+    const d = createMockHost({ grants: [] }).run(def); // implements everything, granted nothing
+
+    await expect(d.job('refresh')).rejects.toThrow(PermissionDenied);
+    await expect(d.job('refresh')).rejects.toThrow(/requires jobs:run/);
+    await expect(d.scheduled('daily')).rejects.toThrow(/requires jobs:run/);
+    await expect(d.event('place:created')).rejects.toThrow(/requires events:subscribe/);
+    await expect(d.deleteUserData(1)).rejects.toThrow(/requires hook:user-data/);
+    await expect(d.exportUserData(1)).rejects.toThrow(/requires hook:user-data/);
+    await expect(d.hook('warningProvider', 'getWarnings', 1)).rejects.toThrow(/requires hook:trip-warning-provider/);
+    await expect(d.channel.send({ event: 'todo_due', title: 'T', body: 'B' })).rejects.toThrow(/requires hook:notification-channel/);
+    await expect(d.channel.test()).rejects.toThrow(/requires hook:notification-channel/);
+
+    // Not one handler ran. That is the production behaviour this mirrors.
+    expect(ran).toEqual([]);
+  });
+
+  it('runs the same entry points once the grants are there', async () => {
+    const ran: string[] = [];
+    const def = definePlugin({
+      jobs: [{ id: 'refresh', schedule: '* * * * *', async handler() { ran.push('job'); } }],
+      events: [{ on: 'place:created', handler() { ran.push('event'); } }],
+      hooks: { warningProvider: { async getWarnings() { ran.push('warn'); return []; } } },
+    });
+    const d = createMockHost({ grants: ['jobs:run', 'events:subscribe', 'hook:trip-warning-provider'] }).run(def);
+    await d.job('refresh');
+    await d.event('place:created');
+    await d.hook('warningProvider', 'getWarnings', 1);
+    expect(ran).toEqual(['job', 'event', 'warn']);
   });
 
   it('exposes the scheduler timers a plugin armed via ctx.scheduler', async () => {
@@ -900,13 +951,15 @@ describe('mock-host inter-plugin (plugins.call + events.emit)', () => {
     await expect(narrowed.channel.send({ event: 'trip_invite', title: 'T', body: 'B' })).rejects.toThrow(/never dispatches/);
     await expect(narrowed.channel.send({ event: 'todo_due', title: 'T', body: 'B' })).resolves.toBeUndefined();
 
-    await expect(createMockHost({}).run(definePlugin({})).channel.send({ event: 'todo_due', title: 'T', body: 'B' }))
+    await expect(createMockHost({ grants: ['hook:notification-channel'] }).run(definePlugin({}))
+      .channel.send({ event: 'todo_due', title: 'T', body: 'B' }))
       .rejects.toThrow(/no notificationChannel hook/);
   });
 
   it('a plugin with no notificationChannel.test is a clear error, not a silent pass', async () => {
     const def = definePlugin({ hooks: { notificationChannel: { async send() {} } } });
-    await expect(createMockHost({}).run(def).channel.test()).rejects.toThrow(/no notificationChannel\.test/);
+    await expect(createMockHost({ grants: ['hook:notification-channel'] }).run(def).channel.test())
+      .rejects.toThrow(/no notificationChannel\.test/);
   });
 
   it('runs a settings action as the CLICKING user and shapes the result like the host', async () => {
