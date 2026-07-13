@@ -308,8 +308,10 @@ export function useTripPlanner() {
 
   useTripWebSocket(tripId)
 
-  const [mapCategoryFilter, setMapCategoryFilter] = useState<Set<string>>(new Set())
-  const [mapPlacesFilter, setMapPlacesFilter] = useState<string>('all')
+  // Same filter the places sidebar renders — shared via the store so tab
+  // switches can't desync the marker set from the filter UI (#1541).
+  const placesFilter = useTripStore((s) => s.placesFilter)
+  const placesCategoryFilter = useTripStore((s) => s.placesCategoryFilter)
 
   const [expandedDayIds, setExpandedDayIds] = useState<Set<number> | null>(null)
 
@@ -335,23 +337,23 @@ export function useTripPlanner() {
     }
 
     // Build set of planned place IDs for unplanned filter
-    const plannedIds = mapPlacesFilter === 'unplanned'
+    const plannedIds = placesFilter === 'unplanned'
       ? new Set(Object.values(assignments).flatMap(da => da.map(a => a.place?.id).filter(Boolean)))
       : null
 
     return places.filter(p => {
       if (!p.lat || !p.lng) return false
-      if (mapPlacesFilter === 'tracks' && !p.route_geometry) return false
-      if (mapCategoryFilter.size > 0) {
+      if (placesFilter === 'tracks' && !p.route_geometry) return false
+      if (placesCategoryFilter.size > 0) {
         if (p.category_id == null) {
-          if (!mapCategoryFilter.has('uncategorized')) return false
-        } else if (!mapCategoryFilter.has(String(p.category_id))) return false
+          if (!placesCategoryFilter.has('uncategorized')) return false
+        } else if (!placesCategoryFilter.has(String(p.category_id))) return false
       }
       if (hiddenPlaceIds.has(p.id)) return false
       if (plannedIds && plannedIds.has(p.id)) return false
       return true
     })
-  }, [places, mapCategoryFilter, mapPlacesFilter, assignments, expandedDayIds])
+  }, [places, placesCategoryFilter, placesFilter, assignments, expandedDayIds])
 
   const { route, routeSegments, routeInfo, setRoute, setRouteInfo, updateRouteForDay } = useRouteCalculation({ assignments } as any, selectedDayId, routeShown, routeProfile, tripAccommodations)
 
@@ -915,7 +917,7 @@ export function useTripPlanner() {
     mobileSidebarOpen, setMobileSidebarOpen, mobilePlanScrollTopRef, mobilePlacesScrollTopRef,
     deletePlaceId, setDeletePlaceId, deletePlaceIds, setDeletePlaceIds,
     visibleConnections, setVisibleConnections, toggleConnection, mapTransportDetail, setMapTransportDetail,
-    isMobile, isTouch, mapCategoryFilter, setMapCategoryFilter, mapPlacesFilter, setMapPlacesFilter,
+    isMobile, isTouch,
     expandedDayIds, setExpandedDayIds, mapPlaces,
     route, routeSegments, routeInfo, setRoute, setRouteInfo, updateRouteForDay,
     handleSelectDay, handlePlaceClick, handleMarkerClick, handleMapClick, handleMapContextMenu, openAddPlaceFromPoi,

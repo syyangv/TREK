@@ -336,6 +336,39 @@ describe('Category filter dropdown', () => {
     await user.click(parkOpts[parkOpts.length - 1]);
     expect(screen.getByText(/2 categories/i)).toBeInTheDocument();
   });
+
+  it('FE-PLANNER-SIDEBAR-047: category filter survives unmount/remount (#1541)', async () => {
+    const user = userEvent.setup();
+    const cat = buildCategory({ name: 'Hotel', color: '#3b82f6' });
+    const withCat = buildPlace({ name: 'Grand Palace', category_id: cat.id, address: 'Vienna' });
+    const noCat = buildPlace({ name: 'Street Market', category_id: null, address: 'Lisbon' });
+    const { unmount } = render(<PlacesSidebar {...defaultProps} places={[withCat, noCat]} categories={[cat]} />);
+    await user.click(screen.getByText(/All Categories/i));
+    await user.click(screen.getByText('Hotel'));
+    expect(screen.queryByText('Street Market')).not.toBeInTheDocument();
+    // Switching planner tabs unmounts the sidebar; the filter must come back
+    // both applied and visible instead of silently sticking on the map only.
+    unmount();
+    render(<PlacesSidebar {...defaultProps} places={[withCat, noCat]} categories={[cat]} />);
+    expect(screen.queryByText(/All Categories/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Hotel')).toBeInTheDocument();
+    expect(screen.getByText('Grand Palace')).toBeInTheDocument();
+    expect(screen.queryByText('Street Market')).not.toBeInTheDocument();
+  });
+
+  it('FE-PLANNER-SIDEBAR-048: filter tab survives unmount/remount (#1541)', async () => {
+    const user = userEvent.setup();
+    const planned = buildPlace({ name: 'Planned Place' });
+    const unplanned = buildPlace({ name: 'Unplanned Place' });
+    const assignments = { '1': [buildAssignment({ place: planned, day_id: 1 })] };
+    const { unmount } = render(<PlacesSidebar {...defaultProps} places={[planned, unplanned]} assignments={assignments} />);
+    await user.click(screen.getByRole('button', { name: /Unplanned/i }));
+    expect(screen.queryByText('Planned Place')).not.toBeInTheDocument();
+    unmount();
+    render(<PlacesSidebar {...defaultProps} places={[planned, unplanned]} assignments={assignments} />);
+    expect(screen.queryByText('Planned Place')).not.toBeInTheDocument();
+    expect(screen.getByText('Unplanned Place')).toBeInTheDocument();
+  });
 });
 
 // ── Place list interaction ─────────────────────────────────────────────────────
