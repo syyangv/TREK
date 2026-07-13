@@ -36,7 +36,7 @@ interface Version {
 }
 interface Entry {
   id: string; name: string; author: string; description: string; repo: string;
-  homepage?: string; tags?: string[]; type: string; authorPublicKey?: string; versions: Version[];
+  homepage?: string; tags?: string[]; type: string; icon?: string; authorPublicKey?: string; versions: Version[];
 }
 
 /**
@@ -114,7 +114,11 @@ export function buildEntry(opts: {
       throw new Error('this plugin was published signed — sign the update too (pass --sign) or TREK will refuse it.');
     }
     const versions = [version, ...existing.versions.filter((v) => v.version !== version.version)];
-    return { ...existing, authorPublicKey: authorPublicKey ?? existing.authorPublicKey, versions };
+    // Refresh the icon from the manifest when this release declares one (an author who adds
+    // or changes it should see it in the store), but never wipe an icon the entry already
+    // carries just because the manifest omits it.
+    const icon = typeof manifest.icon === 'string' && manifest.icon ? manifest.icon : existing.icon;
+    return { ...existing, icon, authorPublicKey: authorPublicKey ?? existing.authorPublicKey, versions };
   }
 
   const entry: Entry = {
@@ -126,6 +130,7 @@ export function buildEntry(opts: {
     type: String(manifest.type),
     versions: [version],
   };
+  if (typeof manifest.icon === 'string' && manifest.icon) entry.icon = manifest.icon;
   if (typeof manifest.homepage === 'string') entry.homepage = manifest.homepage;
   if (Array.isArray(manifest.tags)) entry.tags = manifest.tags.map(String).slice(0, 8);
   if (authorPublicKey) entry.authorPublicKey = authorPublicKey;

@@ -409,6 +409,32 @@ describe('scaffold + validate CLIs', () => {
     expect(r.warnings.some((w) => /placeholder|screenshot/.test(w))).toBe(true); // README is the unfilled template
   });
 
+  // TREK resolves `icon` against lucide at render time and falls back to Blocks on a
+  // name it can't find, so a typo is invisible in the UI — validate has to surface it.
+  it('warns on an icon lucide does not know, without failing validation', () => {
+    scaffold('icon-plug', 'widget', tmp);
+    const dir = path.join(tmp, 'icon-plug');
+    const file = path.join(dir, 'trek-plugin.json');
+    const m = JSON.parse(fs.readFileSync(file, 'utf8'));
+    fs.writeFileSync(file, JSON.stringify({ ...m, icon: 'Stethscope' }, null, 2));
+
+    const r = validatePluginDir(dir);
+    expect(r.ok).toBe(true); // a bad icon is never a hard error
+    expect(r.warnings.some((w) => /icon: "Stethscope" is not a known lucide icon name/.test(w))).toBe(true);
+  });
+
+  it('accepts any real lucide icon name, not just a curated few', () => {
+    scaffold('icon-plug', 'widget', tmp);
+    const dir = path.join(tmp, 'icon-plug');
+    const file = path.join(dir, 'trek-plugin.json');
+    const m = JSON.parse(fs.readFileSync(file, 'utf8'));
+    fs.writeFileSync(file, JSON.stringify({ ...m, icon: 'Stethoscope' }, null, 2));
+
+    const r = validatePluginDir(dir);
+    expect(r.ok).toBe(true);
+    expect(r.warnings.some((w) => /lucide icon name/.test(w))).toBe(false);
+  });
+
   it('scaffolds a client that opts into the design kit via the marker (source stays one line)', () => {
     scaffold('kit-plug', 'widget', tmp);
     const html = fs.readFileSync(path.join(tmp, 'kit-plug', 'client', 'index.html'), 'utf8');
@@ -616,6 +642,49 @@ describe('pack + entry (publishing automation)', () => {
     expect(v).not.toHaveProperty('minTrekVersion');
     expect(v.downloadUrl).toBe('https://github.com/mauriceboe/trek-plugin-koffi/releases/download/v1.0.0/plugin.zip');
     expect(v.nativeModules).toBe(false);
+  });
+
+  // The store tile reads `icon` off the registry ENTRY (the index has no manifest to consult),
+  // so if the entry generator drops it, every plugin in the store renders as a generic Blocks.
+  it('carries the manifest icon onto the registry entry', () => {
+    const out = path.join(tmp, 'plugin.zip');
+    packPluginDir(koffi, out);
+    const entry = buildEntry({
+      dir: koffi, repo: 'mauriceboe/trek-plugin-koffi', tag: 'v1.0.0', zipPath: out,
+      commit: 'a'.repeat(40), now: '2026-07-04T00:00:00.000Z',
+    });
+    expect(entry.icon).toBe('Luggage'); // koffi's trek-plugin.json declares it
+  });
+
+  it('--merge refreshes the icon from the manifest, but never wipes one the entry already carries', () => {
+    const out = path.join(tmp, 'plugin.zip');
+    packPluginDir(koffi, out);
+    const prior = (icon: string) => {
+      const p = path.join(tmp, `prior-${icon}.json`);
+      fs.writeFileSync(p, JSON.stringify({
+        id: 'koffi', name: 'Koffi', author: 'TREK', description: 'x',
+        repo: 'mauriceboe/trek-plugin-koffi', type: 'widget', icon,
+        versions: [{ version: '0.9.0', gitTag: 'v0.9.0', commitSha: 'b'.repeat(40), downloadUrl: 'https://x/y.zip', sha256: 'c'.repeat(64), size: 10, apiVersion: 1, nativeModules: false, publishedAt: '2026-01-01T00:00:00.000Z' }],
+      }));
+      return p;
+    };
+
+    // koffi's manifest declares Luggage → an author who rebrands sees it in the store
+    const rebranded = buildEntry({
+      dir: koffi, repo: 'mauriceboe/trek-plugin-koffi', tag: 'v1.0.0', zipPath: out,
+      commit: 'a'.repeat(40), now: '2026-07-04T00:00:00.000Z', mergePath: prior('Coffee'),
+    });
+    expect(rebranded.icon).toBe('Luggage');
+
+    // a manifest that declares NO icon leaves the entry's existing one alone
+    const noIconOpts = entryOptsFor('no-icon', '>=3.2.0 <4.0.0');
+    const keepPath = path.join(tmp, 'keep.json');
+    fs.writeFileSync(keepPath, JSON.stringify({
+      id: 'no-icon', name: 'No Icon', author: 'TREK', description: 'x', repo: 'a/b',
+      type: 'integration', icon: 'Coffee', versions: [],
+    }));
+    const kept = buildEntry({ ...noIconOpts, now: '2026-07-04T00:00:00.000Z', mergePath: keepPath });
+    expect(kept.icon).toBe('Coffee');
   });
 
   it('publishes an upper-bound-only range verbatim, with no floor to get wrong', () => {

@@ -4,9 +4,10 @@ import {
   Blocks, AlertTriangle, PackageOpen, RefreshCw, Trash2, Download, Bug, X, ShieldCheck, UploadCloud,
   ArrowUpCircle, Github, ExternalLink, ChevronDown, Check, Lock, Search, Link2, KeyRound, ShieldAlert,
   SlidersHorizontal, ArrowUpDown, CircleDot, MoreHorizontal, RotateCw, ArrowRight, Database, Users, LayoutDashboard,
-  Radio, Luggage, Plane, Globe, Image, CalendarDays, Map, Bell, Cloud, Camera, Compass,
-  BookOpen, Wallet, Puzzle, MapPin, ListChecks, Pencil, Tag, FileText,
+  Radio, Luggage, Globe, Image, CalendarDays, Bell,
+  Wallet, Puzzle, MapPin, ListChecks, Pencil, Tag, FileText,
 } from 'lucide-react'
+import PluginIcon from '../shared/PluginIcon'
 import { adminApi } from '../../api/client'
 import { usePluginStore } from '../../store/pluginStore'
 import { useTranslation } from '../../i18n'
@@ -70,6 +71,8 @@ interface RegistryItem {
   repo: string
   homepage?: string | null
   type: string
+  /** Lucide icon name from the registry entry; absent → Blocks. */
+  icon?: string | null
   latest: string | null
   minTrekVersion: string | null
   /** The latest version's declared TREK range; null on a legacy registry entry. */
@@ -169,11 +172,6 @@ const HEALTH: Record<string, string> = {
   inactive: 'bg-content-faint/60',
   disabled: 'bg-warning',
   incompatible: 'bg-warning',
-}
-
-// Manifest `icon` is a lucide name; map the common ones, fall back to Blocks.
-const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
-  Luggage, Plane, Globe, Image, CalendarDays, Map, Bell, Cloud, Camera, Compass, BookOpen, Wallet, Puzzle, Blocks,
 }
 
 // Known permissions → human-readable i18n key; unknown ones render as raw code.
@@ -295,11 +293,6 @@ function installOffer(item: RegistryItem, t: T): { blocked: boolean; version?: s
     return { blocked: false, version: item.latestCompatible, label: t('admin.plugins.installCompatible', { version: item.latestCompatible }), title }
   }
   return { blocked: true, label: t('admin.plugins.incompatible'), title }
-}
-
-function PluginIcon({ name, size = 20, className }: { name: string | null; size?: number; className?: string }) {
-  const Icon = (name && Object.prototype.hasOwnProperty.call(ICON_MAP, name) && ICON_MAP[name]) || Blocks
-  return <Icon size={size} className={className} />
 }
 
 function ReviewedBadge({ t, compact }: { t: T; compact?: boolean }) {
@@ -1340,7 +1333,7 @@ function RegistryGrid({ items, onInstall, onOpenDetail, busy, t, installedIds, f
                 </span>
               )}
               <div className="absolute left-3 -bottom-4 w-11 h-11 rounded-xl bg-surface-card border border-edge grid place-items-center shadow-card z-[1]">
-                <PluginIcon name={item.type === 'widget' ? 'Blocks' : null} size={22} className="text-content-secondary" />
+                <PluginIcon name={item.icon} size={22} className="text-content-secondary" />
               </div>
             </div>
             <div className="pt-6 px-3.5 pb-3.5 flex flex-col flex-1">

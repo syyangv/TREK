@@ -68,6 +68,8 @@ export interface RegistryEntry {
   homepage?: string;
   tags?: string[];
   type: string;
+  /** A lucide icon name for the store tile; absent means the client's default (Blocks). */
+  icon?: string;
   reviewedAt?: string | null;
   /** base64 minisign author public key — stable across versions, TOFU-pinned. */
   authorPublicKey?: string;
@@ -176,7 +178,7 @@ export class PluginRegistryService {
       const latest = p.versions[0] ?? null;
       return {
         id: p.id, name: p.name, author: p.author, description: p.description, repo: p.repo,
-        homepage: p.homepage, tags: p.tags, type: p.type, reviewedAt: p.reviewedAt ?? null,
+        homepage: p.homepage, tags: p.tags, type: p.type, icon: p.icon, reviewedAt: p.reviewedAt ?? null,
         downloadCount: p.downloadCount ?? null,
         latest: latest?.version ?? null, minTrekVersion: latest?.minTrekVersion ?? null,
         requiredAddons: latest?.requiredAddons ?? [], pluginDependencies: latest?.pluginDependencies ?? [],

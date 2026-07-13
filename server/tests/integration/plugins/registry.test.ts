@@ -68,7 +68,7 @@ const REGISTRY = {
   plugins: [
     {
       id: 'flight-tracker', name: 'Flight', author: 'Acme', description: 'flights', repo: 'acme/trek-flight',
-      type: 'widget', reviewedAt: '2026-06-20',
+      type: 'widget', icon: 'Plane', reviewedAt: '2026-06-20',
       versions: [{ version: '1.0.0', gitTag: 'v1.0.0', commitSha: 'a'.repeat(40), downloadUrl: 'https://codeload.github.com/acme/trek-flight/tar.gz/aaaa', sha256: '', minTrekVersion: '3.2.0' }],
     },
   ],
@@ -122,6 +122,13 @@ describe('PluginRegistryService', () => {
     expect(list).toEqual([
       expect.objectContaining({ id: 'flight-tracker', name: 'Flight', latest: '1.0.0', minTrekVersion: '3.2.0', reviewedAt: '2026-06-20' }),
     ]);
+  });
+
+  // The store tile has no manifest to read (the aggregated index carries no manifests), so
+  // the entry's icon is the only thing standing between it and a generic Blocks glyph.
+  it('browse carries the entry icon through to the store tile', async () => {
+    const [entry] = await svc.browse();
+    expect(entry.icon).toBe('Plane');
   });
 
   it('browse exposes a screenshot url pinned at the reviewed commit', async () => {

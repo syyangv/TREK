@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { validateManifest, isUnboundedRange, KNOWN_ADDONS } from '../manifest.js';
+import { LUCIDE_ICON_NAMES } from '../lucide-icon-names.js';
 import { readJsonFile } from './json.js';
 
 export interface ValidateReport {
@@ -44,6 +45,14 @@ export function validatePluginDir(dir: string): ValidateReport {
     // a newer TREK), but it can never enable here — surface it as a warning.
     for (const a of res.manifest?.requiredAddons ?? []) {
       if (!KNOWN_ADDONS.includes(a)) warnings.push(`requiredAddons: "${a}" is not a known TREK addon on this SDK version`);
+    }
+    // Same deal for `icon`: TREK resolves it against lucide at render time and falls
+    // back to Blocks on a name it can't find, so a typo is silent in the UI. Warn
+    // rather than error — the list is a snapshot, and a newer lucide may have names
+    // this SDK predates.
+    const icon = typeof raw.icon === 'string' ? raw.icon : '';
+    if (icon && !LUCIDE_ICON_NAMES.has(icon)) {
+      warnings.push(`icon: "${icon}" is not a known lucide icon name on this SDK version — TREK will fall back to Blocks`);
     }
     // TREK renders its UI with lucide icons only. It STRIPS emojis from the declarative
     // text your hooks return (badges, columns, warnings, PDF sections, map/calendar/photo
