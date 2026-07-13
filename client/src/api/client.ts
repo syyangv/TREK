@@ -744,8 +744,8 @@ export const airtrailApi = {
   sync: (): Promise<{ changed: number }> => apiClient.post('/integrations/airtrail/sync').then(r => r.data),
   // flights + import are added with the trip-planner import (P2)
   flights: () => apiClient.get('/integrations/airtrail/flights').then(r => r.data),
-  import: (tripId: number, flightIds: string[]) =>
-    apiClient.post(`/trips/${tripId}/reservations/import/airtrail`, { flightIds }).then(r => r.data),
+  import: (tripId: number, flightIds: string[], connections?: string[][]) =>
+    apiClient.post(`/trips/${tripId}/reservations/import/airtrail`, connections?.length ? { flightIds, connections } : { flightIds }).then(r => r.data),
 }
 
 export const journeyApi = {
