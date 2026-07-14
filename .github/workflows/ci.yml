@@ -18,15 +18,17 @@ jobs:
   changes:
     name: Change Detection
     runs-on: ubuntu-latest
+    # A manual dispatch is the deliberate full-path validation mode: it runs
+    # every package and Docker gate, regardless of the changed-file set.
     outputs:
-      shared_changed: ${{ steps.filter.outputs.shared }}
-      server_changed: ${{ steps.filter.outputs.server }}
-      client_changed: ${{ steps.filter.outputs.client }}
-      docker_changed: ${{ steps.filter.outputs.docker }}
+      shared_changed: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.shared }}
+      server_changed: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.server }}
+      client_changed: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.client }}
+      docker_changed: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.docker }}
       charts_changed: ${{ steps.filter.outputs.charts }}
       plugin_sdk_changed: ${{ steps.filter.outputs.plugin_sdk }}
       ci_changed: ${{ steps.filter.outputs.ci }}
-      docs_only: ${{ steps.summary.outputs.docs_only }}
+      docs_only: ${{ github.event_name == 'workflow_dispatch' && 'false' || steps.summary.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v4
 
