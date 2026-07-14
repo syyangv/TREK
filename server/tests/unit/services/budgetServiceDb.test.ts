@@ -224,6 +224,36 @@ describe('rebaseTripCurrency', () => {
     }
   });
 
+  it('BUDGET-SVC-DB-009: pins currency-less place prices to the outgoing currency', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { title: 'Trip' });
+    testDb.prepare("UPDATE trips SET currency = 'EUR' WHERE id = ?").run(trip.id);
+
+    const priced = (price: number | null, currency: string | null) => {
+      const r = testDb.prepare('INSERT INTO places (trip_id, name, price, currency) VALUES (?, ?, ?, ?)')
+        .run(trip.id, 'Place', price, currency);
+      return Number(r.lastInsertRowid);
+    };
+    // A place that inherits the trip's base (currency NULL), one priced in its own
+    // currency, and one with no price at all.
+    const implicit = priced(15, null);
+    const jpy = priced(1500, 'JPY');
+    const free = priced(null, null);
+
+    await rebaseTripCurrency(trip.id, 'JPY');
+
+    const placeRow = (id: number) =>
+      testDb.prepare('SELECT price, currency FROM places WHERE id = ?')
+        .get(id) as { price: number | null; currency: string | null };
+
+    // The implicit place really held euros, so it is stamped EUR rather than silently
+    // becoming ¥15 — the amount the user typed is never rewritten.
+    expect(placeRow(implicit)).toEqual({ price: 15, currency: 'EUR' });
+    expect(placeRow(jpy)).toEqual({ price: 1500, currency: 'JPY' });
+    // Nothing to denominate without a price: leave it inheriting the trip's currency.
+    expect(placeRow(free)).toEqual({ price: null, currency: null });
+  });
+
   it('BUDGET-SVC-DB-008: is a no-op when the currency is unchanged', async () => {
     const { user } = createUser(testDb);
     const trip = createTrip(testDb, user.id, { title: 'Trip' });

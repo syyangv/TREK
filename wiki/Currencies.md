@@ -28,6 +28,7 @@ Changing it is **not** a relabelling — it is a re-basing, and TREK does the wo
 
 - Expenses that had no currency of their own (they simply inherited the trip's) are **pinned to the old currency** first. A 9 000 ₽ expense on a trip switching from RUB to EUR stays *9 000 ₽*; it does not silently become 9 000 €.
 - Every frozen exchange rate is **re-anchored** to the new base, because a frozen rate is stored relative to the trip currency (see below).
+- **Place prices** are pinned the same way. A place price also inherits the trip's currency unless you gave it one of its own, so a €15 museum on a trip switching to JPY is stamped EUR rather than starting to read as ¥15.
 
 The numbers you typed are never rewritten. Each expense keeps its original amount, in its original currency, and its real-world value survives the switch — only the base the balances are expressed in changes.
 

@@ -142,7 +142,7 @@ export async function freezeForeignRate(
 }
 
 /**
- * Re-anchor a trip's budget when its base currency changes (#1543).
+ * Re-anchor a trip's money when its base currency changes (#1543).
  *
  * Every frozen `exchange_rate` is "units of the row's currency per 1 *trip*
  * currency", and `currency = NULL` means "the trip's own currency" — both are
@@ -155,6 +155,11 @@ export async function freezeForeignRate(
  * amounts really were in it) and re-freeze every row against the incoming one.
  * No stored amount is rewritten — each expense keeps the figure the user typed,
  * in the currency they typed it in, and its real-world value is preserved.
+ *
+ * Place prices follow the same NULL = "the trip's own currency" convention (that
+ * is how the PDF export and the place chips read them), so they are pinned too —
+ * otherwise a €15 museum on a trip switched to JPY starts reading as ¥15. They
+ * carry no frozen rate, so pinning the currency is all they need.
  *
  * Must run *before* the (synchronous) trip update, while the old currency is
  * still in `trips`, and is a no-op when the currency isn't actually changing.
@@ -193,7 +198,17 @@ export async function rebaseTripCurrency(
     }
   };
 
-  db.transaction(() => { rebase('budget_items'); rebase('budget_settlements'); })();
+  // Only priced places have anything to denominate; a currency on a free place would
+  // just be noise. `updated_at` doubles as the optimistic-concurrency token (#1135),
+  // so bumping it stops a client holding the pre-switch row from writing the pin away.
+  const pinPlaces = () => {
+    db.prepare(`
+      UPDATE places SET currency = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE trip_id = ? AND price IS NOT NULL AND (currency IS NULL OR currency = '')
+    `).run(prev, tripId);
+  };
+
+  db.transaction(() => { rebase('budget_items'); rebase('budget_settlements'); pinPlaces(); })();
 }
 
 export function createBudgetItem(
