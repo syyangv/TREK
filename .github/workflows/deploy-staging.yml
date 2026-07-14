@@ -1,0 +1,90 @@
+name: Deploy Staging
+
+on:
+  workflow_run:
+    workflows: ["Build & Push Docker Image (Prerelease)"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Pinned prerelease image tag (for example 3.4.0-pre.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy pinned prerelease
+    if: >-
+      github.repository == 'mauriceboe/TREK' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+    env:
+      NAMESPACE: ${{ vars.KUBE_NAMESPACE || 'trek-staging' }}
+      RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME || 'trek' }}
+      STAGING_URL: ${{ vars.APP_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Resolve prerelease version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+          else
+            git fetch --tags --force
+            VERSION="$(git tag -l 'v*-pre.*' | sort -V | tail -1 | sed 's/^v//')"
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-pre\.[0-9]+$ ]]; then
+            echo "Expected a prerelease tag, got: $VERSION" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Configure kubectl
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+        run: |
+          test -n "$KUBE_CONFIG_DATA"
+          install -m 600 /dev/null "$RUNNER_TEMP/kubeconfig"
+          printf '%s' "$KUBE_CONFIG_DATA" | base64 --decode > "$RUNNER_TEMP/kubeconfig"
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+
+      - name: Deploy pinned image with Helm
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          helm upgrade --install "$RELEASE_NAME" charts/trek \
+            --namespace "$NAMESPACE" \
+            --create-namespace \
+            --set-string "image.tag=$VERSION" \
+            --set-string image.pullPolicy=IfNotPresent \
+            --wait --timeout 10m
+
+      - name: Verify rollout and image pin
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          kubectl rollout status deployment/"$RELEASE_NAME" -n "$NAMESPACE" --timeout=10m
+          IMAGE="$(kubectl get deployment "$RELEASE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.template.spec.containers[0].image}')"
+          test "$IMAGE" = "mauriceboe/trek:$VERSION"
+
+      - name: Verify staging health
+        run: |
+          test -n "$STAGING_URL"
+          curl --fail --retry 12 --retry-delay 5 --retry-connrefused \
+            "$STAGING_URL/api/health"

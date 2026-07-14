@@ -1,0 +1,83 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Pinned stable image tag to deploy or roll back to (for example 3.3.1)"
+        required: true
+        type: string
+      action:
+        description: "Deployment operation"
+        required: true
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: ${{ inputs.action }} pinned stable release
+    if: github.repository == 'mauriceboe/TREK'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    env:
+      NAMESPACE: ${{ vars.KUBE_NAMESPACE || 'trek-production' }}
+      RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME || 'trek' }}
+      PRODUCTION_URL: ${{ vars.APP_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Validate stable version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected a stable semantic version, got: $VERSION" >&2
+            exit 1
+          fi
+
+      - name: Configure kubectl
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+        run: |
+          test -n "$KUBE_CONFIG_DATA"
+          install -m 600 /dev/null "$RUNNER_TEMP/kubeconfig"
+          printf '%s' "$KUBE_CONFIG_DATA" | base64 --decode > "$RUNNER_TEMP/kubeconfig"
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+
+      - name: Deploy pinned image with Helm
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          helm upgrade --install "$RELEASE_NAME" charts/trek \
+            --namespace "$NAMESPACE" \
+            --create-namespace \
+            --set-string "image.tag=$VERSION" \
+            --set-string image.pullPolicy=IfNotPresent \
+            --wait --timeout 10m
+
+      - name: Verify rollout and image pin
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          kubectl rollout status deployment/"$RELEASE_NAME" -n "$NAMESPACE" --timeout=10m
+          IMAGE="$(kubectl get deployment "$RELEASE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.template.spec.containers[0].image}')"
+          test "$IMAGE" = "mauriceboe/trek:$VERSION"
+
+      - name: Verify production health
+        run: |
+          test -n "$PRODUCTION_URL"
+          curl --fail --retry 12 --retry-delay 5 --retry-connrefused \
+            "$PRODUCTION_URL/api/health"
