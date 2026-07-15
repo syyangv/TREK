@@ -17,11 +17,26 @@ const { testDb, dbMock } = vi.hoisted(() => {
   return { testDb: db, dbMock: mock };
 });
 
+const { obsidianMock } = vi.hoisted(() => ({
+  obsidianMock: {
+    loadObsidianPublicHolidaysForYear: vi.fn(() => []),
+  },
+}));
+
 vi.mock('../../../src/db/database', () => dbMock);
 vi.mock('../../../src/config', () => ({
   JWT_SECRET: 'test-secret',
   ENCRYPTION_KEY: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2',
+  OBSIDIAN_VAULT_PATH: '',
+  OBSIDIAN_DAILY_NOTES_FOLDER: '',
+  OBSIDIAN_DAILY_NOTES_FORMAT: '',
   updateJwtSecret: () => {},
+}));
+vi.mock('../../../src/services/obsidianYearlyGlanceService', () => ({
+  getObsidianHolidayNotes: () => ['Obsidian PTO', 'Obsidian 病假', 'Obsidian 公共假期'],
+  getObsidianPublicHolidayNote: () => 'Obsidian 公共假期',
+  isObsidianPublicHolidaySourceAvailable: () => true,
+  loadObsidianPublicHolidaysForYear: obsidianMock.loadObsidianPublicHolidaysForYear,
 }));
 // Mock websocket so notifyPlanUsers doesn't throw
 vi.mock('../../../src/websocket', () => ({ broadcastToUser: vi.fn() }));
@@ -64,6 +79,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   resetTestDb(testDb);
+  obsidianMock.loadObsidianPublicHolidaysForYear.mockReset();
+  obsidianMock.loadObsidianPublicHolidaysForYear.mockReturnValue([]);
   // Stub fetch with empty holiday list by default so updatePlan / applyHolidayCalendars
   // never makes real network calls.
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -500,6 +517,35 @@ describe('getEntries', () => {
     expect(result.entries).toEqual([]);
     expect(result.companyHolidays).toEqual([]);
   });
+
+  it('VACAY-SVC-031B: pulls Obsidian 公共假期 into company holidays and clears PTO entries', () => {
+    const { user, plan } = setupUserWithPlan();
+    obsidianMock.loadObsidianPublicHolidaysForYear.mockReturnValue([
+      { date: '2025-05-01', note: 'Obsidian 公共假期' },
+    ]);
+
+    toggleEntry(user.id, plan.id, '2025-05-01', undefined);
+    const result = getEntries(plan.id, '2025');
+
+    expect(result.entries).toEqual([]);
+    expect(result.companyHolidays).toEqual([
+      expect.objectContaining({ date: '2025-05-01', note: 'Obsidian 公共假期' }),
+    ]);
+  });
+
+  it('VACAY-SVC-031C: mirrors removal of Obsidian 公共假期 when source no longer has it', () => {
+    const { plan } = setupUserWithPlan();
+    obsidianMock.loadObsidianPublicHolidaysForYear.mockReturnValueOnce([
+      { date: '2025-06-01', note: 'Obsidian 公共假期' },
+    ]);
+
+    expect(getEntries(plan.id, '2025').companyHolidays).toEqual([
+      expect.objectContaining({ date: '2025-06-01', note: 'Obsidian 公共假期' }),
+    ]);
+
+    obsidianMock.loadObsidianPublicHolidaysForYear.mockReturnValueOnce([]);
+    expect(getEntries(plan.id, '2025').companyHolidays).toEqual([]);
+  });
 });
 
 describe('toggleEntry', () => {
@@ -700,6 +746,19 @@ describe('getStats', () => {
 
     expect(stats[0].used).toBe(2);
     expect(stats[0].remaining).toBe(28);
+  });
+
+  it('VACAY-SVC-045B: Obsidian 公共假期 days count against annual leave allowance', () => {
+    const { user, plan } = setupUserWithPlan();
+    obsidianMock.loadObsidianPublicHolidaysForYear.mockReturnValue([
+      { date: '2025-10-01', note: 'Obsidian 公共假期' },
+    ]);
+
+    toggleEntry(user.id, plan.id, '2025-10-01', undefined);
+    const stats = getStats(plan.id, 2025);
+
+    expect(stats[0].used).toBe(1);
+    expect(stats[0].remaining).toBe(29);
   });
 });
 

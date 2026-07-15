@@ -17,6 +17,7 @@ interface VacayMonthCardProps {
   month: number
   holidays: HolidaysMap
   companyHolidaySet: Set<string>
+  companyHolidayColorMap?: Map<string, string>
   companyHolidaysEnabled?: boolean
   entryMap: Record<string, VacayEntry[]>
   onCellClick: (date: string) => void
@@ -28,7 +29,7 @@ interface VacayMonthCardProps {
 }
 
 export default function VacayMonthCard({
-  year, month, holidays, companyHolidaySet, companyHolidaysEnabled = true, entryMap,
+  year, month, holidays, companyHolidaySet, companyHolidayColorMap, companyHolidaysEnabled = true, entryMap,
   onCellClick, companyMode, blockWeekends, weekendDays = [0, 6], tripDates, weekStart = 1
 }: VacayMonthCardProps) {
   const { t, locale } = useTranslation()
@@ -110,7 +111,7 @@ export default function VacayMonthCard({
                   onMouseLeave={e => { e.currentTarget.style.background = weekend ? 'var(--bg-secondary)' : 'transparent' }}
                 >
                   {holiday && <div className="absolute inset-0.5 rounded" style={{ background: hexToRgba(holiday.color, 0.12) }} />}
-                  {isCompany && <div className="absolute inset-0.5 rounded bg-[rgba(245,158,11,0.15)]" />}
+                  {isCompany && <div className="absolute inset-0.5 rounded" style={{ background: hexToRgba(companyHolidayColorMap?.get(dateStr) || '#f59e0b', 0.18) }} />}
 
                   {dayEntries.length === 1 && (
                     <div className="absolute inset-0.5 rounded" style={{ backgroundColor: dayEntries[0].person_color, opacity: 0.4 }} />

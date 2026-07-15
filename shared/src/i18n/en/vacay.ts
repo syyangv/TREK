@@ -23,6 +23,8 @@ const vacay: TranslationStrings = {
   'vacay.add': 'Add',
   'vacay.legend': 'Legend',
   'vacay.publicHoliday': 'Public Holiday',
+  'vacay.pto': 'PTO',
+  'vacay.sickLeave': 'Sick Leave',
   'vacay.companyHoliday': 'Company Holiday',
   'vacay.weekend': 'Weekend',
   'vacay.modeVacation': 'Vacation',
