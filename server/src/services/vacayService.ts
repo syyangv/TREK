@@ -1,4 +1,9 @@
 import { db } from '../db/database';
+import {
+  getObsidianHolidayNotes,
+  isObsidianPublicHolidaySourceAvailable,
+  loadObsidianPublicHolidaysForYear,
+} from './obsidianYearlyGlanceService';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -553,7 +558,32 @@ export function deleteYear(planId: number, year: number, socketId: string | unde
 // Entries
 // ---------------------------------------------------------------------------
 
+export function syncObsidianCompanyHolidays(planId: number, year: number): void {
+  if (!isObsidianPublicHolidaySourceAvailable()) return;
+
+  const obsidianNotes = getObsidianHolidayNotes();
+  const holidays = loadObsidianPublicHolidaysForYear(year);
+
+  db.prepare(`DELETE FROM vacay_company_holidays
+    WHERE plan_id = ? AND date LIKE ? AND note IN (${obsidianNotes.map(() => '?').join(', ')})`).run(
+    planId,
+    `${year}-%`,
+    ...obsidianNotes,
+  );
+
+  const insert = db.prepare(
+    'INSERT OR IGNORE INTO vacay_company_holidays (plan_id, date, note) VALUES (?, ?, ?)',
+  );
+  const clearEntries = db.prepare('DELETE FROM vacay_entries WHERE plan_id = ? AND date = ?');
+  for (const holiday of holidays) {
+    insert.run(planId, holiday.date, holiday.note);
+    clearEntries.run(planId, holiday.date);
+  }
+}
+
 export function getEntries(planId: number, year: string) {
+  syncObsidianCompanyHolidays(planId, parseInt(year, 10));
+
   const entries = db.prepare(`
     SELECT e.*, u.username as person_name, COALESCE(c.color, '#6366f1') as person_color
     FROM vacay_entries e
@@ -597,12 +627,20 @@ export function toggleCompanyHoliday(planId: number, date: string, note: string 
 // ---------------------------------------------------------------------------
 
 export function getStats(planId: number, year: number) {
+  syncObsidianCompanyHolidays(planId, year);
+
   const plan = db.prepare('SELECT * FROM vacay_plans WHERE id = ?').get(planId) as VacayPlan | undefined;
   const carryOverEnabled = plan ? !!plan.carry_over_enabled : true;
   const users = getPlanUsers(planId);
+  const obsidianNotes = getObsidianHolidayNotes();
+  const obsidianHolidayCount = (db.prepare(
+    `SELECT COUNT(*) as count FROM vacay_company_holidays
+      WHERE plan_id = ? AND date LIKE ? AND note IN (${obsidianNotes.map(() => '?').join(', ')})`,
+  ).get(planId, `${year}-%`, ...obsidianNotes) as { count: number }).count;
 
   return users.map(u => {
-    const used = (db.prepare("SELECT COUNT(*) as count FROM vacay_entries WHERE user_id = ? AND plan_id = ? AND date LIKE ?").get(u.id, planId, `${year}-%`) as { count: number }).count;
+    const usedEntries = (db.prepare("SELECT COUNT(*) as count FROM vacay_entries WHERE user_id = ? AND plan_id = ? AND date LIKE ?").get(u.id, planId, `${year}-%`) as { count: number }).count;
+    const used = usedEntries + obsidianHolidayCount;
     const config = db.prepare('SELECT * FROM vacay_user_years WHERE user_id = ? AND plan_id = ? AND year = ?').get(u.id, planId, year) as VacayUserYear | undefined;
     const vacationDays = config ? config.vacation_days : 30;
     const carriedOver = carryOverEnabled ? (config ? config.carried_over : 0) : 0;

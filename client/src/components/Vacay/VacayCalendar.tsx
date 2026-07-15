@@ -4,6 +4,7 @@ import { useTranslation } from '../../i18n'
 import { isWeekend } from './holidays'
 import { tripsApi } from '../../api/client'
 import VacayMonthCard from './VacayMonthCard'
+import { isObsidianHolidayNote, OBSIDIAN_HOLIDAY_STYLES } from './obsidianHolidays'
 import { Building2, MousePointer2 } from 'lucide-react'
 
 export default function VacayCalendar() {
@@ -35,11 +36,32 @@ export default function VacayCalendar() {
     return () => { cancelled = true }
   }, [selectedYear])
 
-  const companyHolidaySet = useMemo(() => {
+  const obsidianHolidaySet = useMemo(() => {
     const s = new Set<string>()
-    companyHolidays.forEach(h => s.add(h.date))
+    companyHolidays
+      .filter(h => isObsidianHolidayNote(h.note))
+      .forEach(h => s.add(h.date))
     return s
   }, [companyHolidays])
+
+  const manualCompanyHolidaySet = useMemo(() => {
+    const s = new Set<string>()
+    companyHolidays
+      .filter(h => !isObsidianHolidayNote(h.note))
+      .forEach(h => s.add(h.date))
+    return s
+  }, [companyHolidays])
+
+  const visibleHolidayColors = useMemo(() => {
+    const colors = new Map<string, string>()
+    companyHolidays.forEach(h => {
+      if (isObsidianHolidayNote(h.note)) colors.set(h.date, OBSIDIAN_HOLIDAY_STYLES[h.note].color)
+    })
+    if (plan?.company_holidays_enabled !== false) {
+      manualCompanyHolidaySet.forEach(date => colors.set(date, '#f59e0b'))
+    }
+    return colors
+  }, [companyHolidays, manualCompanyHolidaySet, plan?.company_holidays_enabled])
 
   const entryMap = useMemo(() => {
     const map = {}
@@ -55,15 +77,16 @@ export default function VacayCalendar() {
   const companyHolidaysEnabled = plan?.company_holidays_enabled !== false
 
   const handleCellClick = useCallback(async (dateStr) => {
+    if (obsidianHolidaySet.has(dateStr)) return
     if (companyMode) {
       if (!companyHolidaysEnabled) return
       await toggleCompanyHoliday(dateStr)
       return
     }
     if (blockWeekends && isWeekend(dateStr, weekendDays)) return
-    if (companyHolidaysEnabled && companyHolidaySet.has(dateStr)) return
+    if (companyHolidaysEnabled && manualCompanyHolidaySet.has(dateStr)) return
     await toggleEntry(dateStr, selectedUserId || undefined)
-  }, [companyMode, toggleEntry, toggleCompanyHoliday, companyHolidaySet, blockWeekends, companyHolidaysEnabled, selectedUserId])
+  }, [companyMode, toggleEntry, toggleCompanyHoliday, manualCompanyHolidaySet, obsidianHolidaySet, blockWeekends, companyHolidaysEnabled, selectedUserId])
 
   const selectedUser = users.find(u => u.id === selectedUserId)
 
@@ -76,8 +99,9 @@ export default function VacayCalendar() {
             year={selectedYear}
             month={i}
             holidays={holidays}
-            companyHolidaySet={companyHolidaySet}
-            companyHolidaysEnabled={companyHolidaysEnabled}
+            companyHolidaySet={new Set(visibleHolidayColors.keys())}
+            companyHolidayColorMap={visibleHolidayColors}
+            companyHolidaysEnabled={true}
             entryMap={entryMap}
             onCellClick={handleCellClick}
             companyMode={companyMode}

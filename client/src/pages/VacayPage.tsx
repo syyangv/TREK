@@ -9,6 +9,8 @@ import VacaySettings from '../components/Vacay/VacaySettings'
 import { Plus, Minus, ChevronLeft, ChevronRight, Settings, CalendarDays, AlertTriangle, Users, Eye, Pencil, Trash2, Unlink, ShieldCheck, SlidersHorizontal } from 'lucide-react'
 import Modal from '../components/shared/Modal'
 import { useVacay } from './vacay/useVacay'
+import { useVacayStore } from '../store/vacayStore'
+import { OBSIDIAN_HOLIDAY_STYLES } from '../components/Vacay/obsidianHolidays'
 
 export default function VacayPage(): React.ReactElement {
   const { t } = useTranslation()
@@ -20,6 +22,10 @@ export default function VacayPage(): React.ReactElement {
     showMobileSidebar, setShowMobileSidebar,
     handleAddNextYear, handleAddPrevYear,
   } = useVacay()
+  const companyHolidays = useVacayStore((s) => s.companyHolidays)
+  const obsidianHolidayNotes = Object.keys(OBSIDIAN_HOLIDAY_STYLES).filter(note =>
+    companyHolidays.some(h => h.note === note)
+  ) as (keyof typeof OBSIDIAN_HOLIDAY_STYLES)[]
 
   if (loading) {
     return (
@@ -75,7 +81,7 @@ export default function VacayPage(): React.ReactElement {
       <VacayPersons />
 
       {/* Legend */}
-      {(plan?.holidays_enabled || plan?.company_holidays_enabled || plan?.block_weekends) && (
+      {(plan?.holidays_enabled || plan?.company_holidays_enabled || obsidianHolidayNotes.length > 0 || plan?.block_weekends) && (
         <div className="rounded-xl border p-3 bg-surface-card border-edge">
           <span className="text-[11px] font-medium uppercase tracking-wider text-content-faint">{t('vacay.legend')}</span>
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5">
@@ -85,6 +91,10 @@ export default function VacayPage(): React.ReactElement {
             {plan?.holidays_enabled && (plan?.holiday_calendars ?? []).map(cal => (
               <LegendItem key={cal.id} color={cal.color} label={cal.label || cal.region} />
             ))}
+            {obsidianHolidayNotes.map(note => {
+              const style = OBSIDIAN_HOLIDAY_STYLES[note]
+              return <LegendItem key={note} color={style.color} label={t(style.labelKey)} />
+            })}
             {plan?.company_holidays_enabled && <LegendItem color="#fde68a" label={t('vacay.companyHoliday')} />}
             {plan?.block_weekends && <LegendItem color="#e5e7eb" label={t('vacay.weekend')} />}
           </div>

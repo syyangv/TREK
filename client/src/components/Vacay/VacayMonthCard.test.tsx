@@ -80,15 +80,16 @@ describe('VacayMonthCard', () => {
     const props = {
       ...baseProps,
       companyHolidaySet: new Set(['2025-01-10']),
+      companyHolidayColorMap: new Map([['2025-01-10', '#e74c3c']]),
       companyHolidaysEnabled: true,
     }
     render(<VacayMonthCard {...props} />)
     // January 10, 2025 is a Friday (not a weekend)
     const daySpan = screen.getByText('10')
     const cell = daySpan.closest('div') as HTMLElement
-    // Company overlay is a direct child div with amber background
+    // Company overlay is a direct child div using the supplied category color.
     const overlayDivs = Array.from(cell.querySelectorAll(':scope > div')) as HTMLElement[]
-    const companyOverlay = overlayDivs.find(el => el.className.includes('bg-[rgba(245,158,11'))
+    const companyOverlay = overlayDivs.find(el => el.style.background.includes('231, 76, 60'))
     expect(companyOverlay).toBeTruthy()
   })
 

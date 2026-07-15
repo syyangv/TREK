@@ -174,3 +174,12 @@ export const SESSION_DURATION_REMEMBER =
 export const SESSION_DURATION_REMEMBER_MS = parsedRememberMs ?? parseDurationMs(DEFAULT_SESSION_DURATION_REMEMBER)!;
 /** "Remember me" session length in seconds — passed to `jwt.sign({ expiresIn })`. */
 export const SESSION_DURATION_REMEMBER_SECONDS = Math.floor(SESSION_DURATION_REMEMBER_MS / 1000);
+
+// Optional Obsidian Yearly Glance integration used by the Vacay addon.
+//
+// When OBSIDIAN_VAULT_PATH points at an Obsidian vault that has the custom
+// Yearly Glance plugin installed, Vacay can pull daily-note `假期` frontmatter
+// values tagged as `公共假期` and mirror them into company holidays.
+export const OBSIDIAN_VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH?.trim() || '';
+export const OBSIDIAN_DAILY_NOTES_FOLDER = process.env.OBSIDIAN_DAILY_NOTES_FOLDER?.trim() || '';
+export const OBSIDIAN_DAILY_NOTES_FORMAT = process.env.OBSIDIAN_DAILY_NOTES_FORMAT?.trim() || '';
