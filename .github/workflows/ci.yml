@@ -51,6 +51,7 @@ jobs:
               - 'package-lock.json'
             docker:
               - 'Dockerfile'
+              - '.dockerignore'
               - 'docker-compose.yml'
               - 'docker-compose.override.yml'
             charts:
@@ -276,14 +277,37 @@ jobs:
         if: ${{ always() && (needs.changes.outputs.docker_changed == 'true' || needs.changes.outputs.shared_changed == 'true' || needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.client_changed == 'true') }}
         run: docker rm -f trek-smoke
 
+  chart-gate:
+    name: Helm Chart Gate
+    runs-on: ubuntu-latest
+    needs: changes
+    steps:
+      - name: Not applicable
+        if: ${{ needs.changes.outputs.charts_changed != 'true' }}
+        run: echo "Helm chart gate not required for this change set."
+
+      - uses: actions/checkout@v4
+        if: ${{ needs.changes.outputs.charts_changed == 'true' }}
+
+      - name: Install Helm
+        if: ${{ needs.changes.outputs.charts_changed == 'true' }}
+        uses: azure/setup-helm@v4
+
+      - name: Lint and render Helm chart
+        if: ${{ needs.changes.outputs.charts_changed == 'true' }}
+        run: |
+          helm lint charts/trek
+          helm template trek charts/trek >/dev/null
+
   phase-1-required-checks:
-    name: Phase 1 Required Checks
+    name: Phase 1 Checks
     runs-on: ubuntu-latest
     needs:
       - shared-gate
       - server-gate
       - client-gate
       - docker-smoke
+      - chart-gate
     if: ${{ always() }}
     steps:
       - name: Verify gate results
@@ -293,6 +317,7 @@ jobs:
             "${{ needs.server-gate.result }}"
             "${{ needs.client-gate.result }}"
             "${{ needs.docker-smoke.result }}"
+            "${{ needs.chart-gate.result }}"
           )
 
           for result in "${results[@]}"; do

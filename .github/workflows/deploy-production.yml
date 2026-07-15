@@ -34,11 +34,6 @@ jobs:
       RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME || 'trek' }}
       PRODUCTION_URL: ${{ vars.APP_URL }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Helm
-        uses: azure/setup-helm@v4
-
       - name: Validate stable version
         env:
           VERSION: ${{ inputs.version }}
@@ -47,6 +42,28 @@ jobs:
             echo "Expected a stable semantic version, got: $VERSION" >&2
             exit 1
           fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve immutable image digest
+        id: image
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          DIGEST="$(docker buildx imagetools inspect "syyangv/trek:$VERSION" --format '{{.Manifest.Digest}}')"
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Invalid image digest: $DIGEST" >&2
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Configure kubectl
         env:
@@ -60,25 +77,45 @@ jobs:
       - name: Deploy pinned image with Helm
         env:
           VERSION: ${{ inputs.version }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
         run: |
           helm upgrade --install "$RELEASE_NAME" charts/trek \
             --namespace "$NAMESPACE" \
             --create-namespace \
             --set-string image.repository=syyangv/trek \
             --set-string "image.tag=$VERSION" \
+            --set-string "image.digest=$IMAGE_DIGEST" \
             --set-string image.pullPolicy=IfNotPresent \
-            --wait --timeout 10m
+            --atomic --wait --timeout 10m --history-max 10
 
       - name: Verify rollout and image pin
         env:
           VERSION: ${{ inputs.version }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
         run: |
           kubectl rollout status deployment/"$RELEASE_NAME" -n "$NAMESPACE" --timeout=10m
           IMAGE="$(kubectl get deployment "$RELEASE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.template.spec.containers[0].image}')"
-          test "$IMAGE" = "syyangv/trek:$VERSION"
+          test "$IMAGE" = "syyangv/trek@$IMAGE_DIGEST"
 
       - name: Verify production health
         run: |
           test -n "$PRODUCTION_URL"
           curl --fail --retry 12 --retry-delay 5 --retry-connrefused \
             "$PRODUCTION_URL/api/health"
+
+      - name: Capture failure diagnostics
+        if: ${{ failure() }}
+        run: |
+          kubectl get pods,deployments,replicasets -n "$NAMESPACE" -o wide || true
+          kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp | tail -100 || true
+          kubectl describe deployment/"$RELEASE_NAME" -n "$NAMESPACE" || true
+
+      - name: Record deployment identity
+        if: ${{ success() }}
+        run: |
+          {
+            echo "### Production ${{ inputs.action }}"
+            echo "- Version: \`${{ inputs.version }}\`"
+            echo "- Digest: \`${{ steps.image.outputs.digest }}\`"
+            echo "- Source: \`v${{ inputs.version }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

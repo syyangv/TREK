@@ -2,6 +2,8 @@
 image:
   repository: mauriceboe/trek
   # tag: latest
+  # digest: sha256:... # When set, takes precedence over tag.
+  digest: ""
   pullPolicy: IfNotPresent
 
 # Deployment update strategy. Recreate is the safe default for the single-writer SQLite

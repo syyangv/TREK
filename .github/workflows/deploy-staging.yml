@@ -12,6 +12,7 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -27,16 +28,21 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     permissions:
+      actions: read
       contents: read
     env:
       NAMESPACE: ${{ vars.KUBE_NAMESPACE || 'trek-staging' }}
       RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME || 'trek' }}
       STAGING_URL: ${{ vars.APP_URL }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Helm
-        uses: azure/setup-helm@v4
+      - name: Download triggering prerelease metadata
+        if: ${{ github.event_name == 'workflow_run' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: prerelease-metadata
+          path: /tmp/prerelease
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
 
       - name: Resolve prerelease version
         id: version
@@ -45,15 +51,47 @@ jobs:
         run: |
           if [ -n "$INPUT_VERSION" ]; then
             VERSION="$INPUT_VERSION"
+            SOURCE_REF="v$VERSION"
+            IMAGE_DIGEST=""
           else
-            git fetch --tags --force
-            VERSION="$(git tag -l 'v*-pre.*' | sort -V | tail -1 | sed 's/^v//')"
+            source /tmp/prerelease/prerelease-metadata.env
+            SOURCE_REF="$SOURCE_SHA"
           fi
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-pre\.[0-9]+$ ]]; then
             echo "Expected a prerelease tag, got: $VERSION" >&2
             exit 1
           fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$VERSION"
+            echo "source_ref=$SOURCE_REF"
+            echo "image_digest=$IMAGE_DIGEST"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.version.outputs.source_ref }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve immutable image digest
+        id: image
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PUBLISHED_DIGEST: ${{ steps.version.outputs.image_digest }}
+        run: |
+          DIGEST="$PUBLISHED_DIGEST"
+          if [ -z "$DIGEST" ]; then
+            DIGEST="$(docker buildx imagetools inspect "syyangv/trek:$VERSION" --format '{{.Manifest.Digest}}')"
+          fi
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Invalid image digest: $DIGEST" >&2
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Configure kubectl
         env:
@@ -67,25 +105,45 @@ jobs:
       - name: Deploy pinned image with Helm
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
         run: |
           helm upgrade --install "$RELEASE_NAME" charts/trek \
             --namespace "$NAMESPACE" \
             --create-namespace \
             --set-string image.repository=syyangv/trek \
             --set-string "image.tag=$VERSION" \
+            --set-string "image.digest=$IMAGE_DIGEST" \
             --set-string image.pullPolicy=IfNotPresent \
-            --wait --timeout 10m
+            --atomic --wait --timeout 10m --history-max 10
 
       - name: Verify rollout and image pin
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
         run: |
           kubectl rollout status deployment/"$RELEASE_NAME" -n "$NAMESPACE" --timeout=10m
           IMAGE="$(kubectl get deployment "$RELEASE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.template.spec.containers[0].image}')"
-          test "$IMAGE" = "syyangv/trek:$VERSION"
+          test "$IMAGE" = "syyangv/trek@$IMAGE_DIGEST"
 
       - name: Verify staging health
         run: |
           test -n "$STAGING_URL"
           curl --fail --retry 12 --retry-delay 5 --retry-connrefused \
             "$STAGING_URL/api/health"
+
+      - name: Capture failure diagnostics
+        if: ${{ failure() }}
+        run: |
+          kubectl get pods,deployments,replicasets -n "$NAMESPACE" -o wide || true
+          kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp | tail -100 || true
+          kubectl describe deployment/"$RELEASE_NAME" -n "$NAMESPACE" || true
+
+      - name: Record deployment identity
+        if: ${{ success() }}
+        run: |
+          {
+            echo "### Staging deployment"
+            echo "- Version: \`${{ steps.version.outputs.version }}\`"
+            echo "- Digest: \`${{ steps.image.outputs.digest }}\`"
+            echo "- Source: \`${{ steps.version.outputs.source_ref }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

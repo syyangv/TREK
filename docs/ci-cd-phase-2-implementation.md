@@ -16,8 +16,11 @@ artifact publication and release:
 - The release asset includes the exact multi-architecture manifest metadata,
   making the published tag-to-digest mapping auditable.
 
-The release job runs only after unified CI verification, version bump/tagging,
-multi-architecture manifest creation, and Helm publication succeed.
+The release job runs only after unified CI and security verification, version
+bump metadata, multi-architecture manifest creation, and Helm publication
+succeed. Every build and publication job checks out the exact generated release
+commit rather than mutable `main`. The GitHub Release creates the `vX.Y.Z` tag
+only after the image, manifest metadata, SBOM, and Helm chart are available.
 
 ## Remaining Phase 2 follow-up
 

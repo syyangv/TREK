@@ -13,8 +13,11 @@ Required `staging` Environment configuration:
 - Variable `HELM_RELEASE_NAME` (default: `trek`)
 - Variable `APP_URL`: externally reachable staging URL, including scheme
 
-The workflow waits for the Helm rollout, verifies the deployment image is the
-requested immutable prerelease tag, and checks `/api/health`.
+The triggering prerelease workflow publishes a metadata artifact containing the
+exact source SHA, version, and registry digest. Staging consumes that artifact,
+checks out the matching source/chart, deploys the image by digest, and checks
+`/api/health`. Manual deployments resolve the supplied tag to the same immutable
+identity.
 
 ## Production (Phase 4)
 
@@ -34,9 +37,15 @@ Required `production` Environment configuration:
 - Variable `HELM_RELEASE_NAME` (default: `trek`)
 - Variable `APP_URL`: externally reachable production URL, including scheme
 
-The production workflow never deploys `latest`; it verifies the exact stable
-tag after rollout and performs a health check. Rollback is an explicit manual
-deployment of a previously known-good stable tag.
+The production workflow never deploys `latest`. It checks out the versioned git
+tag, resolves the stable image tag to a registry digest, deploys that digest,
+and performs a health check. Rollback is an explicit manual deployment of a
+previously known-good version, including its matching chart source.
+
+Both deployment workflows use atomic Helm upgrades, retain bounded Helm
+history, and emit Kubernetes workload/event diagnostics on failure. Application
+logs are not printed by default because first-start logs may contain generated
+credentials.
 
 ## Operational prerequisites
 
