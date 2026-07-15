@@ -34,7 +34,7 @@ concurrency:
 jobs:
   verify-ci:
     name: Verify Unified CI
-    if: github.repository == 'mauriceboe/TREK'
+    if: github.repository == 'syyangv/TREK'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -84,7 +84,7 @@ jobs:
             core.info(`Verified CI success for ${targetSha} via run ${matchingRun.id}.`);
 
   version-bump:
-    if: github.repository == 'mauriceboe/TREK'
+    if: github.repository == 'syyangv/TREK'
     runs-on: ubuntu-latest
     needs: verify-ci
     outputs:
@@ -202,7 +202,7 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
-          outputs: type=image,name=mauriceboe/trek,push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=syyangv/trek,push-by-digest=true,name-canonical=true,push=true
           no-cache: true
           sbom: true
           provenance: mode=max
@@ -249,21 +249,21 @@ jobs:
         working-directory: /tmp/digests
         run: |
           VERSION="${{ needs.version-bump.outputs.version }}"
-          mapfile -t digests < <(printf 'mauriceboe/trek@sha256:%s\n' *)
+          mapfile -t digests < <(printf 'syyangv/trek@sha256:%s\n' *)
           MAJOR_TAG="$(echo "$VERSION" | cut -d. -f1)"
           docker buildx imagetools create \
-            -t "mauriceboe/trek:latest" \
-            -t "mauriceboe/trek:$MAJOR_TAG" \
-            -t "mauriceboe/trek:$VERSION" \
+            -t "syyangv/trek:latest" \
+            -t "syyangv/trek:$MAJOR_TAG" \
+            -t "syyangv/trek:$VERSION" \
             "${digests[@]}"
 
       - name: Inspect manifest
-        run: docker buildx imagetools inspect mauriceboe/trek:latest
+        run: docker buildx imagetools inspect syyangv/trek:latest
 
       - name: Export release manifest metadata
         run: |
           VERSION="${{ needs.version-bump.outputs.version }}"
-          docker buildx imagetools inspect --raw "mauriceboe/trek:${VERSION}" \
+          docker buildx imagetools inspect --raw "syyangv/trek:${VERSION}" \
             > "trek-${VERSION}-manifest.json"
 
       - name: Upload release manifest metadata
@@ -304,7 +304,7 @@ jobs:
       - name: Generate SBOM for released image
         uses: anchore/sbom-action@v0
         with:
-          image: mauriceboe/trek:${{ needs.version-bump.outputs.version }}
+          image: syyangv/trek:${{ needs.version-bump.outputs.version }}
           format: cyclonedx-json
           output-file: trek-${{ needs.version-bump.outputs.version }}-sbom.cdx.json
           upload-artifact: false

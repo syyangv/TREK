@@ -24,7 +24,7 @@ concurrency:
 jobs:
   deploy:
     name: ${{ inputs.action }} pinned stable release
-    if: github.repository == 'mauriceboe/TREK'
+    if: github.repository == 'syyangv/TREK'
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -64,6 +64,7 @@ jobs:
           helm upgrade --install "$RELEASE_NAME" charts/trek \
             --namespace "$NAMESPACE" \
             --create-namespace \
+            --set-string image.repository=syyangv/trek \
             --set-string "image.tag=$VERSION" \
             --set-string image.pullPolicy=IfNotPresent \
             --wait --timeout 10m
@@ -74,7 +75,7 @@ jobs:
         run: |
           kubectl rollout status deployment/"$RELEASE_NAME" -n "$NAMESPACE" --timeout=10m
           IMAGE="$(kubectl get deployment "$RELEASE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.template.spec.containers[0].image}')"
-          test "$IMAGE" = "mauriceboe/trek:$VERSION"
+          test "$IMAGE" = "syyangv/trek:$VERSION"
 
       - name: Verify production health
         run: |

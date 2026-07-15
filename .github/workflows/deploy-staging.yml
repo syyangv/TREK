@@ -22,7 +22,7 @@ jobs:
   deploy:
     name: Deploy pinned prerelease
     if: >-
-      github.repository == 'mauriceboe/TREK' &&
+      github.repository == 'syyangv/TREK' &&
       (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     environment: staging
@@ -71,6 +71,7 @@ jobs:
           helm upgrade --install "$RELEASE_NAME" charts/trek \
             --namespace "$NAMESPACE" \
             --create-namespace \
+            --set-string image.repository=syyangv/trek \
             --set-string "image.tag=$VERSION" \
             --set-string image.pullPolicy=IfNotPresent \
             --wait --timeout 10m
@@ -81,7 +82,7 @@ jobs:
         run: |
           kubectl rollout status deployment/"$RELEASE_NAME" -n "$NAMESPACE" --timeout=10m
           IMAGE="$(kubectl get deployment "$RELEASE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.template.spec.containers[0].image}')"
-          test "$IMAGE" = "mauriceboe/trek:$VERSION"
+          test "$IMAGE" = "syyangv/trek:$VERSION"
 
       - name: Verify staging health
         run: |
