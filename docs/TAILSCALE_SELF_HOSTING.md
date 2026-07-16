@@ -43,11 +43,12 @@ This builds the image from the local fork and preserves persisted state in `data
 
 ## Automated staging deployment
 
-Phase 3 CI deploys this private instance from a GitHub-hosted runner over
-Tailscale SSH. It does not require Kubernetes. The host must have Tailscale SSH
-enabled, Docker Engine, and Docker Compose v2. Keep the persistent deployment
-directory outside CI and configure its absolute path as the staging
-`DEPLOY_PATH` variable.
+Phase 3 CI deploys this private instance from a GitHub-hosted runner using
+standard OpenSSH over the private Tailscale network. It does not require
+Kubernetes or the open-source macOS `tailscaled` SSH server. The host must have
+macOS Remote Login enabled for the deployment user, Docker Engine, and Docker
+Compose v2. Keep the persistent deployment directory outside CI and configure
+its absolute path as the staging `DEPLOY_PATH` variable.
 
 Before enabling the workflow, ensure that directory contains:
 
@@ -63,17 +64,30 @@ pair. Local development continues to use the `build:` entry and the default
 `thvysy44/trek-fork:tailscale` image. `TREK_IMAGE` is reserved for the CI digest
 override.
 
-The `staging` GitHub Environment requires secrets `TS_OAUTH_CLIENT_ID` and
-`TS_OAUTH_SECRET`, plus variables `APP_URL`, `TS_TARGETS`, `DEPLOY_HOST`,
-`DEPLOY_USER`, and `DEPLOY_PATH`. `TS_TAGS` and `COMPOSE_PROJECT_NAME` are
-optional. The OAuth client should have only `auth_keys` write scope and be able
-to apply only `tag:trek-staging-ci`. Tailnet ACLs and SSH policy must allow that
-tag to reach only this host and log in only as `DEPLOY_USER`.
+The `staging` GitHub Environment requires secrets `TS_OAUTH_CLIENT_ID`,
+`TS_OAUTH_SECRET`, `DEPLOY_SSH_PRIVATE_KEY`, and
+`DEPLOY_SSH_KNOWN_HOSTS`, plus variables `APP_URL`, `TS_TARGETS`,
+`DEPLOY_HOST`, `DEPLOY_USER`, and `DEPLOY_PATH`. `TS_TAGS` and
+`COMPOSE_PROJECT_NAME` are optional. The OAuth client should have only
+`auth_keys` write scope and be able to apply only `tag:trek-staging-ci`.
+Tailnet ACLs must allow that tag to reach only this host on TCP 22 and the TREK
+HTTPS port.
 
-The deployment account must be able to write `DEPLOY_PATH` and use Docker
-without an interactive prompt. Do not commit `.env` or copy its values into
-GitHub variables. CI failure diagnostics print container state and image only,
-not application logs.
+Use a dedicated, unencrypted CI key; the workflow deliberately has no
+passphrase agent. Install only its public half in the deployment account's
+`~/.ssh/authorized_keys` with both feature and source restrictions:
+
+```text
+restrict,from="100.64.0.0/10,fd7a:115c:a1e0::/48" ssh-ed25519 <public-key>
+```
+
+Pin the host's existing OpenSSH key in `DEPLOY_SSH_KNOWN_HOSTS`; do not trust a
+key scanned during CI. Do not expose TCP 22 with router port forwarding, and
+use the host firewall to prevent non-Tailscale access where practical. The
+deployment account must be able to write `DEPLOY_PATH` and use Docker without
+an interactive prompt. Do not commit `.env` or copy its values into GitHub
+variables. CI failure diagnostics print container state and image only, not
+application logs.
 
 ## Check health
 
