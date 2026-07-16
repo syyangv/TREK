@@ -170,6 +170,18 @@ describe('downloadTripPDF', () => {
     expect(srcdoc).toContain('Colosseum')
   })
 
+  it('FE-COMP-TRIPPDF-005c: the gap under the day header lives in the repeated thead cell (#1531)', async () => {
+    await downloadTripPDF(richArgs)
+    const iframe = getIframe()
+    const srcdoc = iframe!.srcdoc
+    // The thead is repeated on every overflow page, so the spacing below the header bar
+    // must be declared on its cell...
+    expect(srcdoc).toContain('.day-header > tr > td { padding-bottom: 12px; }')
+    // ...and not as a block-start padding on .day-body, which the print engine only paints
+    // on the first fragment of the (fragmented) body cell.
+    expect(srcdoc).toContain('.day-body  { padding: 0 28px 6px; }')
+  })
+
   it('FE-COMP-TRIPPDF-006: escHtml prevents XSS in trip title', async () => {
     const args = {
       ...minimalArgs,
@@ -274,13 +286,47 @@ describe('downloadTripPDF', () => {
     expect(iframe!.srcdoc).toContain('CONF999')
   })
 
-  it('FE-COMP-TRIPPDF-016: renders place description and price chip', async () => {
+  it('FE-COMP-TRIPPDF-016: renders place description and a currency-formatted price chip', async () => {
     await downloadTripPDF(richArgs)
     const iframe = getIframe()
     expect(iframe!.srcdoc).toContain('Ancient amphitheater')
-    // Price chip: 15 EUR
-    expect(iframe!.srcdoc).toContain('15')
-    expect(iframe!.srcdoc).toContain('EUR')
+    // richArgs trip has no explicit currency, place has no currency override —
+    // formatMoney falls back to EUR, formatted via Intl (symbol, not literal "EUR" text).
+    expect(iframe!.srcdoc).toContain('15,00')
+    expect(iframe!.srcdoc).toContain('€')
+  })
+
+  it('FE-COMP-TRIPPDF-016b: formats price chip and totals in the trip currency, not EUR', async () => {
+    const usdArgs = {
+      ...richArgs,
+      trip: { ...richArgs.trip, currency: 'USD' },
+    }
+    await downloadTripPDF(usdArgs)
+    const iframe = getIframe()
+    // Place price chip: place has no currency override, falls back to trip.currency (USD).
+    expect(iframe!.srcdoc).toContain('$15.00')
+    // No literal "EUR" text should leak into a USD trip's export.
+    expect(iframe!.srcdoc).not.toContain('EUR')
+    // Price chip icon must stay currency-neutral — not the euro-shaped glyph.
+    expect(iframe!.srcdoc).not.toContain('M14 5c-3.87 0-7 3.13-7 7s3.13 7 7 7c2.17 0 4.1-.99 5.4-2.55')
+  })
+
+  it('FE-COMP-TRIPPDF-016c: a place with its own currency overrides the trip currency for its price chip', async () => {
+    const mixedArgs = {
+      ...richArgs,
+      trip: { ...richArgs.trip, currency: 'EUR' },
+      assignments: {
+        '10': [{
+          ...assignmentForDay,
+          place: { ...placeWithDetails, currency: 'JPY', price: '1500' },
+        }],
+      } as any,
+    }
+    await downloadTripPDF(mixedArgs)
+    const iframe = getIframe()
+    // JPY is a zero-decimal currency (currencyDecimals) and uses its own symbol, not EUR.
+    // Note: Intl renders JPY with the fullwidth yen sign (U+FFE5 "￥"), not U+00A5 "¥".
+    expect(iframe!.srcdoc).toContain('￥1,500')
   })
 
   it('FE-COMP-TRIPPDF-017: renders trip description on cover', async () => {

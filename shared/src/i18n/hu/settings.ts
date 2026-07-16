@@ -49,8 +49,6 @@ const settings: TranslationStrings = {
   'settings.mapTipLabel': 'Tipp:',
   'settings.mapTip':
     'Jobb klikk és húzás a térkép forgatásához/döntéséhez. Középső kattintás hely hozzáadásához (a jobb klikk a forgatáshoz van fenntartva).',
-  'settings.latitude': 'Szélességi fok',
-  'settings.longitude': 'Hosszúsági fok',
   'settings.saveMap': 'Térkép mentése',
   'settings.apiKeys': 'API kulcsok',
   'settings.mapsKey': 'Google Maps API kulcs',
@@ -297,12 +295,14 @@ const settings: TranslationStrings = {
   'settings.notificationPreferences.configure': 'Beállítás',
   'settings.notificationPreferences.testSuccess': 'Teszt értesítés elküldve.',
   'settings.notificationPreferences.testFailed': 'A teszt sikertelen.',
-  'settings.notificationPreferences.pluginConfigured': 'Beállítva. A hitelesítő adatok a bővítmény beállításainál kezelhetők.',
+  'settings.notificationPreferences.pluginConfigured':
+    'Beállítva. A hitelesítő adatok a bővítmény beállításainál kezelhetők.',
   'settings.notificationPreferences.webhook': 'Webhook',
   'settings.notificationPreferences.email': 'Email',
   'settings.notificationPreferences.ntfy': 'Ntfy',
   'settings.currency': 'Currency',
   'settings.currencyHint': 'All amounts in Costs are converted to and shown in this currency.',
+  'settings.currencyTrip': 'Az utazás pénzneme',
   'settings.passkey.title': 'Passkey-k',
   'settings.passkey.description':
     'Jelentkezz be gyorsabban és adathalászat-állóan egy passkey-jel — ujjlenyomattal, arccal, PIN-kóddal vagy hardveres kulccsal. A jelszavad tartalékként megmarad.',

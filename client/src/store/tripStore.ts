@@ -60,10 +60,17 @@ export interface TripStoreState
   files: TripFile[]
   reservations: Reservation[]
   selectedDayId: number | null
+  // Places filter (list + map markers). Lives here, not in the sidebar, so the
+  // applied filter and the filter UI can never drift apart when the Plan tab
+  // unmounts and remounts (#1541).
+  placesFilter: string
+  placesCategoryFilter: Set<string>
   isLoading: boolean
   error: string | null
 
   setSelectedDay: (dayId: number | null) => void
+  setPlacesFilter: (filter: string) => void
+  setPlacesCategoryFilter: (categoryIds: Set<string>) => void
   handleRemoteEvent: (event: WebSocketEvent) => void
   resetTrip: () => void
   loadTrip: (tripId: number | string) => Promise<void>
@@ -88,10 +95,14 @@ export const useTripStore = create<TripStoreState>((set, get) => ({
   files: [],
   reservations: [],
   selectedDayId: null,
+  placesFilter: 'all',
+  placesCategoryFilter: new Set<string>(),
   isLoading: false,
   error: null,
 
   setSelectedDay: (dayId: number | null) => set({ selectedDayId: dayId }),
+  setPlacesFilter: (filter: string) => set({ placesFilter: filter }),
+  setPlacesCategoryFilter: (categoryIds: Set<string>) => set({ placesCategoryFilter: categoryIds }),
 
   handleRemoteEvent: (event: WebSocketEvent) => handleRemoteEvent(set, get, event),
 
@@ -110,6 +121,8 @@ export const useTripStore = create<TripStoreState>((set, get) => ({
     files: [],
     reservations: [],
     selectedDayId: null,
+    placesFilter: 'all',
+    placesCategoryFilter: new Set<string>(),
     error: null,
   }),
 

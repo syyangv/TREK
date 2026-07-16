@@ -47,8 +47,6 @@ const settings: TranslationStrings = {
   'settings.mapTipLabel': '팁:',
   'settings.mapTip':
     '우클릭 후 드래그하여 지도를 회전/기울이세요. 가운데 클릭으로 장소를 추가할 수 있습니다 (우클릭은 회전 전용).',
-  'settings.latitude': '위도',
-  'settings.longitude': '경도',
   'settings.saveMap': '지도 저장',
   'settings.apiKeys': 'API 키',
   'settings.mapsKey': 'Google Maps API 키',
@@ -294,6 +292,7 @@ const settings: TranslationStrings = {
   'settings.oauth.badge.machine': '머신',
   'settings.currency': 'Currency',
   'settings.currencyHint': 'All amounts in Costs are converted to and shown in this currency.',
+  'settings.currencyTrip': '여행 통화',
   'settings.passkey.title': '패스키',
   'settings.passkey.description':
     '지문, 얼굴, PIN 또는 하드웨어 키 같은 패스키로 더 빠르고 피싱에 강하게 로그인하세요. 비밀번호는 백업으로 그대로 유지됩니다.',

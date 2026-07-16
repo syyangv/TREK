@@ -106,11 +106,9 @@ export type DistanceUnit = 'metric' | 'imperial'
 
 export interface Settings {
   map_tile_url: string
-  default_lat: number
-  default_lng: number
-  default_zoom: number
   dark_mode: boolean | string
-  default_currency: string
+  /** Display currency for Costs. Empty/null = follow each trip's own currency. */
+  default_currency: string | null
   language: string
   temperature_unit: string
   distance_unit?: DistanceUnit
