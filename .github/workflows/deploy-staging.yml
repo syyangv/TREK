@@ -79,12 +79,16 @@ jobs:
 
       - name: Validate staging configuration
         env:
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
           TS_TARGETS: ${{ vars.TS_TARGETS }}
         run: |
           test -n "$TS_OAUTH_CLIENT_ID"
           test -n "$TS_OAUTH_SECRET"
+          test -n "$DEPLOY_SSH_PRIVATE_KEY"
+          test -n "$DEPLOY_SSH_KNOWN_HOSTS"
           test -n "$TS_TARGETS"
           test -n "$APP_URL"
           test -n "$DEPLOY_HOST"
@@ -103,10 +107,39 @@ jobs:
           targets: ${{ vars.TS_TARGETS }}
           use-cache: 'true'
 
+      - name: Configure pinned SSH identity
+        env:
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+        run: |
+          install -d -m 700 "$HOME/.ssh"
+          install -m 600 /dev/null "$RUNNER_TEMP/trek-staging-key"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/trek-staging-key"
+          ssh-keygen -y -f "$RUNNER_TEMP/trek-staging-key" >/dev/null
+          install -m 600 /dev/null "$RUNNER_TEMP/trek-known-hosts"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/trek-known-hosts"
+          ssh-keygen -F "$DEPLOY_HOST" -f "$RUNNER_TEMP/trek-known-hosts" >/dev/null
+          cat > "$RUNNER_TEMP/trek-ssh" <<'EOF'
+          #!/usr/bin/env bash
+          exec ssh -F /dev/null \
+            -i "$RUNNER_TEMP/trek-staging-key" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$RUNNER_TEMP/trek-known-hosts" \
+            -o ConnectTimeout=15 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=3 \
+            -- "$@"
+          EOF
+          chmod 700 "$RUNNER_TEMP/trek-ssh"
+          echo "TREK_SSH=$RUNNER_TEMP/trek-ssh" >> "$GITHUB_ENV"
+
       - name: Verify tailnet and deployment host
         run: |
           tailscale status --json | jq -e '.BackendState == "Running"'
           tailscale ping --timeout=10s "$DEPLOY_HOST"
+          "$TREK_SSH" "$DEPLOY_USER@$DEPLOY_HOST" true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -149,7 +182,7 @@ jobs:
           printf -v base_b64_q '%q' "$base_compose_b64"
           printf -v override_b64_q '%q' "$override_compose_b64"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
-          tailscale ssh "$remote" "set -eu; test -d $remote_path_q; test -f $remote_path_q/.env; mkdir -p $remote_path_q/data $remote_path_q/uploads $remote_path_q/.trek-ci/releases; release_dir=$remote_path_q/.trek-ci/$release_rel_q; mkdir \"\$release_dir\"; if ! printf %s $base_b64_q | base64 --decode > \"\$release_dir/docker-compose.yml\" 2>/dev/null; then printf %s $base_b64_q | base64 -D > \"\$release_dir/docker-compose.yml\"; fi; if ! printf %s $override_b64_q | base64 --decode > \"\$release_dir/docker-compose.override.yml\" 2>/dev/null; then printf %s $override_b64_q | base64 -D > \"\$release_dir/docker-compose.override.yml\"; fi; test -s \"\$release_dir/docker-compose.yml\"; test -s \"\$release_dir/docker-compose.override.yml\"; docker compose version"
+          "$TREK_SSH" "$remote" "set -eu; test -d $remote_path_q; test -f $remote_path_q/.env; mkdir -p $remote_path_q/data $remote_path_q/uploads $remote_path_q/.trek-ci/releases; release_dir=$remote_path_q/.trek-ci/$release_rel_q; mkdir \"\$release_dir\"; if ! printf %s $base_b64_q | base64 --decode > \"\$release_dir/docker-compose.yml\" 2>/dev/null; then printf %s $base_b64_q | base64 -D > \"\$release_dir/docker-compose.yml\"; fi; if ! printf %s $override_b64_q | base64 --decode > \"\$release_dir/docker-compose.override.yml\" 2>/dev/null; then printf %s $override_b64_q | base64 -D > \"\$release_dir/docker-compose.override.yml\"; fi; test -s \"\$release_dir/docker-compose.yml\"; test -s \"\$release_dir/docker-compose.override.yml\"; docker compose version"
           echo "release=$release_rel" >> "$GITHUB_OUTPUT"
 
       - name: Capture rollback target
@@ -157,12 +190,12 @@ jobs:
         run: |
           printf -v path_q '%q' "$DEPLOY_PATH"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
-          previous_image="$(tailscale ssh "$remote" "docker inspect --format '{{.Config.Image}}' trek 2>/dev/null || true")"
-          previous_release="$(tailscale ssh "$remote" "readlink $path_q/.trek-ci/current 2>/dev/null || true")"
+          previous_image="$("$TREK_SSH" "$remote" "docker inspect --format '{{.Config.Image}}' trek 2>/dev/null || true")"
+          previous_release="$("$TREK_SSH" "$remote" "readlink $path_q/.trek-ci/current 2>/dev/null || true")"
           if [[ "$previous_image" =~ ^[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]] &&
              [[ "$previous_release" =~ ^releases/run-[0-9]+-[0-9]+$ ]]; then
             printf -v previous_release_q '%q' "$previous_release"
-            tailscale ssh "$remote" "test -s $path_q/.trek-ci/$previous_release_q/docker-compose.yml; test -s $path_q/.trek-ci/$previous_release_q/docker-compose.override.yml"
+            "$TREK_SSH" "$remote" "test -s $path_q/.trek-ci/$previous_release_q/docker-compose.yml; test -s $path_q/.trek-ci/$previous_release_q/docker-compose.override.yml"
             echo "image=$previous_image" >> "$GITHUB_OUTPUT"
             echo "release=$previous_release" >> "$GITHUB_OUTPUT"
             echo "Immutable rollback target captured."
@@ -183,7 +216,7 @@ jobs:
           printf -v next_link_q '%q' "$next_link"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
           compose="docker compose --project-directory $path_q -p $project_q -f $path_q/.trek-ci/$release_q/docker-compose.yml -f $path_q/.trek-ci/$release_q/docker-compose.override.yml"
-          tailscale ssh "$remote" "set -eu; TREK_IMAGE=$image_q $compose pull app; TREK_IMAGE=$image_q $compose up -d --no-build --wait --wait-timeout 300 app; actual=\$(docker inspect --format '{{.Config.Image}}' trek); test \"\$actual\" = $image_q; cd $path_q/.trek-ci; ln -s $release_q $next_link_q; if mv -Tf $next_link_q current 2>/dev/null; then :; else mv -hf $next_link_q current; fi"
+          "$TREK_SSH" "$remote" "set -eu; TREK_IMAGE=$image_q $compose pull app; TREK_IMAGE=$image_q $compose up -d --no-build --wait --wait-timeout 300 app; actual=\$(docker inspect --format '{{.Config.Image}}' trek); test \"\$actual\" = $image_q; cd $path_q/.trek-ci; ln -s $release_q $next_link_q; if mv -Tf $next_link_q current 2>/dev/null; then :; else mv -hf $next_link_q current; fi"
 
       - name: Verify staging health
         run: |
@@ -204,7 +237,7 @@ jobs:
           printf -v next_link_q '%q' "$next_link"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
           compose="docker compose --project-directory $path_q -p $project_q -f $path_q/.trek-ci/$release_q/docker-compose.yml -f $path_q/.trek-ci/$release_q/docker-compose.override.yml"
-          tailscale ssh "$remote" "set -eu; TREK_IMAGE=$image_q $compose pull app; TREK_IMAGE=$image_q $compose up -d --no-build --wait --wait-timeout 300 app; actual=\$(docker inspect --format '{{.Config.Image}}' trek); test \"\$actual\" = $image_q; cd $path_q/.trek-ci; ln -s $release_q $next_link_q; if mv -Tf $next_link_q current 2>/dev/null; then :; else mv -hf $next_link_q current; fi"
+          "$TREK_SSH" "$remote" "set -eu; TREK_IMAGE=$image_q $compose pull app; TREK_IMAGE=$image_q $compose up -d --no-build --wait --wait-timeout 300 app; actual=\$(docker inspect --format '{{.Config.Image}}' trek); test \"\$actual\" = $image_q; cd $path_q/.trek-ci; ln -s $release_q $next_link_q; if mv -Tf $next_link_q current 2>/dev/null; then :; else mv -hf $next_link_q current; fi"
 
       - name: Capture safe failure diagnostics
         if: ${{ failure() }}
@@ -215,7 +248,7 @@ jobs:
           printf -v release_q '%q' "$release"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
           compose="docker compose --project-directory $path_q -p $project_q -f $path_q/.trek-ci/$release_q/docker-compose.yml -f $path_q/.trek-ci/$release_q/docker-compose.override.yml"
-          tailscale ssh "$remote" "$compose ps || true; docker inspect --format 'name={{.Name}} status={{.State.Status}} image={{.Config.Image}}' trek 2>/dev/null || true" || true
+          "$TREK_SSH" "$remote" "$compose ps || true; docker inspect --format 'name={{.Name}} status={{.State.Status}} image={{.Config.Image}}' trek 2>/dev/null || true" || true
 
       - name: Record deployment identity
         if: ${{ success() }}
