@@ -73,13 +73,21 @@ The `staging` GitHub Environment requires secrets `TS_OAUTH_CLIENT_ID`,
 Tailnet ACLs must allow that tag to reach only this host on TCP 22 and the TREK
 HTTPS port.
 
-Install the dedicated public key in the deployment account's
-`~/.ssh/authorized_keys` with the `restrict` option. Pin the host's existing
-OpenSSH key in `DEPLOY_SSH_KNOWN_HOSTS`; do not trust a key scanned during CI.
-The deployment account must be able to write `DEPLOY_PATH` and use Docker
-without an interactive prompt. Do not commit `.env` or copy its values into
-GitHub variables. CI failure diagnostics print container state and image only,
-not application logs.
+Use a dedicated, unencrypted CI key; the workflow deliberately has no
+passphrase agent. Install only its public half in the deployment account's
+`~/.ssh/authorized_keys` with both feature and source restrictions:
+
+```text
+restrict,from="100.64.0.0/10,fd7a:115c:a1e0::/48" ssh-ed25519 <public-key>
+```
+
+Pin the host's existing OpenSSH key in `DEPLOY_SSH_KNOWN_HOSTS`; do not trust a
+key scanned during CI. Do not expose TCP 22 with router port forwarding, and
+use the host firewall to prevent non-Tailscale access where practical. The
+deployment account must be able to write `DEPLOY_PATH` and use Docker without
+an interactive prompt. Do not commit `.env` or copy its values into GitHub
+variables. CI failure diagnostics print container state and image only, not
+application logs.
 
 ## Check health
 

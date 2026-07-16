@@ -115,7 +115,7 @@ jobs:
           install -d -m 700 "$HOME/.ssh"
           install -m 600 /dev/null "$RUNNER_TEMP/trek-staging-key"
           printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/trek-staging-key"
-          ssh-keygen -y -f "$RUNNER_TEMP/trek-staging-key" >/dev/null
+          ssh-keygen -y -P '' -f "$RUNNER_TEMP/trek-staging-key" >/dev/null
           install -m 600 /dev/null "$RUNNER_TEMP/trek-known-hosts"
           printf '%s\n' "$SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/trek-known-hosts"
           ssh-keygen -F "$DEPLOY_HOST" -f "$RUNNER_TEMP/trek-known-hosts" >/dev/null

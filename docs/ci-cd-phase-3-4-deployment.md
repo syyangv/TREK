@@ -38,7 +38,8 @@ Secrets:
 - `TS_OAUTH_CLIENT_ID`: ID of a Tailscale OAuth client authorized to create
   auth keys for the staging runner tag
 - `TS_OAUTH_SECRET`: secret for that Tailscale OAuth client
-- `DEPLOY_SSH_PRIVATE_KEY`: dedicated private key for the CI deployment account
+- `DEPLOY_SSH_PRIVATE_KEY`: dedicated, unencrypted private key for the CI
+  deployment account; the workflow intentionally has no passphrase agent
 - `DEPLOY_SSH_KNOWN_HOSTS`: pinned OpenSSH host-key entry for `DEPLOY_HOST`
 
 Variables:
@@ -61,11 +62,18 @@ for Phase 3.
 The dedicated host must be online, enrolled in the tailnet, running Docker
 Engine with Docker Compose v2, and have macOS Remote Login enabled for
 `DEPLOY_USER`. Install only the public half of the dedicated CI key in that
-account's `~/.ssh/authorized_keys`; prefix it with `restrict` to disable
-forwarding and PTY features. `DEPLOY_PATH` must already contain the protected
-`.env` file. The workflow preserves state in `DEPLOY_PATH/data/` and
-`DEPLOY_PATH/uploads/`; it creates those directories when absent. Do not put
-credentials in Compose files or GitHub variables.
+account's `~/.ssh/authorized_keys`. Source-restrict the key to Tailscale's IPv4
+and IPv6 ranges while also disabling forwarding and PTY features:
+
+```text
+restrict,from="100.64.0.0/10,fd7a:115c:a1e0::/48" ssh-ed25519 <public-key>
+```
+
+Do not expose TCP 22 through router port forwarding, and use the host firewall
+to prevent non-Tailscale access where practical. `DEPLOY_PATH` must already
+contain the protected `.env` file. The workflow preserves state in
+`DEPLOY_PATH/data/` and `DEPLOY_PATH/uploads/`; it creates those directories
+when absent. Do not put credentials in Compose files or GitHub variables.
 
 The OAuth client needs only `auth_keys` write scope and permission to apply the
 exact runner tag (normally `tag:trek-staging-ci`). Configure `tagOwners` so only
@@ -136,8 +144,8 @@ Kubernetes requirements are unchanged by the Phase 3 Compose refactor.
   `DEPLOY_USER`, and `DEPLOY_PATH` (plus optional `TS_TAGS` and
   `COMPOSE_PROJECT_NAME`).
 - [ ] The deployment host has Docker Engine, Compose v2, macOS Remote Login,
-  the dedicated authorized key, `.env`, and persistent `data/` and `uploads/`
-  paths configured.
+  the dedicated source-restricted authorized key, no public TCP 22 exposure,
+  `.env`, and persistent `data/` and `uploads/` paths configured.
 - [ ] Publish a new prerelease only after the workflow is on `main`.
 - [ ] Staging deploys the recorded prerelease digest and `/api/health` succeeds.
 - [x] Phase 2 stable release completed as `v3.3.1`: source/tag commit
