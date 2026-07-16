@@ -83,8 +83,12 @@ without suppressing a release for newer `main`.
   `sha256:aeffe1614d4f84a7ddbf95ca323d72213ac753cb58c4d71550ee2306a8c68794`.
   The index contains native `linux/amd64` and `linux/arm64` images plus their
   Buildx attestation manifests.
-- The Helm repository index publishes chart and app version `3.3.1` at
-  `https://syyangv.github.io/TREK/trek-3.3.1.tgz`.
+- GitHub Pages is enabled from the root of `gh-pages`. Both
+  `https://syyangv.github.io/TREK/index.yaml` and chart package
+  `https://syyangv.github.io/TREK/trek-3.3.1.tgz` return HTTP 200. An isolated
+  Helm client test successfully completed `helm repo add`, `helm repo update`,
+  and `helm show chart ... --version 3.3.1`, resolving chart and app version
+  `3.3.1`.
 - The successful cleanup job removed `release-build/v3.3.1` after publication.
 
 Phase 2 is operationally complete. Registry retention policy remains an

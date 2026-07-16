@@ -84,8 +84,10 @@ credentials.
 - [x] Phase 2 stable release completed as `v3.3.1`: source/tag commit
   `63c28ff843a0e937a71640260a4f7665d0830198`, image digest
   `sha256:aeffe1614d4f84a7ddbf95ca323d72213ac753cb58c4d71550ee2306a8c68794`,
-  matching GitHub Release assets, and Helm chart `3.3.1` are verified. Runtime
-  health evidence remains part of the staging/production deployment checks.
+  matching GitHub Release assets, and Helm chart `3.3.1` are verified. GitHub
+  Pages serves the Helm index and chart package, and an isolated Helm client
+  successfully added, updated, and resolved the repository. Runtime health
+  evidence remains part of the staging/production deployment checks.
 - [ ] `production` exposes secret `KUBE_CONFIG_DATA` and variable `APP_URL`.
 - [ ] Before production deployment, identify the prior known-good stable
   rollback target and verify:
