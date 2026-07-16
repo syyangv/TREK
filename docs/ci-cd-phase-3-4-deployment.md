@@ -1,5 +1,13 @@
 # CI/CD Phases 3–4: Environment Deployment
 
+**Implementation status:** Workflows merged; operational validation blocked
+pending a successful Phase 2 release and Environment configuration.
+
+As of 2026-07-15, GitHub reports no configured secret or variable names for the
+`staging` or `production` Environments. Do not dispatch deployment validation
+until the names below are visible in the intended Environment. Secret values
+must never be written to source control or logs.
+
 ## Staging (Phase 3)
 
 `.github/workflows/deploy-staging.yml` deploys a pinned prerelease image to the
@@ -56,3 +64,13 @@ credentials.
 - Ensure the cluster already has the required PVC/StorageClass and the TREK
   secret configuration. Credentials must remain in Kubernetes/GitHub secrets;
   do not put them in values files or workflow source.
+
+## Validation checklist
+
+- [ ] Phase 2 stable release completes and its version/digest are recorded.
+- [ ] `staging` exposes secret `KUBE_CONFIG_DATA` and variable `APP_URL`.
+- [ ] Staging deploys the recorded digest and `/api/health` succeeds.
+- [ ] `production` exposes secret `KUBE_CONFIG_DATA` and variable `APP_URL`.
+- [ ] Production approval is granted through GitHub Environments.
+- [ ] Production deploys the recorded digest and `/api/health` succeeds.
+- [ ] Rollback deploys the prior known-good version/digest and health succeeds.

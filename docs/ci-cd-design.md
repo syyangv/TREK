@@ -4,6 +4,38 @@
 
 This document defines a senior-engineer CI/CD design for TREK. The goal is to make every merged change reproducible, tested, releasable, and deployable without coupling upstream releases to any one self-hosted deployment.
 
+## Implementation Status
+
+**Last updated:** 2026-07-15
+**Release fork:** `syyangv/TREK`
+
+| Phase | Implementation | Operational validation | Current evidence / blocker |
+| --- | --- | --- | --- |
+| Phase 1 — CI reliability | Complete on `main` | Complete | Hardening merged in `5210ff4d`; `Phase 1 Checks`, Docker smoke, and Helm chart validation passed. |
+| Phase 2 — release gating | Complete, including retry-gate fix | In progress | Security rerun `29466975090` passed for `5210ff4d`. The first stable release retry exposed a gate-selection defect and stopped before publication. Fix `825bf6bb` is on `main`; CI run `29467234562` passed and Security Scan `29467263383` remains in progress before another release attempt. |
+| Phase 3 — staging | Workflow implemented | Not started | Requires a successful Phase 2 release plus Environment-scoped `KUBE_CONFIG_DATA` and `APP_URL`. GitHub currently reports no staging secret/variable names. |
+| Phase 4 — production/rollback | Workflow implemented | Not started | The approval-gated Environment exists, but GitHub currently reports no production `KUBE_CONFIG_DATA` or `APP_URL`. Production and rollback remain blocked until staging succeeds. |
+
+Current execution order:
+
+- [x] Merge immutable-artifact and deployment hardening.
+- [x] Prove the Security Scan can succeed with configured Docker Hub credentials.
+- [x] Fix release gating so a successful rerun for the exact SHA supersedes an earlier failed attempt.
+- [x] Complete CI for `825bf6bb`.
+- [ ] Complete Security Scan
+  [`29467263383`](https://github.com/syyangv/TREK/actions/runs/29467263383)
+  for `825bf6bb`.
+- [ ] Publish and verify one stable multi-architecture release, Helm chart, SBOM, provenance, and GitHub Release.
+- [ ] Configure and verify staging Environment settings.
+- [ ] Deploy and verify staging by digest.
+- [ ] Configure and approve production Environment settings.
+- [ ] Deploy production by digest and verify health.
+- [ ] Roll back to the prior known-good version and verify health/digest.
+
+Do not mark a phase operationally complete from workflow source alone. Completion
+requires a successful GitHub Actions run and the artifact/deployment evidence
+listed above.
+
 ## Current State
 
 TREK already has a solid foundation:
