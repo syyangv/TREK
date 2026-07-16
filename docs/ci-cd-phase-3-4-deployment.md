@@ -1,5 +1,16 @@
 # CI/CD Phases 3–4: Environment Deployment
 
+**Implementation status:** Workflows merged to `main`, but the live `dev` branch
+does not yet contain the hardened prerelease/security/metadata/staging workflow
+set. Operational validation is blocked pending synchronization of `dev`,
+prerelease publication, and Environment configuration for staging. A successful
+stable Phase 2 release is separately required before production.
+
+As of 2026-07-15, GitHub reports no configured secret or variable names for the
+`staging` or `production` Environments. Do not dispatch deployment validation
+until the names below are visible in the intended Environment. Secret values
+must never be written to source control or logs.
+
 ## Staging (Phase 3)
 
 `.github/workflows/deploy-staging.yml` deploys a pinned prerelease image to the
@@ -56,3 +67,34 @@ credentials.
 - Ensure the cluster already has the required PVC/StorageClass and the TREK
   secret configuration. Credentials must remain in Kubernetes/GitHub secrets;
   do not put them in values files or workflow source.
+
+## Validation checklist
+
+- [ ] Merge/reconcile current `main` into `dev` so `dev` contains:
+  - [ ] fork-scoped `syyangv/TREK` prerelease publishing to `syyangv/trek`;
+  - [ ] exact-SHA CI and Security Scan gating;
+  - [ ] the `prerelease-metadata` artifact;
+  - [ ] `.github/workflows/deploy-staging.yml`.
+- [ ] Run CI and Security Scan successfully for the resulting exact `dev` SHA.
+- [ ] Publish a prerelease from that `dev` SHA; record its source SHA, version,
+  and digest.
+- [ ] `staging` exposes secret `KUBE_CONFIG_DATA` and variable `APP_URL`.
+- [ ] Staging deploys the recorded prerelease digest and `/api/health` succeeds.
+- [ ] Phase 2 stable release completes; record its version, source SHA, image
+  digest, matching git tag/chart source, and health evidence.
+- [ ] `production` exposes secret `KUBE_CONFIG_DATA` and variable `APP_URL`.
+- [ ] Before production deployment, identify the prior known-good stable
+  rollback target and verify:
+  - [ ] its git tag exists and points to the expected source;
+  - [ ] its Docker manifest resolves to the recorded digest;
+  - [ ] its matching chart source is available;
+  - [ ] the currently deployed baseline is healthy.
+- [ ] Record the current Helm revision and deployed image digest.
+- [ ] Production approval is granted through GitHub Environments.
+- [ ] Production deploys the recorded digest and `/api/health` succeeds.
+- [ ] Rollback deploys the prior known-good version/digest and health succeeds.
+
+If this is the first production deployment and no prior known-good release
+exists, rollback cannot be operationally validated. Record that limitation and
+do not mark Phase 4 complete until two known-good stable releases exist and the
+older one has been exercised as a rollback target.

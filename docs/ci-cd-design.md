@@ -4,7 +4,45 @@
 
 This document defines a senior-engineer CI/CD design for TREK. The goal is to make every merged change reproducible, tested, releasable, and deployable without coupling upstream releases to any one self-hosted deployment.
 
-## Current State
+## Implementation Status
+
+**Last updated:** 2026-07-15
+**Release fork:** `syyangv/TREK`
+
+| Phase | Implementation | Operational validation | Current evidence / blocker |
+| --- | --- | --- | --- |
+| Phase 1 — CI reliability | Complete on `main` | Complete for the aggregate CI model | Hardening merged in `5210ff4d`; `Phase 1 Checks`, Docker smoke, and Helm chart validation passed. Requiring separate Security/target-branch checks remains an explicit governance follow-up. |
+| Phase 2 — stable release gating | Complete, including retry-gate fix | Ready for stable-release rerun | Fix `825bf6bb` is on `main`; CI runs `29467234562` and `29467262444`, plus Security runs `29467234565` and `29467263383`, passed. No stable release has completed after the fix. |
+| Phase 3 — prerelease/staging | Implemented on `main`; not yet synchronized to `dev` | Blocked | `dev` must first receive the hardened prerelease/staging workflows, pass exact-SHA CI/security, and publish a prerelease. GitHub also currently reports no staging `KUBE_CONFIG_DATA` or `APP_URL`. |
+| Phase 4 — production/rollback | Workflow implemented | Not started | The approval-gated Environment exists, but GitHub currently reports no production `KUBE_CONFIG_DATA` or `APP_URL`. Production and rollback remain blocked until staging succeeds. |
+
+Current execution order:
+
+- [x] Merge immutable-artifact and deployment hardening.
+- [x] Prove the Security Scan can succeed with configured Docker Hub credentials.
+- [x] Fix release gating so a successful rerun for the exact SHA supersedes an earlier failed attempt.
+- [x] Complete CI for `825bf6bb`.
+- [x] Complete Security Scan
+  [`29467263383`](https://github.com/syyangv/TREK/actions/runs/29467263383)
+  for `825bf6bb`.
+- [ ] Publish and verify one stable multi-architecture release, Helm chart, SBOM, provenance, and GitHub Release.
+- [ ] Reconcile `dev` with current `main` so it contains the hardened prerelease,
+  security-gating, metadata, and staging workflows.
+- [ ] Complete CI and Security Scan for the resulting exact `dev` SHA.
+- [ ] Publish and verify one prerelease from that `dev` SHA; record its source
+  SHA, version, and digest.
+- [ ] Configure and verify staging Environment settings.
+- [ ] Deploy the recorded prerelease digest to staging and verify health.
+- [ ] Configure and approve production Environment settings.
+- [ ] Record and validate a prior known-good stable rollback target.
+- [ ] Deploy production by digest and verify health.
+- [ ] Roll back to the prior known-good version and verify health/digest.
+
+Do not mark a phase operationally complete from workflow source alone. Completion
+requires a successful GitHub Actions run and the artifact/deployment evidence
+listed above.
+
+## Pre-implementation Baseline (Historical)
 
 TREK already has a solid foundation:
 
@@ -22,7 +60,8 @@ TREK already has a solid foundation:
   - plugin SDK publishing
   - issue/PR hygiene
 
-Main gaps:
+Gaps recorded when the design was created (subsequently addressed unless the
+status table above says otherwise):
 
 1. Release image publishing is not clearly gated by a single required CI result.
 2. Docker smoke testing is missing before publish.
@@ -30,7 +69,7 @@ Main gaps:
 4. CI is split across workflows with some duplicated install/build behavior.
 5. Local/self-host deployment should be explicitly separate from upstream release automation.
 
-## Target Model
+## Implemented Target Model
 
 Use this delivery flow:
 
@@ -46,19 +85,23 @@ Branch meanings:
 
 Artifact meanings:
 
-- `mauriceboe/trek:<version>`: immutable stable release
-- `mauriceboe/trek:<major>`: latest stable for major line
-- `mauriceboe/trek:latest`: latest stable
-- `mauriceboe/trek:<version>-pre.N`: immutable prerelease
-- `mauriceboe/trek:latest-pre`: latest prerelease
+- `syyangv/trek:<version>`: immutable stable release produced by the release fork
+- `syyangv/trek:<major>`: latest stable for a major line in the release fork
+- `syyangv/trek:latest`: latest stable in the release fork
+- `syyangv/trek:<version>-pre.N`: immutable prerelease produced from `dev`
+- `syyangv/trek:latest-pre`: latest prerelease in the release fork
 
-## Required PR CI
+`mauriceboe/trek` remains the upstream/public image namespace and is not an
+output of the fork workflows. Operators validating `syyangv/TREK` must inspect
+and deploy `syyangv/trek` artifacts.
+
+## Implemented Required PR CI
 
 Every PR to `dev` or `main` should run the same required quality gates.
 
 ### 1. Change Detection
 
-Add a lightweight `changes` job that identifies touched areas:
+The implemented lightweight `changes` job identifies touched areas:
 
 - `shared/**`
 - `server/**`
@@ -165,7 +208,24 @@ Policy:
 
 ## Branch Protection
 
-Require these checks before merging to `dev` and `main`:
+The live `main` and `dev` protections require the aggregate `Phase 1 Checks`
+context. That aggregate covers applicable shared, server, client, Docker smoke,
+and Helm chart gates.
+
+The following checks are separate today and are **not** live required contexts:
+
+- `Security Scan`: required by stable/prerelease publication for the exact SHA,
+  but not by PR branch protection because credentialed scanning cannot run for
+  untrusted fork code.
+- `check-target`: enforces contributor routing through workflow policy, labels,
+  and comments, but is not a protected-branch required context.
+
+Governance follow-up: either keep this aggregate model and revise policy to
+match it, or add credential-free PR security/target checks before making those
+contexts required. Do not describe them as required until branch protection
+actually includes them.
+
+Design-time candidate checks were:
 
 - Shared package gate
 - Server gate
@@ -216,7 +276,11 @@ Release stages:
 
 Important design rule:
 
-> Build once, promote by digest. Do not rebuild different bits for staging and production.
+> Build once within each release lane and deploy that lane's artifact by digest.
+
+The current prerelease/staging and stable/production lanes are separate builds.
+Do not claim byte-for-byte staging-to-production promotion unless a future
+workflow promotes the exact staged digest into the stable namespace.
 
 ## Prerelease Pipeline
 
@@ -263,7 +327,7 @@ Trigger:
 
 Actions:
 
-- deploy `latest-pre` or a pinned prerelease tag
+- deploy a pinned prerelease tag resolved to its digest, not `latest-pre`
 - run post-deploy health checks
 - run a smoke login/bootstrap check if credentials are available
 
@@ -341,7 +405,11 @@ Every deploy job should emit:
 - app version
 - target environment
 - health check result
-- last container logs on failure
+- credential-safe Kubernetes workload/event diagnostics on failure
+
+Application logs are opt-in diagnostics because first-start output can contain
+generated credentials; never print them to Actions logs without an explicit
+redaction and access policy.
 
 Every release should make rollback obvious:
 
@@ -352,47 +420,59 @@ docker compose up -d
 
 with the previous pinned image tag.
 
-## Rollout Plan
+## Rollout Record and Remaining Validation
 
 ### Phase 1: CI Reliability
 
-- Normalize install/build steps across workflows.
-- Ensure CI runs on PR and push to `dev`/`main`.
-- Add Docker smoke test.
-- Make these checks required in branch protection.
+- [x] Normalize install/build steps across workflows.
+- [x] Ensure CI runs on PR and push to `dev`/`main`.
+- [x] Add Docker smoke and Helm chart gates.
+- [x] Require the aggregate `Phase 1 Checks` context in branch protection.
+- [ ] Decide whether separate Security and target-branch contexts should become
+  required, then align branch protection and policy language.
 
 ### Phase 2: Release Gating
 
-- Ensure Docker stable release only runs after required CI success.
-- Keep multi-arch digest build.
-- Add SBOM/provenance generation.
-- Publish release notes.
+- [x] Ensure Docker stable release only runs after required CI/security success.
+- [x] Keep multi-arch digest build.
+- [x] Add SBOM/provenance generation.
+- [x] Publish release notes.
+- [ ] Complete a post-`825bf6bb` stable release and verify every artifact.
 
 ### Phase 3: Staging
 
-- Add prerelease image deployment to staging.
-- Add post-deploy health checks.
-- Add manual promotion path.
+- [x] Add prerelease image deployment to staging.
+- [x] Add post-deploy health checks.
+- [ ] Merge/synchronize the hardened workflow commits from `main` into `dev`.
+- [ ] Verify the resulting `dev` SHA passes CI and Security Scan.
+- [ ] Publish a prerelease from that `dev` SHA, record its digest, and validate
+  it in staging.
+
+Staging validates the prerelease lane; it does not deploy the stable Phase 2
+artifact. The current workflows do not implement byte-for-byte promotion from
+staging to production. Stable artifacts have their own release proof before
+production deployment.
 
 ### Phase 4: Production Deployment
 
-- Add GitHub Environment `production` with manual approval.
-- Deploy pinned tags.
-- Add rollback runbook.
+- [x] Add GitHub Environment `production` with manual approval.
+- [x] Deploy pinned versions resolved to digests.
+- [ ] Configure Environment settings and validate production deployment.
+- [ ] Preflight and execute the rollback runbook.
 
-## Proposed Workflow Inventory
+## Implemented Workflow Inventory
 
-Recommended final workflows:
+Implemented delivery workflows:
 
 ```text
 .github/workflows/ci.yml
-.github/workflows/docker-pr-smoke.yml        # optional, can live inside ci.yml
-.github/workflows/release-stable.yml
-.github/workflows/release-prerelease.yml
+.github/workflows/docker.yml                 # stable release
+.github/workflows/docker-dev.yml             # prerelease
+.github/workflows/deploy-staging.yml
+.github/workflows/deploy-production.yml
 .github/workflows/security.yml
 .github/workflows/wiki.yml
 .github/workflows/publish-plugin-sdk.yml
-.github/workflows/pr-hygiene.yml             # optional consolidation
 ```
 
 Existing hygiene workflows can stay separate because they are low-risk and operationally simple.
@@ -403,13 +483,20 @@ CI/CD redesign is complete when:
 
 - PRs cannot merge without relevant typecheck/lint/test gates.
 - Docker image startup is smoke-tested before publish.
-- Stable image publishing is gated on successful CI.
+- Stable image publishing is gated on successful CI and Security Scan for the
+  exact source SHA.
 - Release artifacts are immutable and versioned.
 - Staging and production deployment are environment-scoped.
-- Production deploys use pinned versions and have a documented rollback path.
+- Production deploys use pinned versions resolved to digests and have a
+  preflighted rollback target/runbook.
 - Secrets are scoped to the smallest workflow/environment possible.
 
-## Detailed Implementation Checklist
+## Original Detailed Implementation Checklist (Historical)
+
+The checklist below is preserved as the design-time work breakdown. Its boxes
+are not authoritative implementation status. Use the status table and rollout
+record above for current state; use the validation checklist in the phase
+documents for operational completion.
 
 ### 0. Preparation
 
