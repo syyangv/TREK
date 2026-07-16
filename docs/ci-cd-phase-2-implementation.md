@@ -1,6 +1,6 @@
 # CI/CD Phase 2 Implementation
 
-**Status:** Implemented; operational validation in progress
+**Status:** Implemented and operationally validated (2026-07-16)
 
 Phase 2 hardens the stable release path without rebuilding the image between
 artifact publication and release:
@@ -32,7 +32,7 @@ temporary branch as an ambiguously completed transaction only when its parent
 is the exact currently validated `main` SHA. Older stale branches are cleaned
 without suppressing a release for newer `main`.
 
-## Operational validation status
+## Operational validation evidence
 
 - CI passed for hardening merge `5210ff4d`.
 - Security Scan rerun
@@ -53,22 +53,43 @@ without suppressing a release for newer `main`.
   and push Security run
   [`29467234565`](https://github.com/syyangv/TREK/actions/runs/29467234565)
   passed for the fix.
-- No stable release has completed after those successful post-fix gates.
 - Stable release run
   [`29470814108`](https://github.com/syyangv/TREK/actions/runs/29470814108)
   passed exact-SHA CI/security verification but stopped before publication when
   protected `main` rejected the generated version commit. The workflow now uses
   a temporary release-build branch instead of bypassing branch protection.
+- Docker Hub target correction PR
+  [`#4`](https://github.com/syyangv/TREK/pull/4) aligned publishing, SBOM,
+  deployment verification, local override, and documentation with the
+  configured repository `thvysy44/trek-fork`. Required PR checks passed and an
+  independent senior-engineer review found no material issues. The correction
+  merged as `1542658d8f883cc61edf3812d1487b141b006c5d`.
+- Exact-SHA CI
+  [`29472255851`](https://github.com/syyangv/TREK/actions/runs/29472255851)
+  and Security Scan
+  [`29472255877`](https://github.com/syyangv/TREK/actions/runs/29472255877)
+  passed for that merge commit.
+- Stable release run
+  [`29472255838`](https://github.com/syyangv/TREK/actions/runs/29472255838)
+  attempt 2 completed successfully after the workflow safely rejected and an
+  operator removed the stale temporary branch from the earlier failed base.
+- GitHub Release
+  [`v3.3.1`](https://github.com/syyangv/TREK/releases/tag/v3.3.1) is published,
+  is neither draft nor prerelease, and its tag points to generated release
+  commit `63c28ff843a0e937a71640260a4f7665d0830198`.
+- Release assets include `trek-3.3.1-manifest.json` and
+  `trek-3.3.1-sbom.cdx.json`.
+- Docker tags `3.3.1`, `3`, and `latest` all resolve to OCI index digest
+  `sha256:aeffe1614d4f84a7ddbf95ca323d72213ac753cb58c4d71550ee2306a8c68794`.
+  The index contains native `linux/amd64` and `linux/arm64` images plus their
+  Buildx attestation manifests.
+- GitHub Pages is enabled from the root of `gh-pages`. Both
+  `https://syyangv.github.io/TREK/index.yaml` and chart package
+  `https://syyangv.github.io/TREK/trek-3.3.1.tgz` return HTTP 200. An isolated
+  Helm client test successfully completed `helm repo add`, `helm repo update`,
+  and `helm show chart ... --version 3.3.1`, resolving chart and app version
+  `3.3.1`.
+- The successful cleanup job removed `release-build/v3.3.1` after publication.
 
-Phase 2 is not operationally complete until a subsequent stable release proves
-the image manifest, Helm publication, SBOM/provenance, tag, and GitHub Release.
-
-## Remaining Phase 2 follow-up
-
-- After this documentation PR merges, require successful CI and Security Scan
-  for the exact current `main` SHA containing `825bf6bb`, then validate the
-  complete stable-release workflow for that head. Do not dispatch against a
-  newer `main` using evidence from `825bf6bb` alone.
-- Confirm Docker Hub exposes the Buildx SBOM/provenance attestations for the
-  published manifest.
-- Add any required registry-specific provenance or retention policy.
+Phase 2 is operationally complete. Registry retention policy remains an
+operator-level maintenance decision rather than a release-validation blocker.

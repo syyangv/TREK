@@ -3,8 +3,9 @@
 **Implementation status:** Workflows merged to `main`, but the live `dev` branch
 does not yet contain the hardened prerelease/security/metadata/staging workflow
 set. Operational validation is blocked pending synchronization of `dev`,
-prerelease publication, and Environment configuration for staging. A successful
-stable Phase 2 release is separately required before production.
+prerelease publication, and Environment configuration for staging. The stable
+Phase 2 release prerequisite is satisfied by `v3.3.1`; production still requires
+successful staging validation and production Environment configuration.
 
 As of 2026-07-15, GitHub reports no configured secret or variable names for the
 `staging` or `production` Environments. Do not dispatch deployment validation
@@ -80,8 +81,13 @@ credentials.
   and digest.
 - [ ] `staging` exposes secret `KUBE_CONFIG_DATA` and variable `APP_URL`.
 - [ ] Staging deploys the recorded prerelease digest and `/api/health` succeeds.
-- [ ] Phase 2 stable release completes; record its version, source SHA, image
-  digest, matching git tag/chart source, and health evidence.
+- [x] Phase 2 stable release completed as `v3.3.1`: source/tag commit
+  `63c28ff843a0e937a71640260a4f7665d0830198`, image digest
+  `sha256:aeffe1614d4f84a7ddbf95ca323d72213ac753cb58c4d71550ee2306a8c68794`,
+  matching GitHub Release assets, and Helm chart `3.3.1` are verified. GitHub
+  Pages serves the Helm index and chart package, and an isolated Helm client
+  successfully added, updated, and resolved the repository. Runtime health
+  evidence remains part of the staging/production deployment checks.
 - [ ] `production` exposes secret `KUBE_CONFIG_DATA` and variable `APP_URL`.
 - [ ] Before production deployment, identify the prior known-good stable
   rollback target and verify:
