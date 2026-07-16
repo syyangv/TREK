@@ -55,11 +55,13 @@ Before enabling the workflow, ensure that directory contains:
 - `data/` for the SQLite database and logs
 - `uploads/` for uploaded assets
 
-The workflow installs reviewed Compose definitions into `.trek-ci/`, pulls an
+The workflow installs reviewed Compose definitions into versioned directories
+under `.trek-ci/releases/`, atomically updates `.trek-ci/current`, pulls an
 immutable `thvysy44/trek-fork@sha256:...` image, and runs Compose with
-`--no-build`. Local development continues to use the `build:` entry and the
-default `thvysy44/trek-fork:tailscale` image. `TREK_IMAGE` is reserved for the
-CI digest override.
+`--no-build`. Rollback restores the previous digest with its matching Compose
+pair. Local development continues to use the `build:` entry and the default
+`thvysy44/trek-fork:tailscale` image. `TREK_IMAGE` is reserved for the CI digest
+override.
 
 The `staging` GitHub Environment requires secrets `TS_OAUTH_CLIENT_ID` and
 `TS_OAUTH_SECRET`, plus variables `APP_URL`, `TS_TARGETS`, `DEPLOY_HOST`,

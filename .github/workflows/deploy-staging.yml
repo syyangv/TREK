@@ -138,37 +138,52 @@ jobs:
           test "$resolved" = "$IMAGE"
 
       - name: Install checked-out Compose definition
+        id: compose
         run: |
           printf -v remote_path_q '%q' "$DEPLOY_PATH"
+          release_id="run-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          release_rel="releases/$release_id"
+          printf -v release_rel_q '%q' "$release_rel"
           base_compose_b64="$(base64 -w0 docker-compose.yml)"
           override_compose_b64="$(base64 -w0 docker-compose.override.yml)"
           printf -v base_b64_q '%q' "$base_compose_b64"
           printf -v override_b64_q '%q' "$override_compose_b64"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
-          tailscale ssh "$remote" "set -eu; test -d $remote_path_q; test -f $remote_path_q/.env; mkdir -p $remote_path_q/data $remote_path_q/uploads $remote_path_q/.trek-ci; printf %s $base_b64_q | base64 --decode > $remote_path_q/.trek-ci/docker-compose.yml.tmp; printf %s $override_b64_q | base64 --decode > $remote_path_q/.trek-ci/docker-compose.override.yml.tmp; mv $remote_path_q/.trek-ci/docker-compose.yml.tmp $remote_path_q/.trek-ci/docker-compose.yml; mv $remote_path_q/.trek-ci/docker-compose.override.yml.tmp $remote_path_q/.trek-ci/docker-compose.override.yml; docker compose version"
+          tailscale ssh "$remote" "set -eu; test -d $remote_path_q; test -f $remote_path_q/.env; mkdir -p $remote_path_q/data $remote_path_q/uploads $remote_path_q/.trek-ci/releases; release_dir=$remote_path_q/.trek-ci/$release_rel_q; mkdir \"\$release_dir\"; if ! printf %s $base_b64_q | base64 --decode > \"\$release_dir/docker-compose.yml\" 2>/dev/null; then printf %s $base_b64_q | base64 -D > \"\$release_dir/docker-compose.yml\"; fi; if ! printf %s $override_b64_q | base64 --decode > \"\$release_dir/docker-compose.override.yml\" 2>/dev/null; then printf %s $override_b64_q | base64 -D > \"\$release_dir/docker-compose.override.yml\"; fi; test -s \"\$release_dir/docker-compose.yml\"; test -s \"\$release_dir/docker-compose.override.yml\"; docker compose version"
+          echo "release=$release_rel" >> "$GITHUB_OUTPUT"
 
       - name: Capture rollback target
         id: rollback
         run: |
+          printf -v path_q '%q' "$DEPLOY_PATH"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
-          previous="$(tailscale ssh "$remote" "docker inspect --format '{{index .RepoDigests 0}}' trek 2>/dev/null || true")"
-          if [[ "$previous" =~ ^[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]]; then
-            echo "image=$previous" >> "$GITHUB_OUTPUT"
+          previous_image="$(tailscale ssh "$remote" "docker inspect --format '{{.Config.Image}}' trek 2>/dev/null || true")"
+          previous_release="$(tailscale ssh "$remote" "readlink $path_q/.trek-ci/current 2>/dev/null || true")"
+          if [[ "$previous_image" =~ ^[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]] &&
+             [[ "$previous_release" =~ ^releases/run-[0-9]+-[0-9]+$ ]]; then
+            printf -v previous_release_q '%q' "$previous_release"
+            tailscale ssh "$remote" "test -s $path_q/.trek-ci/$previous_release_q/docker-compose.yml; test -s $path_q/.trek-ci/$previous_release_q/docker-compose.override.yml"
+            echo "image=$previous_image" >> "$GITHUB_OUTPUT"
+            echo "release=$previous_release" >> "$GITHUB_OUTPUT"
             echo "Immutable rollback target captured."
           else
-            echo "No immutable rollback target is available for this deployment."
+            echo "No complete immutable image and Compose rollback target is available."
           fi
 
       - name: Deploy exact image with Docker Compose
         env:
           IMAGE: ${{ steps.image.outputs.image }}
+          RELEASE: ${{ steps.compose.outputs.release }}
         run: |
           printf -v path_q '%q' "$DEPLOY_PATH"
           printf -v project_q '%q' "$COMPOSE_PROJECT_NAME"
           printf -v image_q '%q' "$IMAGE"
+          printf -v release_q '%q' "$RELEASE"
+          next_link="current.next-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          printf -v next_link_q '%q' "$next_link"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
-          compose="docker compose --project-directory $path_q -p $project_q -f $path_q/.trek-ci/docker-compose.yml -f $path_q/.trek-ci/docker-compose.override.yml"
-          tailscale ssh "$remote" "set -eu; TREK_IMAGE=$image_q $compose pull app; TREK_IMAGE=$image_q $compose up -d --no-build --wait --wait-timeout 300 app; actual=\$(docker inspect --format '{{.Config.Image}}' trek); test \"\$actual\" = $image_q"
+          compose="docker compose --project-directory $path_q -p $project_q -f $path_q/.trek-ci/$release_q/docker-compose.yml -f $path_q/.trek-ci/$release_q/docker-compose.override.yml"
+          tailscale ssh "$remote" "set -eu; TREK_IMAGE=$image_q $compose pull app; TREK_IMAGE=$image_q $compose up -d --no-build --wait --wait-timeout 300 app; actual=\$(docker inspect --format '{{.Config.Image}}' trek); test \"\$actual\" = $image_q; cd $path_q/.trek-ci; ln -s $release_q $next_link_q; if mv -Tf $next_link_q current 2>/dev/null; then :; else mv -hf $next_link_q current; fi"
 
       - name: Verify staging health
         run: |
@@ -176,24 +191,30 @@ jobs:
             --retry-connrefused -- "$APP_URL/api/health"
 
       - name: Roll back failed deployment
-        if: ${{ failure() && steps.rollback.outputs.image != '' }}
+        if: ${{ failure() && steps.rollback.outputs.image != '' && steps.rollback.outputs.release != '' }}
         env:
           PREVIOUS_IMAGE: ${{ steps.rollback.outputs.image }}
+          PREVIOUS_RELEASE: ${{ steps.rollback.outputs.release }}
         run: |
           printf -v path_q '%q' "$DEPLOY_PATH"
           printf -v project_q '%q' "$COMPOSE_PROJECT_NAME"
           printf -v image_q '%q' "$PREVIOUS_IMAGE"
+          printf -v release_q '%q' "$PREVIOUS_RELEASE"
+          next_link="current.rollback-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          printf -v next_link_q '%q' "$next_link"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
-          compose="docker compose --project-directory $path_q -p $project_q -f $path_q/.trek-ci/docker-compose.yml -f $path_q/.trek-ci/docker-compose.override.yml"
-          tailscale ssh "$remote" "set -eu; TREK_IMAGE=$image_q $compose pull app; TREK_IMAGE=$image_q $compose up -d --no-build --wait --wait-timeout 300 app; actual=\$(docker inspect --format '{{.Config.Image}}' trek); test \"\$actual\" = $image_q"
+          compose="docker compose --project-directory $path_q -p $project_q -f $path_q/.trek-ci/$release_q/docker-compose.yml -f $path_q/.trek-ci/$release_q/docker-compose.override.yml"
+          tailscale ssh "$remote" "set -eu; TREK_IMAGE=$image_q $compose pull app; TREK_IMAGE=$image_q $compose up -d --no-build --wait --wait-timeout 300 app; actual=\$(docker inspect --format '{{.Config.Image}}' trek); test \"\$actual\" = $image_q; cd $path_q/.trek-ci; ln -s $release_q $next_link_q; if mv -Tf $next_link_q current 2>/dev/null; then :; else mv -hf $next_link_q current; fi"
 
       - name: Capture safe failure diagnostics
         if: ${{ failure() }}
         run: |
           printf -v path_q '%q' "$DEPLOY_PATH"
           printf -v project_q '%q' "$COMPOSE_PROJECT_NAME"
+          release="${{ steps.compose.outputs.release }}"
+          printf -v release_q '%q' "$release"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
-          compose="docker compose --project-directory $path_q -p $project_q -f $path_q/.trek-ci/docker-compose.yml -f $path_q/.trek-ci/docker-compose.override.yml"
+          compose="docker compose --project-directory $path_q -p $project_q -f $path_q/.trek-ci/$release_q/docker-compose.yml -f $path_q/.trek-ci/$release_q/docker-compose.override.yml"
           tailscale ssh "$remote" "$compose ps || true; docker inspect --format 'name={{.Name}} status={{.State.Status}} image={{.Config.Image}}' trek 2>/dev/null || true" || true
 
       - name: Record deployment identity

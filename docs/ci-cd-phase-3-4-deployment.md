@@ -24,8 +24,9 @@ The deployment path is:
 1. A GitHub-hosted ephemeral runner consumes the prerelease metadata artifact.
 2. The runner joins the private tailnet with a dedicated OAuth-created tag.
 3. It connects to the deployment host with Tailscale SSH.
-4. It installs the exact checked-out Compose definitions under
-   `DEPLOY_PATH/.trek-ci/` and deploys the registry image by immutable digest.
+4. It installs the exact checked-out Compose definitions in a versioned
+   directory under `DEPLOY_PATH/.trek-ci/releases/` and deploys the registry
+   image by immutable digest.
 5. It verifies the container's configured image and calls `/api/health` over
    the tailnet.
 
@@ -73,12 +74,14 @@ published registry digest. A manual deployment checks out `v<version>`, resolves
 that Docker tag's current digest at dispatch time, and then uses the digest.
 Prerelease Git and Docker tags must therefore remain immutable.
 
-Before replacement, the workflow captures the current container's immutable
-repository digest when one exists. A failed deployment or health check attempts
-to restore that digest. A first deployment or locally built image may have no
-repository digest; in that case no automatic rollback target exists. Failure
-diagnostics intentionally exclude application logs because first-start output
-may expose generated credentials.
+Before replacement, the workflow captures both the current container's
+immutable configured image and the active versioned Compose definition. It
+switches the `DEPLOY_PATH/.trek-ci/current` symlink only after the new container
+passes image verification. A failed deployment or health check attempts to
+restore both the previous definition and digest. A first deployment, locally
+built image, or legacy deployment without the active symlink may have no
+complete automatic rollback target. Failure diagnostics intentionally exclude
+application logs because first-start output may expose generated credentials.
 
 GitHub evaluates `workflow_run` definitions from the default branch (`main`).
 Until this Compose workflow is promoted to `main`, do not publish another
