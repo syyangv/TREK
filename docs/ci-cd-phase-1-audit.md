@@ -1,6 +1,6 @@
 # CI/CD Phase 1 Audit
 
-**Status:** Complete and full-path validated on the `syyangv/TREK` fork  
+**Status:** Complete and full-path validated on the `syyangv/TREK` fork
 **Audit date:** 2026-07-14
 
 ## Scope
