@@ -10,6 +10,7 @@ on:
         default: auto
 
 permissions:
+  actions: read
   contents: write
 
 concurrency:
@@ -18,7 +19,7 @@ concurrency:
 
 jobs:
   version-bump:
-    if: github.repository == 'mauriceboe/TREK'
+    if: github.repository == 'syyangv/TREK' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.bump.outputs.VERSION }}
@@ -28,6 +29,44 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify CI and security succeeded for prerelease commit
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const targetSha = context.sha;
+            const required = ["CI", "Security Scan"];
+            const deadline = Date.now() + 15 * 60 * 1000;
+
+            while (Date.now() < deadline) {
+              const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+                owner,
+                repo,
+                event: "push",
+                head_sha: targetSha,
+                per_page: 100,
+              });
+              const runs = new Map(data.workflow_runs.map((run) => [run.name, run]));
+
+              for (const name of required) {
+                const run = runs.get(name);
+                if (run?.status === "completed" && run.conclusion !== "success") {
+                  core.setFailed(`${name} for ${targetSha} concluded ${run.conclusion}.`);
+                  return;
+                }
+              }
+
+              if (required.every((name) => runs.get(name)?.conclusion === "success")) {
+                return;
+              }
+
+              core.info(`Waiting for required workflows on ${targetSha}...`);
+              await new Promise((resolve) => setTimeout(resolve, 15000));
+            }
+
+            core.setFailed(`Timed out waiting for CI and Security Scan on ${targetSha}.`);
 
       - name: Determine prerelease version
         id: bump
@@ -98,7 +137,7 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
-          outputs: type=image,name=mauriceboe/trek,push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=thvysy44/trek-fork,push-by-digest=true,name-canonical=true,push=true
           no-cache: true
           build-args: |
             APP_VERSION=${{ needs.version-bump.outputs.version }}
@@ -145,16 +184,35 @@ jobs:
         working-directory: /tmp/digests
         run: |
           VERSION="${{ needs.version-bump.outputs.version }}"
-          mapfile -t digests < <(printf 'mauriceboe/trek@sha256:%s\n' *)
+          mapfile -t digests < <(printf 'thvysy44/trek-fork@sha256:%s\n' *)
           MAJOR_TAG="$(echo "$VERSION" | cut -d. -f1)-pre"
           docker buildx imagetools create \
-            -t "mauriceboe/trek:latest-pre" \
-            -t "mauriceboe/trek:$MAJOR_TAG" \
-            -t "mauriceboe/trek:$VERSION" \
+            -t "thvysy44/trek-fork:latest-pre" \
+            -t "thvysy44/trek-fork:$MAJOR_TAG" \
+            -t "thvysy44/trek-fork:$VERSION" \
             "${digests[@]}"
 
       - name: Inspect manifest
-        run: docker buildx imagetools inspect mauriceboe/trek:latest-pre
+        run: docker buildx imagetools inspect thvysy44/trek-fork:latest-pre
+
+      - name: Export immutable prerelease metadata
+        run: |
+          VERSION="${{ needs.version-bump.outputs.version }}"
+          DIGEST="$(docker buildx imagetools inspect "thvysy44/trek-fork:$VERSION" --format '{{.Manifest.Digest}}')"
+          test -n "$DIGEST"
+          {
+            echo "VERSION=$VERSION"
+            echo "SOURCE_SHA=${{ needs.version-bump.outputs.sha }}"
+            echo "IMAGE_DIGEST=$DIGEST"
+          } > prerelease-metadata.env
+
+      - name: Upload prerelease metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: prerelease-metadata
+          path: prerelease-metadata.env
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Push git tag
         run: |

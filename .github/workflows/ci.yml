@@ -1,0 +1,330 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: Change Detection
+    runs-on: ubuntu-latest
+    # A manual dispatch is the deliberate full-path validation mode: it runs
+    # every package and Docker gate, regardless of the changed-file set.
+    outputs:
+      shared_changed: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.shared }}
+      server_changed: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.server }}
+      client_changed: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.client }}
+      docker_changed: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.docker }}
+      charts_changed: ${{ steps.filter.outputs.charts }}
+      plugin_sdk_changed: ${{ steps.filter.outputs.plugin_sdk }}
+      ci_changed: ${{ steps.filter.outputs.ci }}
+      docs_only: ${{ github.event_name == 'workflow_dispatch' && 'false' || steps.summary.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect changed areas
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            shared:
+              - 'shared/**'
+              - 'package.json'
+              - 'package-lock.json'
+            server:
+              - 'server/**'
+              - 'package.json'
+              - 'package-lock.json'
+            client:
+              - 'client/**'
+              - 'package.json'
+              - 'package-lock.json'
+            docker:
+              - 'Dockerfile'
+              - '.dockerignore'
+              - 'docker-compose.yml'
+              - 'docker-compose.override.yml'
+            charts:
+              - 'charts/**'
+            plugin_sdk:
+              - 'plugin-sdk/**'
+            ci:
+              - '.github/workflows/**'
+            documentation:
+              - 'docs/**'
+              - 'wiki/**'
+              - '**/*.md'
+              - '.github/ISSUE_TEMPLATE/**'
+              - '.github/FUNDING.yml'
+              - '.github/PULL_REQUEST_TEMPLATE.md'
+
+      - name: Summarize applicability
+        id: summary
+        run: |
+          DOCS_ONLY=false
+          if [ "${{ steps.filter.outputs.documentation }}" = "true" ] \
+            && [ "${{ steps.filter.outputs.shared }}" != "true" ] \
+            && [ "${{ steps.filter.outputs.server }}" != "true" ] \
+            && [ "${{ steps.filter.outputs.client }}" != "true" ] \
+            && [ "${{ steps.filter.outputs.docker }}" != "true" ] \
+            && [ "${{ steps.filter.outputs.charts }}" != "true" ] \
+            && [ "${{ steps.filter.outputs.plugin_sdk }}" != "true" ] \
+            && [ "${{ steps.filter.outputs.ci }}" != "true" ]; then
+            DOCS_ONLY=true
+          fi
+
+          echo "docs_only=$DOCS_ONLY" >> "$GITHUB_OUTPUT"
+
+  shared-gate:
+    name: Shared Package Gate
+    runs-on: ubuntu-latest
+    needs: changes
+    steps:
+      - name: Not applicable
+        if: ${{ needs.changes.outputs.shared_changed != 'true' && needs.changes.outputs.server_changed != 'true' && needs.changes.outputs.client_changed != 'true' }}
+        run: echo "Shared package gate not required for this change set."
+
+      - uses: actions/checkout@v4
+        if: ${{ needs.changes.outputs.shared_changed == 'true' || needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.client_changed == 'true' }}
+
+      - uses: actions/setup-node@v4
+        if: ${{ needs.changes.outputs.shared_changed == 'true' || needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.client_changed == 'true' }}
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        if: ${{ needs.changes.outputs.shared_changed == 'true' || needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.client_changed == 'true' }}
+        run: npm ci
+
+      - name: Build shared
+        if: ${{ needs.changes.outputs.shared_changed == 'true' || needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.client_changed == 'true' }}
+        run: npm run build --workspace=shared
+
+      - name: Typecheck shared
+        if: ${{ needs.changes.outputs.shared_changed == 'true' || needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.client_changed == 'true' }}
+        run: npm run typecheck --workspace=shared
+
+      - name: Test shared
+        if: ${{ needs.changes.outputs.shared_changed == 'true' || needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.client_changed == 'true' }}
+        run: npm test --workspace=shared
+
+      - name: Check i18n parity
+        if: ${{ needs.changes.outputs.shared_changed == 'true' || needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.client_changed == 'true' }}
+        run: node shared/scripts/i18n-parity.mjs --strict
+
+  server-gate:
+    name: Server Gate
+    runs-on: ubuntu-latest
+    needs: changes
+    steps:
+      - name: Not applicable
+        if: ${{ needs.changes.outputs.server_changed != 'true' && needs.changes.outputs.shared_changed != 'true' }}
+        run: echo "Server gate not required for this change set."
+
+      - uses: actions/checkout@v4
+        if: ${{ needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+
+      - uses: actions/setup-node@v4
+        if: ${{ needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        if: ${{ needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+        run: npm ci
+
+      - name: Ensure @swc/core Linux binary
+        if: ${{ needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+        run: |
+          SWC_VERSION=$(node -p "require('@swc/core/package.json').version")
+          npm install --no-save --legacy-peer-deps "@swc/core-linux-x64-gnu@$SWC_VERSION"
+
+      - name: Build shared
+        if: ${{ needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+        run: npm run build --workspace=shared
+
+      - name: Build server
+        if: ${{ needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+        run: npm run build --workspace=server
+
+      - name: Typecheck server
+        if: ${{ needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+        run: npm run typecheck --workspace=server
+
+      - name: Lint server
+        if: ${{ needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+        run: npm run lint:check --workspace=server
+
+      - name: Test server with coverage
+        if: ${{ needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+        run: npm run test:coverage --workspace=server
+
+      - name: Upload server coverage
+        if: ${{ (needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.shared_changed == 'true') && success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-coverage
+          path: server/coverage/
+          retention-days: 7
+
+  client-gate:
+    name: Client Gate
+    runs-on: ubuntu-latest
+    needs: changes
+    steps:
+      - name: Not applicable
+        if: ${{ needs.changes.outputs.client_changed != 'true' && needs.changes.outputs.shared_changed != 'true' }}
+        run: echo "Client gate not required for this change set."
+
+      - uses: actions/checkout@v4
+        if: ${{ needs.changes.outputs.client_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+
+      - uses: actions/setup-node@v4
+        if: ${{ needs.changes.outputs.client_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        if: ${{ needs.changes.outputs.client_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+        run: npm ci
+
+      - name: Build shared
+        if: ${{ needs.changes.outputs.client_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+        run: npm run build --workspace=shared
+
+      - name: Typecheck client
+        if: ${{ needs.changes.outputs.client_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+        run: npm run typecheck --workspace=client
+
+      - name: Lint client
+        if: ${{ needs.changes.outputs.client_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+        run: npm run lint:check --workspace=client
+
+      - name: Check page patterns
+        if: ${{ needs.changes.outputs.client_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+        run: npm run lint:pages --workspace=client
+
+      - name: Test client with coverage
+        if: ${{ needs.changes.outputs.client_changed == 'true' || needs.changes.outputs.shared_changed == 'true' }}
+        run: npm run test:coverage --workspace=client
+
+      - name: Upload client coverage
+        if: ${{ (needs.changes.outputs.client_changed == 'true' || needs.changes.outputs.shared_changed == 'true') && success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-coverage
+          path: client/coverage/
+          retention-days: 7
+
+  docker-smoke:
+    name: Docker Smoke Gate
+    runs-on: ubuntu-latest
+    needs: changes
+    steps:
+      - name: Not applicable
+        if: ${{ needs.changes.outputs.docker_changed != 'true' && needs.changes.outputs.shared_changed != 'true' && needs.changes.outputs.server_changed != 'true' && needs.changes.outputs.client_changed != 'true' }}
+        run: echo "Docker smoke gate not required for this change set."
+
+      - uses: actions/checkout@v4
+        if: ${{ needs.changes.outputs.docker_changed == 'true' || needs.changes.outputs.shared_changed == 'true' || needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.client_changed == 'true' }}
+
+      - name: Build Docker image
+        if: ${{ needs.changes.outputs.docker_changed == 'true' || needs.changes.outputs.shared_changed == 'true' || needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.client_changed == 'true' }}
+        run: docker build -t trek:ci .
+
+      - name: Run smoke container
+        if: ${{ needs.changes.outputs.docker_changed == 'true' || needs.changes.outputs.shared_changed == 'true' || needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.client_changed == 'true' }}
+        run: |
+          docker run -d --name trek-smoke -p 3000:3000 \
+            -e ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000 \
+            trek:ci
+
+      - name: Wait for health endpoint
+        if: ${{ needs.changes.outputs.docker_changed == 'true' || needs.changes.outputs.shared_changed == 'true' || needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.client_changed == 'true' }}
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:3000/api/health; then
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          echo "Health endpoint did not become ready in time."
+          exit 1
+
+      - name: Print container logs
+        if: ${{ always() && (needs.changes.outputs.docker_changed == 'true' || needs.changes.outputs.shared_changed == 'true' || needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.client_changed == 'true') }}
+        run: docker logs trek-smoke
+
+      - name: Stop smoke container
+        if: ${{ always() && (needs.changes.outputs.docker_changed == 'true' || needs.changes.outputs.shared_changed == 'true' || needs.changes.outputs.server_changed == 'true' || needs.changes.outputs.client_changed == 'true') }}
+        run: docker rm -f trek-smoke
+
+  chart-gate:
+    name: Helm Chart Gate
+    runs-on: ubuntu-latest
+    needs: changes
+    steps:
+      - name: Not applicable
+        if: ${{ needs.changes.outputs.charts_changed != 'true' }}
+        run: echo "Helm chart gate not required for this change set."
+
+      - uses: actions/checkout@v4
+        if: ${{ needs.changes.outputs.charts_changed == 'true' }}
+
+      - name: Install Helm
+        if: ${{ needs.changes.outputs.charts_changed == 'true' }}
+        uses: azure/setup-helm@v4
+
+      - name: Lint and render Helm chart
+        if: ${{ needs.changes.outputs.charts_changed == 'true' }}
+        run: |
+          helm lint charts/trek
+          helm template trek charts/trek >/dev/null
+
+  phase-1-required-checks:
+    name: Phase 1 Checks
+    runs-on: ubuntu-latest
+    needs:
+      - shared-gate
+      - server-gate
+      - client-gate
+      - docker-smoke
+      - chart-gate
+    if: ${{ always() }}
+    steps:
+      - name: Verify gate results
+        run: |
+          results=(
+            "${{ needs.shared-gate.result }}"
+            "${{ needs.server-gate.result }}"
+            "${{ needs.client-gate.result }}"
+            "${{ needs.docker-smoke.result }}"
+            "${{ needs.chart-gate.result }}"
+          )
+
+          for result in "${results[@]}"; do
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              echo "Phase 1 gate failed with result: $result"
+              exit 1
+            fi
+          done
+
+          echo "All Phase 1 gates passed or were safely skipped."

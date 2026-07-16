@@ -1,0 +1,121 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Pinned stable image tag to deploy or roll back to (for example 3.3.1)"
+        required: true
+        type: string
+      action:
+        description: "Deployment operation"
+        required: true
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: ${{ inputs.action }} pinned stable release
+    if: github.repository == 'syyangv/TREK'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    env:
+      NAMESPACE: ${{ vars.KUBE_NAMESPACE || 'trek-production' }}
+      RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME || 'trek' }}
+      PRODUCTION_URL: ${{ vars.APP_URL }}
+    steps:
+      - name: Validate stable version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected a stable semantic version, got: $VERSION" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve immutable image digest
+        id: image
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          DIGEST="$(docker buildx imagetools inspect "thvysy44/trek-fork:$VERSION" --format '{{.Manifest.Digest}}')"
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Invalid image digest: $DIGEST" >&2
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Configure kubectl
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+        run: |
+          test -n "$KUBE_CONFIG_DATA"
+          install -m 600 /dev/null "$RUNNER_TEMP/kubeconfig"
+          printf '%s' "$KUBE_CONFIG_DATA" | base64 --decode > "$RUNNER_TEMP/kubeconfig"
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+
+      - name: Deploy pinned image with Helm
+        env:
+          VERSION: ${{ inputs.version }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          helm upgrade --install "$RELEASE_NAME" charts/trek \
+            --namespace "$NAMESPACE" \
+            --create-namespace \
+            --set-string image.repository=thvysy44/trek-fork \
+            --set-string "image.tag=$VERSION" \
+            --set-string "image.digest=$IMAGE_DIGEST" \
+            --set-string image.pullPolicy=IfNotPresent \
+            --atomic --wait --timeout 10m --history-max 10
+
+      - name: Verify rollout and image pin
+        env:
+          VERSION: ${{ inputs.version }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          kubectl rollout status deployment/"$RELEASE_NAME" -n "$NAMESPACE" --timeout=10m
+          IMAGE="$(kubectl get deployment "$RELEASE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.template.spec.containers[0].image}')"
+          test "$IMAGE" = "thvysy44/trek-fork@$IMAGE_DIGEST"
+
+      - name: Verify production health
+        run: |
+          test -n "$PRODUCTION_URL"
+          curl --fail --retry 12 --retry-delay 5 --retry-connrefused \
+            "$PRODUCTION_URL/api/health"
+
+      - name: Capture failure diagnostics
+        if: ${{ failure() }}
+        run: |
+          kubectl get pods,deployments,replicasets -n "$NAMESPACE" -o wide || true
+          kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp | tail -100 || true
+          kubectl describe deployment/"$RELEASE_NAME" -n "$NAMESPACE" || true
+
+      - name: Record deployment identity
+        if: ${{ success() }}
+        run: |
+          {
+            echo "### Production ${{ inputs.action }}"
+            echo "- Version: \`${{ inputs.version }}\`"
+            echo "- Digest: \`${{ steps.image.outputs.digest }}\`"
+            echo "- Source: \`v${{ inputs.version }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
