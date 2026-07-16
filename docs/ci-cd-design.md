@@ -259,7 +259,10 @@ Release stages:
    - `package-lock.json`
    - workspace package manifests
    - Helm chart version/appVersion
-4. Commit version bump with `[skip ci]` if keeping current model.
+4. Commit version metadata on temporary branch `release-build/vX.Y.Z`; never
+   push the generated commit directly to protected `main`. On retry, reuse that
+   commit only when its parent SHA and complete tree match a freshly generated
+   release tree; otherwise stop for manual stale-branch resolution.
 5. Build multi-arch Docker image from the recorded SHA:
    - `linux/amd64`
    - `linux/arm64`
@@ -272,7 +275,17 @@ Release stages:
 9. Publish the matching Helm chart.
 10. Generate release notes.
 11. Attach or publish SBOM/provenance.
-12. Create git tag `vX.Y.Z` and the GitHub Release only after artifacts succeed.
+12. Upload retained workflow artifacts before creating the release/tag.
+13. Create or resume a draft GitHub Release, verify its target SHA, and publish
+    it as the transaction boundary that creates the immutable `vX.Y.Z` tag.
+14. Verify the published tag resolves to the generated release commit.
+15. Remove the temporary release-build branch on a best-effort basis; cleanup
+    failure must not invalidate an otherwise verified release.
+16. If publication succeeded but runner status reporting was ambiguous, detect
+    the matching published tag and temporary branch on the next run. Treat it
+    as the current transaction only when the release commit's parent equals the
+    exact validated `main` SHA; otherwise clean it as an older stale branch and
+    continue with a new release.
 
 Important design rule:
 

@@ -95,6 +95,8 @@ jobs:
     outputs:
       version: ${{ steps.bump.outputs.VERSION }}
       source_sha: ${{ steps.bump.outputs.SOURCE_SHA }}
+      release_branch: ${{ steps.bump.outputs.RELEASE_BRANCH }}
+      already_released: ${{ steps.bump.outputs.ALREADY_RELEASED }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -105,6 +107,8 @@ jobs:
 
       - name: Determine bump type and update version
         id: bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git fetch --tags
 
@@ -112,6 +116,46 @@ jobs:
           STABLE_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | grep -v '\-pre\.' | sort -V | tail -1)
           STABLE="${STABLE_TAG#v}"
           STABLE="${STABLE:-0.0.0}"
+          BASE_SHA="$(git rev-parse HEAD)"
+
+          # Recover an ambiguously completed prior run. A published tag plus the
+          # matching temporary branch proves the release transaction completed,
+          # even if its runner failed before cleanup/status reporting.
+          if [ -n "$STABLE_TAG" ]; then
+            RECOVERY_BRANCH="release-build/$STABLE_TAG"
+            if git ls-remote --exit-code --heads origin "refs/heads/$RECOVERY_BRANCH" >/dev/null 2>&1 \
+              && gh release view "$STABLE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              git fetch origin \
+                "refs/heads/$RECOVERY_BRANCH:refs/remotes/origin/$RECOVERY_BRANCH" \
+                "refs/tags/$STABLE_TAG:refs/tags/$STABLE_TAG"
+              RECOVERY_SHA="$(git rev-parse "refs/remotes/origin/$RECOVERY_BRANCH")"
+              RECOVERY_PARENT="$(git rev-parse "$RECOVERY_SHA^")"
+              TAG_SHA="$(git rev-list -n 1 "$STABLE_TAG")"
+              IS_DRAFT="$(gh release view "$STABLE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)"
+
+              if [ "$IS_DRAFT" = "false" ] && [ "$RECOVERY_SHA" = "$TAG_SHA" ]; then
+                if [ "$RECOVERY_PARENT" = "$BASE_SHA" ]; then
+                  echo "Recovered completed release $STABLE_TAG at $TAG_SHA for current base $BASE_SHA."
+                  echo "VERSION=$STABLE" >> "$GITHUB_OUTPUT"
+                  echo "SOURCE_SHA=$TAG_SHA" >> "$GITHUB_OUTPUT"
+                  echo "RELEASE_BRANCH=$RECOVERY_BRANCH" >> "$GITHUB_OUTPUT"
+                  echo "ALREADY_RELEASED=true" >> "$GITHUB_OUTPUT"
+                  gh api --method DELETE \
+                    "repos/${GITHUB_REPOSITORY}/git/refs/heads/${RECOVERY_BRANCH}" \
+                    || echo "::warning::Could not remove recovered branch ${RECOVERY_BRANCH}."
+                  exit 0
+                fi
+
+                # This is a completed older release, not the current main SHA.
+                # Its tag preserves the commit, so stale branch cleanup is safe.
+                gh api --method DELETE \
+                  "repos/${GITHUB_REPOSITORY}/git/refs/heads/${RECOVERY_BRANCH}" \
+                  || echo "::warning::Could not remove stale branch ${RECOVERY_BRANCH}; continuing with the new release."
+              fi
+            fi
+          fi
+
+          echo "ALREADY_RELEASED=false" >> "$GITHUB_OUTPUT"
 
           PRE_TAG=$(git tag -l 'v*-pre.*' | sort -V | tail -1)
 
@@ -160,7 +204,9 @@ jobs:
           fi
 
           echo "Bump type: $BUMP"
-          echo "VERSION=$NEW_VERSION" >> $GITHUB_OUTPUT
+          RELEASE_BRANCH="release-build/v$NEW_VERSION"
+          echo "VERSION=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> "$GITHUB_OUTPUT"
           echo "$STABLE → $NEW_VERSION ($BUMP)"
 
           # Update all workspace + root package.json files and the root lockfile in one shot
@@ -168,18 +214,40 @@ jobs:
           sed -i "s/^version: .*/version: $NEW_VERSION/" charts/trek/Chart.yaml
           sed -i "s/^appVersion: .*/appVersion: \"$NEW_VERSION\"/" charts/trek/Chart.yaml
 
-          # Commit the generated release metadata. The immutable release tag is
-          # created only after every image/chart artifact has succeeded.
+          # Commit generated release metadata without mutating protected main.
+          # A temporary branch makes the commit reachable by downstream jobs;
+          # the immutable release tag is created only after all artifacts pass.
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json package-lock.json server/package.json client/package.json shared/package.json charts/trek/Chart.yaml
           git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          git push origin HEAD:main
+          GENERATED_SHA="$(git rev-parse HEAD)"
+          GENERATED_TREE="$(git rev-parse 'HEAD^{tree}')"
+
+          # Resume only when the complete generated tree and validated parent
+          # match. This rejects injected source changes on a stale branch.
+          if git ls-remote --exit-code --heads origin "refs/heads/$RELEASE_BRANCH" >/dev/null 2>&1; then
+            git fetch origin "refs/heads/$RELEASE_BRANCH"
+            EXISTING_SHA="$(git rev-parse FETCH_HEAD)"
+            EXISTING_PARENT="$(git rev-parse "$EXISTING_SHA^")"
+            EXISTING_TREE="$(git rev-parse "$EXISTING_SHA^{tree}")"
+
+            if [ "$EXISTING_PARENT" != "$BASE_SHA" ] || [ "$EXISTING_TREE" != "$GENERATED_TREE" ]; then
+              echo "::error::$RELEASE_BRANCH does not match the deterministic release tree from base $BASE_SHA. Resolve the stale branch before retrying."
+              exit 1
+            fi
+
+            echo "Resuming verified release commit $EXISTING_SHA from $RELEASE_BRANCH."
+            echo "SOURCE_SHA=$EXISTING_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "SOURCE_SHA=$GENERATED_SHA" >> "$GITHUB_OUTPUT"
+            git push origin "HEAD:refs/heads/$RELEASE_BRANCH"
+          fi
 
   build:
     runs-on: ${{ matrix.runner }}
     needs: [verify-ci, version-bump]
+    if: needs.version-bump.outputs.already_released != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -321,13 +389,22 @@ jobs:
         with:
           name: trek-${{ needs.version-bump.outputs.version }}-manifest
 
-      - name: Publish release with generated notes and SBOM
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trek-${{ needs.version-bump.outputs.version }}-sbom
+          path: trek-${{ needs.version-bump.outputs.version }}-sbom.cdx.json
+          retention-days: 90
+
+      - name: Publish verified release transaction
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.version-bump.outputs.version }}
           SOURCE_SHA: ${{ needs.version-bump.outputs.source_sha }}
         run: |
-          if gh release view "v${VERSION}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+          TAG="v${VERSION}"
+
+          if gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release upload "v${VERSION}" \
               --repo "${GITHUB_REPOSITORY}" \
               --clobber \
@@ -338,14 +415,46 @@ jobs:
               --repo "${GITHUB_REPOSITORY}" \
               --target "$SOURCE_SHA" \
               --title "TREK v${VERSION}" \
+              --draft \
               --generate-notes \
               "trek-${VERSION}-sbom.cdx.json#SBOM (CycloneDX)" \
               "trek-${VERSION}-manifest.json#Multi-arch image manifest"
           fi
 
-      - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: trek-${{ needs.version-bump.outputs.version }}-sbom
-          path: trek-${{ needs.version-bump.outputs.version }}-sbom.cdx.json
-          retention-days: 90
+          TARGET="$(gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" --json targetCommitish --jq .targetCommitish)"
+          if [ "$TARGET" != "$SOURCE_SHA" ]; then
+            echo "::error::Release $TAG targets $TARGET, expected $SOURCE_SHA."
+            exit 1
+          fi
+
+          IS_DRAFT="$(gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
+          if [ "$IS_DRAFT" = "false" ]; then
+            git fetch origin "refs/tags/$TAG:refs/tags/$TAG" --force
+            TAG_SHA="$(git rev-list -n 1 "$TAG")"
+            if [ "$TAG_SHA" != "$SOURCE_SHA" ]; then
+              echo "::error::Published tag $TAG points to $TAG_SHA, expected $SOURCE_SHA."
+              exit 1
+            fi
+            exit 0
+          fi
+
+          # Final irreversible operation: no fallible verification follows.
+          gh release edit "$TAG" --repo "${GITHUB_REPOSITORY}" --draft=false
+
+  cleanup-release-branch:
+    name: Cleanup release-build branch
+    runs-on: ubuntu-latest
+    needs: [version-bump, release]
+    if: ${{ always() && needs.release.result == 'success' && needs.version-bump.outputs.already_released != 'true' }}
+    continue-on-error: true
+    permissions:
+      contents: write
+    steps:
+      - name: Remove temporary release-build branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BRANCH: ${{ needs.version-bump.outputs.release_branch }}
+        run: |
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/git/refs/heads/${RELEASE_BRANCH}" \
+            || echo "::warning::Could not remove temporary branch ${RELEASE_BRANCH}; release remains valid."

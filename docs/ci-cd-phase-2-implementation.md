@@ -21,6 +21,16 @@ bump metadata, multi-architecture manifest creation, and Helm publication
 succeed. Every build and publication job checks out the exact generated release
 commit rather than mutable `main`. The GitHub Release creates the `vX.Y.Z` tag
 only after the image, manifest metadata, SBOM, and Helm chart are available.
+The generated version commit is pushed to temporary branch
+`release-build/vX.Y.Z`, not protected `main`; the release tag makes that commit
+permanent and the temporary branch is deleted after publication succeeds.
+Retries reuse an existing version branch only when it has the expected parent
+SHA and complete deterministically generated tree. Retained workflow artifacts are uploaded before a draft
+release is published; the resulting tag target is verified, and branch cleanup
+is non-fatal. A later run recognizes a published tag that still has its matching
+temporary branch as an ambiguously completed transaction only when its parent
+is the exact currently validated `main` SHA. Older stale branches are cleaned
+without suppressing a release for newer `main`.
 
 ## Operational validation status
 
@@ -43,7 +53,12 @@ only after the image, manifest metadata, SBOM, and Helm chart are available.
   and push Security run
   [`29467234565`](https://github.com/syyangv/TREK/actions/runs/29467234565)
   passed for the fix.
-- No stable release has been dispatched after those successful post-fix gates.
+- No stable release has completed after those successful post-fix gates.
+- Stable release run
+  [`29470814108`](https://github.com/syyangv/TREK/actions/runs/29470814108)
+  passed exact-SHA CI/security verification but stopped before publication when
+  protected `main` rejected the generated version commit. The workflow now uses
+  a temporary release-build branch instead of bypassing branch protection.
 
 Phase 2 is not operationally complete until a subsequent stable release proves
 the image manifest, Helm publication, SBOM/provenance, tag, and GitHub Release.
