@@ -36,17 +36,24 @@ only after the image, manifest metadata, SBOM, and Helm chart are available.
   exact SHA without allowing a prior failed attempt to permanently poison that
   commit. CI run
   [`29467234562`](https://github.com/syyangv/TREK/actions/runs/29467234562)
-  passed; Security Scan
+  passed. Full manual CI run
+  [`29467262444`](https://github.com/syyangv/TREK/actions/runs/29467262444)
+  also passed. Security Scan
   [`29467263383`](https://github.com/syyangv/TREK/actions/runs/29467263383)
-  remains in progress.
+  and push Security run
+  [`29467234565`](https://github.com/syyangv/TREK/actions/runs/29467234565)
+  passed for the fix.
+- No stable release has been dispatched after those successful post-fix gates.
 
 Phase 2 is not operationally complete until a subsequent stable release proves
 the image manifest, Helm publication, SBOM/provenance, tag, and GitHub Release.
 
 ## Remaining Phase 2 follow-up
 
-- Validate the complete stable-release workflow in the release fork after
-  `825bf6bb` passes CI and Security Scan.
+- After this documentation PR merges, require successful CI and Security Scan
+  for the exact current `main` SHA containing `825bf6bb`, then validate the
+  complete stable-release workflow for that head. Do not dispatch against a
+  newer `main` using evidence from `825bf6bb` alone.
 - Confirm Docker Hub exposes the Buildx SBOM/provenance attestations for the
   published manifest.
 - Add any required registry-specific provenance or retention policy.
