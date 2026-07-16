@@ -85,15 +85,15 @@ Branch meanings:
 
 Artifact meanings:
 
-- `syyangv/trek:<version>`: immutable stable release produced by the release fork
-- `syyangv/trek:<major>`: latest stable for a major line in the release fork
-- `syyangv/trek:latest`: latest stable in the release fork
-- `syyangv/trek:<version>-pre.N`: immutable prerelease produced from `dev`
-- `syyangv/trek:latest-pre`: latest prerelease in the release fork
+- `thvysy44/trek-fork:<version>`: immutable stable release produced by the release fork
+- `thvysy44/trek-fork:<major>`: latest stable for a major line in the release fork
+- `thvysy44/trek-fork:latest`: latest stable in the release fork
+- `thvysy44/trek-fork:<version>-pre.N`: immutable prerelease produced from `dev`
+- `thvysy44/trek-fork:latest-pre`: latest prerelease in the release fork
 
 `mauriceboe/trek` remains the upstream/public image namespace and is not an
 output of the fork workflows. Operators validating `syyangv/TREK` must inspect
-and deploy `syyangv/trek` artifacts.
+and deploy `thvysy44/trek-fork` artifacts.
 
 ## Implemented Required PR CI
 
@@ -366,7 +366,7 @@ Your local Tailscale deployment should be separate from upstream CI.
 Current local override builds:
 
 ```yaml
-image: syyangv/trek:tailscale
+image: thvysy44/trek-fork:tailscale
 ```
 
 Recommended local deploy flow:

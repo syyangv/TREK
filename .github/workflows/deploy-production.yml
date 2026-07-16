@@ -58,7 +58,7 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          DIGEST="$(docker buildx imagetools inspect "syyangv/trek:$VERSION" --format '{{.Manifest.Digest}}')"
+          DIGEST="$(docker buildx imagetools inspect "thvysy44/trek-fork:$VERSION" --format '{{.Manifest.Digest}}')"
           if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "Invalid image digest: $DIGEST" >&2
             exit 1
@@ -82,7 +82,7 @@ jobs:
           helm upgrade --install "$RELEASE_NAME" charts/trek \
             --namespace "$NAMESPACE" \
             --create-namespace \
-            --set-string image.repository=syyangv/trek \
+            --set-string image.repository=thvysy44/trek-fork \
             --set-string "image.tag=$VERSION" \
             --set-string "image.digest=$IMAGE_DIGEST" \
             --set-string image.pullPolicy=IfNotPresent \
@@ -95,7 +95,7 @@ jobs:
         run: |
           kubectl rollout status deployment/"$RELEASE_NAME" -n "$NAMESPACE" --timeout=10m
           IMAGE="$(kubectl get deployment "$RELEASE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.template.spec.containers[0].image}')"
-          test "$IMAGE" = "syyangv/trek@$IMAGE_DIGEST"
+          test "$IMAGE" = "thvysy44/trek-fork@$IMAGE_DIGEST"
 
       - name: Verify production health
         run: |

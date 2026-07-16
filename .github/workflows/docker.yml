@@ -277,7 +277,7 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
-          outputs: type=image,name=syyangv/trek,push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=thvysy44/trek-fork,push-by-digest=true,name-canonical=true,push=true
           no-cache: true
           sbom: true
           provenance: mode=max
@@ -324,21 +324,21 @@ jobs:
         working-directory: /tmp/digests
         run: |
           VERSION="${{ needs.version-bump.outputs.version }}"
-          mapfile -t digests < <(printf 'syyangv/trek@sha256:%s\n' *)
+          mapfile -t digests < <(printf 'thvysy44/trek-fork@sha256:%s\n' *)
           MAJOR_TAG="$(echo "$VERSION" | cut -d. -f1)"
           docker buildx imagetools create \
-            -t "syyangv/trek:latest" \
-            -t "syyangv/trek:$MAJOR_TAG" \
-            -t "syyangv/trek:$VERSION" \
+            -t "thvysy44/trek-fork:latest" \
+            -t "thvysy44/trek-fork:$MAJOR_TAG" \
+            -t "thvysy44/trek-fork:$VERSION" \
             "${digests[@]}"
 
       - name: Inspect manifest
-        run: docker buildx imagetools inspect syyangv/trek:latest
+        run: docker buildx imagetools inspect thvysy44/trek-fork:latest
 
       - name: Export release manifest metadata
         run: |
           VERSION="${{ needs.version-bump.outputs.version }}"
-          docker buildx imagetools inspect --raw "syyangv/trek:${VERSION}" \
+          docker buildx imagetools inspect --raw "thvysy44/trek-fork:${VERSION}" \
             > "trek-${VERSION}-manifest.json"
 
       - name: Upload release manifest metadata
@@ -379,7 +379,7 @@ jobs:
       - name: Generate SBOM for released image
         uses: anchore/sbom-action@v0
         with:
-          image: syyangv/trek:${{ needs.version-bump.outputs.version }}
+          image: thvysy44/trek-fork:${{ needs.version-bump.outputs.version }}
           format: cyclonedx-json
           output-file: trek-${{ needs.version-bump.outputs.version }}-sbom.cdx.json
           upload-artifact: false

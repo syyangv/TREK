@@ -71,7 +71,7 @@ credentials.
 ## Validation checklist
 
 - [ ] Merge/reconcile current `main` into `dev` so `dev` contains:
-  - [ ] fork-scoped `syyangv/TREK` prerelease publishing to `syyangv/trek`;
+  - [ ] fork-scoped `syyangv/TREK` prerelease publishing to `thvysy44/trek-fork`;
   - [ ] exact-SHA CI and Security Scan gating;
   - [ ] the `prerelease-metadata` artifact;
   - [ ] `.github/workflows/deploy-staging.yml`.
