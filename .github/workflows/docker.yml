@@ -65,19 +65,19 @@ jobs:
                 head_sha: targetSha,
                 per_page: 100,
               });
-              const runs = new Map(data.workflow_runs.map((run) => [run.name, run]));
-
+              const successfulRuns = new Map();
               for (const name of required) {
-                const run = runs.get(name);
-                if (run?.status === "completed" && run.conclusion !== "success") {
-                  core.setFailed(`${name} for ${targetSha} concluded ${run.conclusion}.`);
-                  return;
-                }
+                const success = data.workflow_runs.find(
+                  (run) => run.name === name && run.status === "completed" && run.conclusion === "success",
+                );
+                if (success) successfulRuns.set(name, success);
               }
 
-              if (required.every((name) => runs.get(name)?.conclusion === "success")) {
+              // A workflow can be re-run for the same SHA. A later successful re-run
+              // satisfies this release gate even if an earlier attempt failed.
+              if (required.every((name) => successfulRuns.has(name))) {
                 for (const name of required) {
-                  core.info(`Verified ${name} via run ${runs.get(name).id}.`);
+                  core.info(`Verified ${name} via run ${successfulRuns.get(name).id}.`);
                 }
                 return;
               }
