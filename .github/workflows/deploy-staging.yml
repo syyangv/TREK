@@ -75,9 +75,11 @@ jobs:
         env:
           TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+          TS_TARGETS: ${{ vars.TS_TARGETS }}
         run: |
           test -n "$TS_OAUTH_CLIENT_ID"
           test -n "$TS_OAUTH_SECRET"
+          test -n "$TS_TARGETS"
           test -n "$STAGING_URL"
 
       - name: Connect runner to staging tailnet
@@ -85,9 +87,12 @@ jobs:
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: ${{ vars.TS_TAGS || 'tag:github-actions' }}
+          tags: ${{ vars.TS_TAGS || 'tag:trek-staging-ci' }}
           targets: ${{ vars.TS_TARGETS }}
           use-cache: 'true'
+
+      - name: Verify tailnet connection is running
+        run: tailscale status --json | jq -e '.BackendState == "Running"'
 
       - name: Install Helm
         uses: azure/setup-helm@v4

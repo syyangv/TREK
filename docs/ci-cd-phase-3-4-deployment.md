@@ -15,9 +15,10 @@ must never be written to source control or logs.
 
 ## Staging (Phase 3)
 
-`.github/workflows/deploy-staging.yml` deploys a pinned prerelease image to the
-`staging` GitHub Environment after the prerelease workflow succeeds. It can also
-be run manually with an explicit prerelease version.
+Once promoted to default branch `main`, `.github/workflows/deploy-staging.yml`
+deploys a pinned prerelease image to the `staging` GitHub Environment after the
+prerelease workflow succeeds. It can also be run manually from an explicit ref
+with an explicit prerelease version.
 
 Required `staging` Environment configuration:
 
@@ -28,18 +29,32 @@ Required `staging` Environment configuration:
 - Variable `KUBE_NAMESPACE` (default: `trek-staging`)
 - Variable `HELM_RELEASE_NAME` (default: `trek`)
 - Variable `APP_URL`: tailnet-reachable staging URL, including scheme
-- Variable `TS_TAGS` (default: `tag:github-actions`): ACL tag applied to the
-  ephemeral GitHub-hosted runner
-- Variable `TS_TARGETS` (optional): comma-separated Tailscale IPs or MagicDNS
-  names that the action must ping before deployment
+- Variable `TS_TAGS` (default: `tag:trek-staging-ci`): dedicated ACL tag applied
+  to the ephemeral GitHub-hosted runner
+- Variable `TS_TARGETS`: comma-separated Tailscale IPs or MagicDNS names for
+  both the Kubernetes API node/router and staging application node/router. The
+  action must ping every target before deployment; use host names or IPs, not
+  URLs.
 
 The triggering prerelease workflow publishes a metadata artifact containing the
 exact source SHA, version, and registry digest. Staging consumes that artifact,
 checks out the matching source/chart, joins the tailnet as an ephemeral tagged
 node, deploys the image by digest, and checks `/api/health` over the private
-network. Manual deployments resolve the supplied tag to the same immutable
-identity. The OAuth tag should be restricted by Tailscale grants/ACLs to the
-Kubernetes API and staging application only.
+network. Manual deployments do not consume the metadata artifact. They check
+out the corresponding git tag, resolve the Docker tag's current registry digest
+at dispatch time, and pin that digest for the Helm deployment. Operators must
+prevent prerelease git and Docker tags from being moved. The OAuth client needs
+only `auth_keys` write scope and permission
+to apply exactly `tag:trek-staging-ci` (or the dedicated tag configured in
+`TS_TAGS`). Tailnet `tagOwners` and grants/ACLs must restrict that runner tag to
+only the Kubernetes API and staging application targets and required ports.
+
+GitHub evaluates `workflow_run` definitions from the default branch (`main`).
+Until this Tailscale-enabled workflow is promoted unchanged to `main`, do not
+rely on automatic staging deployment and do not dispatch another prerelease
+that would activate the old default-branch workflow. For pre-promotion testing,
+dispatch this workflow explicitly with `--ref dev` and an immutable prerelease
+version. Promotion to `main` is the enabling step for automatic deployment.
 
 ## Production (Phase 4)
 
@@ -93,8 +108,10 @@ credentials.
 - [x] Prerelease run `29475396968` published `3.4.0-pre.1` from that SHA with
   digest
   `sha256:3871779f425c4363d9e2191b7a6ef861b00431a0ca8e01706e0898e29531b93d`.
+- [ ] Promote the Tailscale-enabled staging workflow unchanged to default
+  branch `main` before automatic `workflow_run` deployment is enabled.
 - [ ] `staging` exposes secrets `KUBE_CONFIG_DATA`, `TS_OAUTH_CLIENT_ID`, and
-  `TS_OAUTH_SECRET`, plus variable `APP_URL`.
+  `TS_OAUTH_SECRET`, plus variables `APP_URL` and `TS_TARGETS`.
 - [ ] Staging deploys the recorded prerelease digest and `/api/health` succeeds.
 - [x] Phase 2 stable release completed as `v3.3.1`: source/tag commit
   `63c28ff843a0e937a71640260a4f7665d0830198`, image digest
