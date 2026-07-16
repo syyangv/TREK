@@ -1,0 +1,149 @@
+name: Deploy Staging
+
+on:
+  workflow_run:
+    workflows: ["Build & Push Docker Image (Prerelease)"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Pinned prerelease image tag (for example 3.4.0-pre.1)"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy pinned prerelease
+    if: >-
+      github.repository == 'syyangv/TREK' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      actions: read
+      contents: read
+    env:
+      NAMESPACE: ${{ vars.KUBE_NAMESPACE || 'trek-staging' }}
+      RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME || 'trek' }}
+      STAGING_URL: ${{ vars.APP_URL }}
+    steps:
+      - name: Download triggering prerelease metadata
+        if: ${{ github.event_name == 'workflow_run' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: prerelease-metadata
+          path: /tmp/prerelease
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Resolve prerelease version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+            SOURCE_REF="v$VERSION"
+            IMAGE_DIGEST=""
+          else
+            source /tmp/prerelease/prerelease-metadata.env
+            SOURCE_REF="$SOURCE_SHA"
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-pre\.[0-9]+$ ]]; then
+            echo "Expected a prerelease tag, got: $VERSION" >&2
+            exit 1
+          fi
+          {
+            echo "version=$VERSION"
+            echo "source_ref=$SOURCE_REF"
+            echo "image_digest=$IMAGE_DIGEST"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.version.outputs.source_ref }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve immutable image digest
+        id: image
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PUBLISHED_DIGEST: ${{ steps.version.outputs.image_digest }}
+        run: |
+          DIGEST="$PUBLISHED_DIGEST"
+          if [ -z "$DIGEST" ]; then
+            DIGEST="$(docker buildx imagetools inspect "thvysy44/trek-fork:$VERSION" --format '{{.Manifest.Digest}}')"
+          fi
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Invalid image digest: $DIGEST" >&2
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Configure kubectl
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+        run: |
+          test -n "$KUBE_CONFIG_DATA"
+          install -m 600 /dev/null "$RUNNER_TEMP/kubeconfig"
+          printf '%s' "$KUBE_CONFIG_DATA" | base64 --decode > "$RUNNER_TEMP/kubeconfig"
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+
+      - name: Deploy pinned image with Helm
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          helm upgrade --install "$RELEASE_NAME" charts/trek \
+            --namespace "$NAMESPACE" \
+            --create-namespace \
+            --set-string image.repository=thvysy44/trek-fork \
+            --set-string "image.tag=$VERSION" \
+            --set-string "image.digest=$IMAGE_DIGEST" \
+            --set-string image.pullPolicy=IfNotPresent \
+            --atomic --wait --timeout 10m --history-max 10
+
+      - name: Verify rollout and image pin
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          kubectl rollout status deployment/"$RELEASE_NAME" -n "$NAMESPACE" --timeout=10m
+          IMAGE="$(kubectl get deployment "$RELEASE_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.template.spec.containers[0].image}')"
+          test "$IMAGE" = "thvysy44/trek-fork@$IMAGE_DIGEST"
+
+      - name: Verify staging health
+        run: |
+          test -n "$STAGING_URL"
+          curl --fail --retry 12 --retry-delay 5 --retry-connrefused \
+            "$STAGING_URL/api/health"
+
+      - name: Capture failure diagnostics
+        if: ${{ failure() }}
+        run: |
+          kubectl get pods,deployments,replicasets -n "$NAMESPACE" -o wide || true
+          kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp | tail -100 || true
+          kubectl describe deployment/"$RELEASE_NAME" -n "$NAMESPACE" || true
+
+      - name: Record deployment identity
+        if: ${{ success() }}
+        run: |
+          {
+            echo "### Staging deployment"
+            echo "- Version: \`${{ steps.version.outputs.version }}\`"
+            echo "- Digest: \`${{ steps.image.outputs.digest }}\`"
+            echo "- Source: \`${{ steps.version.outputs.source_ref }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

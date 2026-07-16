@@ -18,6 +18,8 @@ client/public/icons/*.png
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+data/
+uploads/
 
 # User data
 server/data/*
@@ -27,6 +29,7 @@ server/uploads/
 .env
 .env.*
 !.env.example
+.trek-admin-credentials
 
 # OS files
 .DS_Store
