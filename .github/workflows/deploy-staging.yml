@@ -182,7 +182,7 @@ jobs:
           printf -v base_b64_q '%q' "$base_compose_b64"
           printf -v override_b64_q '%q' "$override_compose_b64"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
-          "$TREK_SSH" "$remote" "set -eu; test -x /usr/local/bin/docker; test -x '/Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose'; test -d $remote_path_q; test -f $remote_path_q/.env; mkdir -p $remote_path_q/data $remote_path_q/uploads $remote_path_q/.trek-ci/releases $remote_path_q/.trek-ci/docker-config/cli-plugins; printf '{}\n' > $remote_path_q/.trek-ci/docker-config/config.json; ln -sfn '/Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose' $remote_path_q/.trek-ci/docker-config/cli-plugins/docker-compose; chmod 700 $remote_path_q/.trek-ci/docker-config $remote_path_q/.trek-ci/docker-config/cli-plugins; chmod 600 $remote_path_q/.trek-ci/docker-config/config.json; release_dir=$remote_path_q/.trek-ci/$release_rel_q; mkdir \"\$release_dir\"; if ! printf %s $base_b64_q | base64 --decode > \"\$release_dir/docker-compose.yml\" 2>/dev/null; then printf %s $base_b64_q | base64 -D > \"\$release_dir/docker-compose.yml\"; fi; if ! printf %s $override_b64_q | base64 --decode > \"\$release_dir/docker-compose.override.yml\" 2>/dev/null; then printf %s $override_b64_q | base64 -D > \"\$release_dir/docker-compose.override.yml\"; fi; test -s \"\$release_dir/docker-compose.yml\"; test -s \"\$release_dir/docker-compose.override.yml\"; /usr/local/bin/docker --config $remote_path_q/.trek-ci/docker-config compose version"
+          "$TREK_SSH" "$remote" "set -eu; test -x /usr/local/bin/docker; test -x '/Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose'; test -d $remote_path_q; test -f $remote_path_q/.env; mkdir -p $remote_path_q/data $remote_path_q/uploads $remote_path_q/.trek-ci/releases $remote_path_q/.trek-ci/docker-home $remote_path_q/.trek-ci/docker-config/cli-plugins; printf '%s\n' '{\"auths\":{\"https://index.docker.io/v1/\":{\"auth\":\"YW5vbnltb3VzOg==\"}}}' > $remote_path_q/.trek-ci/docker-config/config.json; ln -sfn '/Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose' $remote_path_q/.trek-ci/docker-config/cli-plugins/docker-compose; chmod 700 $remote_path_q/.trek-ci/docker-home $remote_path_q/.trek-ci/docker-config $remote_path_q/.trek-ci/docker-config/cli-plugins; chmod 600 $remote_path_q/.trek-ci/docker-config/config.json; release_dir=$remote_path_q/.trek-ci/$release_rel_q; mkdir \"\$release_dir\"; if ! printf %s $base_b64_q | base64 --decode > \"\$release_dir/docker-compose.yml\" 2>/dev/null; then printf %s $base_b64_q | base64 -D > \"\$release_dir/docker-compose.yml\"; fi; if ! printf %s $override_b64_q | base64 --decode > \"\$release_dir/docker-compose.override.yml\" 2>/dev/null; then printf %s $override_b64_q | base64 -D > \"\$release_dir/docker-compose.override.yml\"; fi; test -s \"\$release_dir/docker-compose.yml\"; test -s \"\$release_dir/docker-compose.override.yml\"; /usr/bin/env -i HOME=$remote_path_q/.trek-ci/docker-home PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=$remote_path_q/.trek-ci/docker-config /usr/local/bin/docker --config $remote_path_q/.trek-ci/docker-config compose version"
           echo "release=$release_rel" >> "$GITHUB_OUTPUT"
 
       - name: Capture rollback target
@@ -215,9 +215,9 @@ jobs:
           next_link="current.next-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           printf -v next_link_q '%q' "$next_link"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
-          pull="/usr/bin/env PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin /usr/local/bin/docker --config $path_q/.trek-ci/docker-config pull"
-          compose="/usr/bin/env PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin /usr/local/bin/docker --config $path_q/.trek-ci/docker-config compose --project-directory $path_q -p $project_q -f $path_q/.trek-ci/$release_q/docker-compose.yml -f $path_q/.trek-ci/$release_q/docker-compose.override.yml"
-          "$TREK_SSH" "$remote" "set -eu; $pull $image_q; TREK_IMAGE=$image_q $compose up -d --no-build --pull never --wait --wait-timeout 300 app; actual=\$(/usr/local/bin/docker inspect --format '{{.Config.Image}}' trek); test \"\$actual\" = $image_q; cd $path_q/.trek-ci; ln -s $release_q $next_link_q; if mv -Tf $next_link_q current 2>/dev/null; then :; else mv -hf $next_link_q current; fi"
+          pull="/usr/bin/env -i HOME=$path_q/.trek-ci/docker-home PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=$path_q/.trek-ci/docker-config /usr/local/bin/docker --config $path_q/.trek-ci/docker-config pull"
+          compose="/usr/bin/env -i HOME=$path_q/.trek-ci/docker-home PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=$path_q/.trek-ci/docker-config TREK_IMAGE=$image_q /usr/local/bin/docker --config $path_q/.trek-ci/docker-config compose --project-directory $path_q -p $project_q -f $path_q/.trek-ci/$release_q/docker-compose.yml -f $path_q/.trek-ci/$release_q/docker-compose.override.yml"
+          "$TREK_SSH" "$remote" "set -eu; $pull $image_q; $compose up -d --no-build --pull never --wait --wait-timeout 300 app; actual=\$(/usr/local/bin/docker inspect --format '{{.Config.Image}}' trek); test \"\$actual\" = $image_q; cd $path_q/.trek-ci; ln -s $release_q $next_link_q; if mv -Tf $next_link_q current 2>/dev/null; then :; else mv -hf $next_link_q current; fi"
 
       - name: Verify staging health
         run: |
@@ -237,9 +237,9 @@ jobs:
           next_link="current.rollback-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           printf -v next_link_q '%q' "$next_link"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
-          pull="/usr/bin/env PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin /usr/local/bin/docker --config $path_q/.trek-ci/docker-config pull"
-          compose="/usr/bin/env PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin /usr/local/bin/docker --config $path_q/.trek-ci/docker-config compose --project-directory $path_q -p $project_q -f $path_q/.trek-ci/$release_q/docker-compose.yml -f $path_q/.trek-ci/$release_q/docker-compose.override.yml"
-          "$TREK_SSH" "$remote" "set -eu; $pull $image_q; TREK_IMAGE=$image_q $compose up -d --no-build --pull never --wait --wait-timeout 300 app; actual=\$(/usr/local/bin/docker inspect --format '{{.Config.Image}}' trek); test \"\$actual\" = $image_q; cd $path_q/.trek-ci; ln -s $release_q $next_link_q; if mv -Tf $next_link_q current 2>/dev/null; then :; else mv -hf $next_link_q current; fi"
+          pull="/usr/bin/env -i HOME=$path_q/.trek-ci/docker-home PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=$path_q/.trek-ci/docker-config /usr/local/bin/docker --config $path_q/.trek-ci/docker-config pull"
+          compose="/usr/bin/env -i HOME=$path_q/.trek-ci/docker-home PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=$path_q/.trek-ci/docker-config TREK_IMAGE=$image_q /usr/local/bin/docker --config $path_q/.trek-ci/docker-config compose --project-directory $path_q -p $project_q -f $path_q/.trek-ci/$release_q/docker-compose.yml -f $path_q/.trek-ci/$release_q/docker-compose.override.yml"
+          "$TREK_SSH" "$remote" "set -eu; $pull $image_q; $compose up -d --no-build --pull never --wait --wait-timeout 300 app; actual=\$(/usr/local/bin/docker inspect --format '{{.Config.Image}}' trek); test \"\$actual\" = $image_q; cd $path_q/.trek-ci; ln -s $release_q $next_link_q; if mv -Tf $next_link_q current 2>/dev/null; then :; else mv -hf $next_link_q current; fi"
 
       - name: Capture safe failure diagnostics
         if: ${{ failure() }}
@@ -249,7 +249,7 @@ jobs:
           release="${{ steps.compose.outputs.release }}"
           printf -v release_q '%q' "$release"
           remote="$DEPLOY_USER@$DEPLOY_HOST"
-          compose="/usr/bin/env PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin /usr/local/bin/docker --config $path_q/.trek-ci/docker-config compose --project-directory $path_q -p $project_q -f $path_q/.trek-ci/$release_q/docker-compose.yml -f $path_q/.trek-ci/$release_q/docker-compose.override.yml"
+          compose="/usr/bin/env -i HOME=$path_q/.trek-ci/docker-home PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=$path_q/.trek-ci/docker-config /usr/local/bin/docker --config $path_q/.trek-ci/docker-config compose --project-directory $path_q -p $project_q -f $path_q/.trek-ci/$release_q/docker-compose.yml -f $path_q/.trek-ci/$release_q/docker-compose.override.yml"
           "$TREK_SSH" "$remote" "$compose ps || true; /usr/local/bin/docker inspect --format 'name={{.Name}} status={{.State.Status}} image={{.Config.Image}}' trek 2>/dev/null || true" || true
 
       - name: Record deployment identity
