@@ -4,7 +4,9 @@
 validation used pinned SSH over Tailscale, but the maintained deployment path now
 uses a restricted local deployment agent and does not permit remote shell access.
 Phase 4 uses the same agent for stable production deployments and explicit
-rollback after GitHub Environment approval.
+rollback after GitHub Environment approval. Stable `3.5.0` is deployed and
+healthy; rollback validation remains pending a second known-good stable
+production release.
 
 Secrets must never be written to source control or workflow logs.
 
@@ -126,19 +128,30 @@ Inputs:
 Both actions use the same immutable path. An explicit rollback deploys the
 selected older stable version rather than executing arbitrary rollback commands.
 
+### Phase 4 production evidence
+
+- Version: `3.5.0`
+- Release source/tag commit: `85c9af1dc6dba5b6c48bce00afca0b690b80af73`
+- Image digest: `sha256:62635700d78f7cad4b1f47eed92ddb3f5a14a82d39833fd4249fea818957db77`
+- Stable release run: <https://github.com/syyangv/TREK/actions/runs/29700948816>
+- GitHub Release: <https://github.com/syyangv/TREK/releases/tag/v3.5.0>
+- Production deployment run: <https://github.com/syyangv/TREK/actions/runs/29701278056>
+- Recorded agent release: `releases/run-29701278056-1`
+- Running container digest and both Docker/application health checks passed.
+
 ## Validation checklist
 
-- [ ] Install the local agent and verify its localhost health endpoint.
-- [ ] Add `TREK_DEPLOY_TOKEN` to `staging` and `production`.
-- [ ] Add `DEPLOY_AGENT_URL` to both Environments.
-- [ ] Add the Tailscale OAuth secrets to `production`.
-- [ ] Confirm the private agent health endpoint is reachable from a tagged
+- [x] Install the local agent and verify its localhost health endpoint.
+- [x] Add `TREK_DEPLOY_TOKEN` to `staging` and `production`.
+- [x] Add `DEPLOY_AGENT_URL` to both Environments.
+- [x] Add the Tailscale OAuth secrets to `production`.
+- [x] Confirm the private agent health endpoint is reachable from a tagged
       GitHub-hosted runner.
-- [ ] Re-run staging with `3.5.0-pre.1` and verify digest and health.
+- [x] Re-run staging with `3.5.0-pre.1` and verify digest and health.
 - [ ] Remove the obsolete SSH secrets and `tcp:22` grant.
 - [x] Confirm the `production` Environment requires reviewer approval.
-- [ ] Publish and verify stable release `3.5.0`.
-- [ ] Approve and run the production deployment for `3.5.0`.
+- [x] Publish and verify stable release `3.5.0`.
+- [x] Approve and run the production deployment for `3.5.0`.
 - [ ] Identify and exercise a prior known-good stable rollback version.
 
 If no prior stable production deployment exists, rollback cannot be marked
