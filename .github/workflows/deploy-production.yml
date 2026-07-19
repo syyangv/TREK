@@ -15,7 +15,6 @@ on:
         default: deploy
 
 permissions:
-  actions: read
   contents: read
 
 concurrency:
@@ -29,14 +28,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     permissions:
-      actions: read
       contents: read
     env:
       APP_URL: ${{ vars.APP_URL }}
-      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
-      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
-      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
-      COMPOSE_PROJECT_NAME: ${{ vars.COMPOSE_PROJECT_NAME || 'trek' }}
+      DEPLOY_AGENT_URL: ${{ vars.DEPLOY_AGENT_URL }}
     steps:
       - name: Validate stable version
         id: version
@@ -54,28 +49,22 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.version.outputs.source_ref }}
+          ref: ${{ github.workflow_sha }}
 
       - name: Validate production configuration
         env:
-          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
-          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          TREK_DEPLOY_TOKEN: ${{ secrets.TREK_DEPLOY_TOKEN }}
           TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
           TS_TARGETS: ${{ vars.TS_TARGETS }}
         run: |
+          test -n "$TREK_DEPLOY_TOKEN"
           test -n "$TS_OAUTH_CLIENT_ID"
           test -n "$TS_OAUTH_SECRET"
-          test -n "$DEPLOY_SSH_PRIVATE_KEY"
-          test -n "$DEPLOY_SSH_KNOWN_HOSTS"
           test -n "$TS_TARGETS"
           test -n "$APP_URL"
-          test -n "$DEPLOY_HOST"
-          test -n "$DEPLOY_USER"
-          test -n "$DEPLOY_PATH"
-          test -n "$COMPOSE_PROJECT_NAME"
-          test -f docker-compose.yml
-          test -f docker-compose.override.yml
+          test -n "$DEPLOY_AGENT_URL"
+          test -f scripts/trek_deploy_client.py
 
       - name: Connect runner to production tailnet
         uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3
@@ -86,39 +75,10 @@ jobs:
           targets: ${{ vars.TS_TARGETS }}
           use-cache: 'true'
 
-      - name: Configure pinned SSH identity
-        env:
-          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
-          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
-        run: |
-          install -d -m 700 "$HOME/.ssh"
-          install -m 600 /dev/null "$RUNNER_TEMP/trek-production-key"
-          printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/trek-production-key"
-          ssh-keygen -y -P '' -f "$RUNNER_TEMP/trek-production-key" >/dev/null
-          install -m 600 /dev/null "$RUNNER_TEMP/trek-known-hosts"
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/trek-known-hosts"
-          ssh-keygen -F "$DEPLOY_HOST" -f "$RUNNER_TEMP/trek-known-hosts" >/dev/null
-          cat > "$RUNNER_TEMP/trek-ssh" <<'EOF'
-          #!/usr/bin/env bash
-          exec ssh -F /dev/null \
-            -i "$RUNNER_TEMP/trek-production-key" \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes \
-            -o "UserKnownHostsFile=$RUNNER_TEMP/trek-known-hosts" \
-            -o ConnectTimeout=15 \
-            -o ServerAliveInterval=15 \
-            -o ServerAliveCountMax=3 \
-            -- "$@"
-          EOF
-          chmod 700 "$RUNNER_TEMP/trek-ssh"
-          echo "TREK_SSH=$RUNNER_TEMP/trek-ssh" >> "$GITHUB_ENV"
-
-      - name: Verify tailnet and deployment host
+      - name: Verify tailnet deployment agent
         run: |
           tailscale status --json | jq -e '.BackendState == "Running"'
-          tailscale ping --timeout=10s "$DEPLOY_HOST"
-          "$TREK_SSH" "$DEPLOY_USER@$DEPLOY_HOST" true
+          curl --fail --silent --show-error -- "$DEPLOY_AGENT_URL/healthz"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -127,12 +87,8 @@ jobs:
         id: image
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          PUBLISHED_DIGEST: ${{ steps.version.outputs.image_digest }}
         run: |
-          DIGEST="$PUBLISHED_DIGEST"
-          if [ -z "$DIGEST" ]; then
-            DIGEST="$(docker buildx imagetools inspect "thvysy44/trek-fork:$VERSION" --format '{{.Manifest.Digest}}')"
-          fi
+          DIGEST="$(docker buildx imagetools inspect "thvysy44/trek-fork:$VERSION" --format '{{.Manifest.Digest}}')"
           if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "Invalid image digest: $DIGEST" >&2
             exit 1
@@ -140,96 +96,26 @@ jobs:
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
           echo "image=thvysy44/trek-fork@$DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Validate Compose digest override
+      - name: Deploy exact image through restricted agent
         env:
+          TREK_DEPLOY_TOKEN: ${{ secrets.TREK_DEPLOY_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SOURCE_REF: ${{ steps.version.outputs.source_ref }}
           IMAGE: ${{ steps.image.outputs.image }}
         run: |
-          resolved="$(TREK_IMAGE="$IMAGE" docker compose \
-            -f docker-compose.yml -f docker-compose.override.yml \
-            config --images)"
-          test "$resolved" = "$IMAGE"
-
-      - name: Install checked-out Compose definition
-        id: compose
-        run: |
-          printf -v remote_path_q '%q' "$DEPLOY_PATH"
-          release_id="run-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          release_rel="releases/$release_id"
-          printf -v release_rel_q '%q' "$release_rel"
-          base_compose_b64="$(base64 -w0 docker-compose.yml)"
-          override_compose_b64="$(base64 -w0 docker-compose.override.yml)"
-          printf -v base_b64_q '%q' "$base_compose_b64"
-          printf -v override_b64_q '%q' "$override_compose_b64"
-          remote="$DEPLOY_USER@$DEPLOY_HOST"
-          "$TREK_SSH" "$remote" "set -eu; test -x /usr/local/bin/docker; test -x '/Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose'; test -d $remote_path_q; test -f $remote_path_q/.env; mkdir -p $remote_path_q/data $remote_path_q/uploads $remote_path_q/.trek-production-ci/releases $remote_path_q/.trek-production-ci/docker-home $remote_path_q/.trek-production-ci/docker-config/cli-plugins; printf '%s\n' '{\"auths\":{\"https://index.docker.io/v1/\":{\"auth\":\"YW5vbnltb3VzOg==\"}}}' > $remote_path_q/.trek-production-ci/docker-config/config.json; ln -sfn '/Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose' $remote_path_q/.trek-production-ci/docker-config/cli-plugins/docker-compose; chmod 700 $remote_path_q/.trek-production-ci/docker-home $remote_path_q/.trek-production-ci/docker-config $remote_path_q/.trek-production-ci/docker-config/cli-plugins; chmod 600 $remote_path_q/.trek-production-ci/docker-config/config.json; release_dir=$remote_path_q/.trek-production-ci/$release_rel_q; mkdir \"\$release_dir\"; if ! printf %s $base_b64_q | base64 --decode > \"\$release_dir/docker-compose.yml\" 2>/dev/null; then printf %s $base_b64_q | base64 -D > \"\$release_dir/docker-compose.yml\"; fi; if ! printf %s $override_b64_q | base64 --decode > \"\$release_dir/docker-compose.override.yml\" 2>/dev/null; then printf %s $override_b64_q | base64 -D > \"\$release_dir/docker-compose.override.yml\"; fi; test -s \"\$release_dir/docker-compose.yml\"; test -s \"\$release_dir/docker-compose.override.yml\"; /usr/bin/env -i HOME=$remote_path_q/.trek-production-ci/docker-home PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=$remote_path_q/.trek-production-ci/docker-config /usr/local/bin/docker --config $remote_path_q/.trek-production-ci/docker-config compose version"
-          echo "release=$release_rel" >> "$GITHUB_OUTPUT"
-
-      - name: Capture rollback target
-        id: rollback
-        run: |
-          printf -v path_q '%q' "$DEPLOY_PATH"
-          remote="$DEPLOY_USER@$DEPLOY_HOST"
-          previous_image="$("$TREK_SSH" "$remote" "/usr/local/bin/docker inspect --format '{{.Config.Image}}' trek 2>/dev/null || true")"
-          previous_release="$("$TREK_SSH" "$remote" "readlink $path_q/.trek-production-ci/current 2>/dev/null || true")"
-          if [[ "$previous_image" =~ ^[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]] &&
-             [[ "$previous_release" =~ ^releases/run-[0-9]+-[0-9]+$ ]]; then
-            printf -v previous_release_q '%q' "$previous_release"
-            "$TREK_SSH" "$remote" "test -s $path_q/.trek-production-ci/$previous_release_q/docker-compose.yml; test -s $path_q/.trek-production-ci/$previous_release_q/docker-compose.override.yml"
-            echo "image=$previous_image" >> "$GITHUB_OUTPUT"
-            echo "release=$previous_release" >> "$GITHUB_OUTPUT"
-            echo "Immutable rollback target captured."
-          else
-            echo "No complete immutable image and Compose rollback target is available."
-          fi
-
-      - name: Deploy exact image with Docker Compose
-        env:
-          IMAGE: ${{ steps.image.outputs.image }}
-          RELEASE: ${{ steps.compose.outputs.release }}
-        run: |
-          printf -v path_q '%q' "$DEPLOY_PATH"
-          printf -v project_q '%q' "$COMPOSE_PROJECT_NAME"
-          printf -v image_q '%q' "$IMAGE"
-          printf -v release_q '%q' "$RELEASE"
-          next_link="current.next-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          printf -v next_link_q '%q' "$next_link"
-          remote="$DEPLOY_USER@$DEPLOY_HOST"
-          pull="/usr/bin/env -i HOME=$path_q/.trek-production-ci/docker-home PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=$path_q/.trek-production-ci/docker-config /usr/local/bin/docker --config $path_q/.trek-production-ci/docker-config pull"
-          compose="/usr/bin/env -i HOME=$path_q/.trek-production-ci/docker-home PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=$path_q/.trek-production-ci/docker-config TREK_IMAGE=$image_q /usr/local/bin/docker --config $path_q/.trek-production-ci/docker-config compose --project-directory $path_q -p $project_q -f $path_q/.trek-production-ci/$release_q/docker-compose.yml -f $path_q/.trek-production-ci/$release_q/docker-compose.override.yml"
-          "$TREK_SSH" "$remote" "set -eu; $pull $image_q; $compose up -d --no-build --pull never --wait --wait-timeout 300 app; actual=\$(/usr/local/bin/docker inspect --format '{{.Config.Image}}' trek); test \"\$actual\" = $image_q; cd $path_q/.trek-production-ci; ln -s $release_q $next_link_q; if mv -Tf $next_link_q current 2>/dev/null; then :; else mv -hf $next_link_q current; fi"
+          python3 scripts/trek_deploy_client.py \
+            --url "$DEPLOY_AGENT_URL" \
+            --environment production \
+            --action "${{ inputs.action }}" \
+            --version "$VERSION" \
+            --source-ref "$SOURCE_REF" \
+            --image "$IMAGE" \
+            --request-id "run-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
 
       - name: Verify production health
         run: |
           curl --fail --silent --show-error --retry 12 --retry-delay 5 \
             --retry-connrefused -- "$APP_URL/api/health"
-
-      - name: Roll back failed deployment
-        if: ${{ failure() && steps.rollback.outputs.image != '' && steps.rollback.outputs.release != '' }}
-        env:
-          PREVIOUS_IMAGE: ${{ steps.rollback.outputs.image }}
-          PREVIOUS_RELEASE: ${{ steps.rollback.outputs.release }}
-        run: |
-          printf -v path_q '%q' "$DEPLOY_PATH"
-          printf -v project_q '%q' "$COMPOSE_PROJECT_NAME"
-          printf -v image_q '%q' "$PREVIOUS_IMAGE"
-          printf -v release_q '%q' "$PREVIOUS_RELEASE"
-          next_link="current.rollback-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          printf -v next_link_q '%q' "$next_link"
-          remote="$DEPLOY_USER@$DEPLOY_HOST"
-          pull="/usr/bin/env -i HOME=$path_q/.trek-production-ci/docker-home PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=$path_q/.trek-production-ci/docker-config /usr/local/bin/docker --config $path_q/.trek-production-ci/docker-config pull"
-          compose="/usr/bin/env -i HOME=$path_q/.trek-production-ci/docker-home PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=$path_q/.trek-production-ci/docker-config TREK_IMAGE=$image_q /usr/local/bin/docker --config $path_q/.trek-production-ci/docker-config compose --project-directory $path_q -p $project_q -f $path_q/.trek-production-ci/$release_q/docker-compose.yml -f $path_q/.trek-production-ci/$release_q/docker-compose.override.yml"
-          "$TREK_SSH" "$remote" "set -eu; $pull $image_q; $compose up -d --no-build --pull never --wait --wait-timeout 300 app; actual=\$(/usr/local/bin/docker inspect --format '{{.Config.Image}}' trek); test \"\$actual\" = $image_q; cd $path_q/.trek-production-ci; ln -s $release_q $next_link_q; if mv -Tf $next_link_q current 2>/dev/null; then :; else mv -hf $next_link_q current; fi"
-
-      - name: Capture safe failure diagnostics
-        if: ${{ failure() }}
-        run: |
-          printf -v path_q '%q' "$DEPLOY_PATH"
-          printf -v project_q '%q' "$COMPOSE_PROJECT_NAME"
-          release="${{ steps.compose.outputs.release }}"
-          printf -v release_q '%q' "$release"
-          remote="$DEPLOY_USER@$DEPLOY_HOST"
-          compose="/usr/bin/env -i HOME=$path_q/.trek-production-ci/docker-home PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin DOCKER_CONFIG=$path_q/.trek-production-ci/docker-config /usr/local/bin/docker --config $path_q/.trek-production-ci/docker-config compose --project-directory $path_q -p $project_q -f $path_q/.trek-production-ci/$release_q/docker-compose.yml -f $path_q/.trek-production-ci/$release_q/docker-compose.override.yml"
-          "$TREK_SSH" "$remote" "$compose ps || true; /usr/local/bin/docker inspect --format 'name={{.Name}} status={{.State.Status}} image={{.Config.Image}}' trek 2>/dev/null || true" || true
 
       - name: Record deployment identity
         if: ${{ success() }}
@@ -239,5 +125,4 @@ jobs:
             echo "- Version: \`${{ steps.version.outputs.version }}\`"
             echo "- Digest: \`${{ steps.image.outputs.digest }}\`"
             echo "- Source: \`${{ steps.version.outputs.source_ref }}\`"
-            echo "- Host: \`$DEPLOY_HOST\`"
           } >> "$GITHUB_STEP_SUMMARY"
