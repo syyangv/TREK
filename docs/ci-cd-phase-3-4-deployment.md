@@ -99,15 +99,18 @@ sends the signed request through Tailscale, and verifies `/api/health`.
 
 ### Phase 3 evidence
 
-The original operational proof remains valid evidence for the artifact, digest,
-Tailscale connectivity, Compose deployment, and health check. A new validation
-run is required before removing the old SSH settings.
+The original operational proof remains valid evidence for the artifact and
+digest. The final no-SSH run independently validated the restricted agent,
+Tailscale connectivity, Compose deployment, container identity, and health.
 
 - Version: `3.5.0-pre.1`
 - Source SHA: `b2ce72f1f5a45866213d3590f8ce75984e4c07a1`
 - Image digest: `sha256:e07dd5911d0d81021249f1338acaf32033949e12e93cf40bf2188bb355c2e3d7`
 - Build run: <https://github.com/syyangv/TREK/actions/runs/29695001033>
-- Original successful staging run: <https://github.com/syyangv/TREK/actions/runs/29697412933>
+- Original SSH-based staging run: <https://github.com/syyangv/TREK/actions/runs/29697412933>
+- Final no-SSH staging run: <https://github.com/syyangv/TREK/actions/runs/29699390702> (43 seconds)
+- Restricted-agent implementation: <https://github.com/syyangv/TREK/pull/21>
+- Deterministic IPv4 fetch hotfix: <https://github.com/syyangv/TREK/pull/22>
 
 ## Production (Phase 4)
 
