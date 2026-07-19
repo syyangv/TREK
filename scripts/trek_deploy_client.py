@@ -50,8 +50,9 @@ def main() -> None:
             "X-Trek-Signature": f"sha256={signature}",
         },
     )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with urllib.request.urlopen(request, timeout=420) as response:
+        with opener.open(request, timeout=420) as response:
             result = json.load(response)
     except urllib.error.HTTPError as exc:
         try:
