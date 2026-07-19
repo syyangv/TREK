@@ -700,16 +700,16 @@ documents for operational completion.
 
 ### 11. Production Deployment
 
-- [ ] Create GitHub Environment `production`.
-- [ ] Require manual approval for production deploys.
-- [ ] Deploy pinned stable version tag or digest.
-- [ ] Do not deploy `latest` directly to production unless using a deliberate auto-update policy.
-- [ ] Run post-deploy health check.
-- [ ] Verify app version after deploy.
+- [x] Create GitHub Environment `production`.
+- [x] Require manual approval for production deploys.
+- [x] Deploy pinned stable version tag resolved to an immutable digest.
+- [x] Do not deploy `latest` directly to production unless using a deliberate auto-update policy.
+- [x] Run post-deploy health check.
+- [x] Verify app version after deploy.
 - [ ] Capture logs on failure.
-- [ ] Add rollback input for previous version tag.
-- [ ] Document production deploy command/path.
-- [ ] Document production rollback command/path.
+- [x] Add rollback input for a selected older stable version.
+- [x] Document production deploy command/path.
+- [x] Document production rollback command/path.
 
 ### 12. Personal / Tailscale Deployment
 
