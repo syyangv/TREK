@@ -30,6 +30,7 @@ server/uploads/
 .env.*
 !.env.example
 .trek-admin-credentials
+.trek-deploy-agent/
 
 # OS files
 .DS_Store
@@ -58,6 +59,8 @@ coverage
 .nyc_output
 
 # Cache
+__pycache__/
+*.pyc
 .npm
 .eslintcache
 .cache

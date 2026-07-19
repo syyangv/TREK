@@ -13,8 +13,8 @@ This document defines a senior-engineer CI/CD design for TREK. The goal is to ma
 | --- | --- | --- | --- |
 | Phase 1 — CI reliability | Complete on `main` | Complete for the aggregate CI model | Hardening merged in `5210ff4d`; `Phase 1 Checks`, Docker smoke, and Helm chart validation passed. Requiring separate Security/target-branch checks remains an explicit governance follow-up. |
 | Phase 2 — stable release gating | Complete, including retry-gate fix | Ready for stable-release rerun | Fix `825bf6bb` is on `main`; CI runs `29467234562` and `29467262444`, plus Security runs `29467234565` and `29467263383`, passed. No stable release has completed after the fix. |
-| Phase 3 — prerelease/staging | Complete on `main` | Complete | Prerelease `3.5.0-pre.1` deployed by immutable digest through Tailscale/SSH; staging run `29697412933` passed image identity and health validation. |
-| Phase 4 — production/rollback | Tailscale/SSH workflow implemented | Not started | Production Environment approval, stable `3.5.0` publication, deployment, and rollback still require operational validation. |
+| Phase 3 — prerelease/staging | Complete on `main` | Complete | Prerelease `3.5.0-pre.1` deployed by immutable digest through the restricted Tailscale deployment agent; staging run `29697412933` passed image identity and health validation. |
+| Phase 4 — production/rollback | restricted Tailscale agent implemented | Not started | Production Environment approval, stable `3.5.0` publication, deployment, and rollback still require operational validation. |
 
 Current execution order:
 
@@ -466,9 +466,9 @@ production deployment.
 ### Phase 4: Production Deployment
 
 - [x] Add GitHub Environment `production` as the manual approval boundary.
-- [x] Implement pinned stable deployment through Tailscale, SSH, and Docker Compose.
+- [x] Implement pinned stable deployment through a restricted Tailscale deployment agent and Docker Compose.
 - [x] Verify required reviewer protection.
-- [ ] Configure production-visible Tailscale/SSH settings.
+- [ ] Configure production-visible Tailscale and deployment-agent settings.
 - [ ] Publish stable `3.5.0` and validate production deployment.
 - [ ] Preflight and execute the rollback runbook.
 
