@@ -23,6 +23,8 @@ const vacay: TranslationStrings = {
   'vacay.add': 'Přidat',
   'vacay.legend': 'Legenda',
   'vacay.publicHoliday': 'Státní svátek',
+  'vacay.pto': 'Placené volno',
+  'vacay.sickLeave': 'Nemocenská',
   'vacay.companyHoliday': 'Firemní volno',
   'vacay.weekend': 'Víkend',
   'vacay.modeVacation': 'Dovolená',

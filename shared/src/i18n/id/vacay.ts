@@ -23,6 +23,8 @@ const vacay: TranslationStrings = {
   'vacay.add': 'Tambah',
   'vacay.legend': 'Keterangan',
   'vacay.publicHoliday': 'Hari Libur Nasional',
+  'vacay.pto': 'Cuti berbayar',
+  'vacay.sickLeave': 'Cuti sakit',
   'vacay.companyHoliday': 'Hari Libur Perusahaan',
   'vacay.weekend': 'Akhir Pekan',
   'vacay.modeVacation': 'Cuti',

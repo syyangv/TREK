@@ -24,6 +24,8 @@ const vacay: TranslationStrings = {
   'vacay.add': 'Προσθήκη',
   'vacay.legend': 'Υπόμνημα',
   'vacay.publicHoliday': 'Δημόσια Αργία',
+  'vacay.pto': 'Άδεια μετ’ αποδοχών',
+  'vacay.sickLeave': 'Αναρρωτική άδεια',
   'vacay.companyHoliday': 'Αργία Εταιρείας',
   'vacay.weekend': 'Σαββατοκύριακο',
   'vacay.modeVacation': 'Διακοπές',

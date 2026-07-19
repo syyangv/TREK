@@ -23,6 +23,8 @@ const vacay: TranslationStrings = {
   'vacay.add': 'Thêm vào',
   'vacay.legend': 'Huyền thoại',
   'vacay.publicHoliday': 'Ngày nghỉ lễ',
+  'vacay.pto': 'Nghỉ phép có lương',
+  'vacay.sickLeave': 'Nghỉ ốm',
   'vacay.companyHoliday': 'Kỳ nghỉ của công ty',
   'vacay.weekend': 'Ngày cuối tuần',
   'vacay.modeVacation': 'Kì nghỉ',

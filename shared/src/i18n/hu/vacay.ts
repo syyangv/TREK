@@ -23,6 +23,8 @@ const vacay: TranslationStrings = {
   'vacay.add': 'Hozzáadás',
   'vacay.legend': 'Jelmagyarázat',
   'vacay.publicHoliday': 'Ünnepnap',
+  'vacay.pto': 'Fizetett szabadság',
+  'vacay.sickLeave': 'Betegszabadság',
   'vacay.companyHoliday': 'Céges szabadnap',
   'vacay.weekend': 'Hétvége',
   'vacay.modeVacation': 'Szabadság',

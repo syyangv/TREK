@@ -215,7 +215,7 @@ export function loadObsidianPublicHolidaysForYear(year: number): ObsidianHoliday
     date.setUTCDate(date.getUTCDate() + offset);
     const dateStr = `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
     const filePath = path.join(vaultPath, formatDailyPath(date, settings));
-    let markdown = '';
+    let markdown: string;
     try {
       markdown = fs.readFileSync(filePath, 'utf8');
     } catch {
