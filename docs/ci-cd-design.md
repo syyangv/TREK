@@ -12,9 +12,9 @@ This document defines a senior-engineer CI/CD design for TREK. The goal is to ma
 | Phase | Implementation | Operational validation | Current evidence / blocker |
 | --- | --- | --- | --- |
 | Phase 1 — CI reliability | Complete on `main` | Complete for the aggregate CI model | Hardening merged in `5210ff4d`; `Phase 1 Checks`, Docker smoke, and Helm chart validation passed. Requiring separate Security/target-branch checks remains an explicit governance follow-up. |
-| Phase 2 — stable release gating | Complete, including retry-gate fix | Ready for stable-release rerun | Fix `825bf6bb` is on `main`; CI runs `29467234562` and `29467262444`, plus Security runs `29467234565` and `29467263383`, passed. No stable release has completed after the fix. |
+| Phase 2 — stable release gating | Complete | Complete | Stable `3.5.0` published as a multi-architecture image with SBOM, manifest metadata, Helm chart, and GitHub Release in run `29700948816`. |
 | Phase 3 — prerelease/staging | Complete on `main` | Complete | Prerelease `3.5.0-pre.1` deployed by immutable digest through the restricted Tailscale deployment agent; staging run `29697412933` passed image identity and health validation. |
-| Phase 4 — production/rollback | restricted Tailscale agent implemented | Not started | Production Environment approval, stable `3.5.0` publication, deployment, and rollback still require operational validation. |
+| Phase 4 — production/rollback | Restricted Tailscale agent implemented | Deployment complete; rollback pending | Stable `3.5.0` deployed by digest in approved run `29701278056`; rollback awaits a second known-good stable production release. |
 
 Current execution order:
 
@@ -25,15 +25,15 @@ Current execution order:
 - [x] Complete Security Scan
   [`29467263383`](https://github.com/syyangv/TREK/actions/runs/29467263383)
   for `825bf6bb`.
-- [ ] Publish and verify one stable multi-architecture release, Helm chart, SBOM, provenance, and GitHub Release.
+- [x] Publish and verify stable `3.5.0`, including its multi-architecture image, Helm chart, SBOM, manifest metadata, and GitHub Release.
 - [x] Reconcile the prerelease lane with the hardened staging workflow.
 - [x] Complete CI and Security Scan for the prerelease source.
 - [x] Publish and verify prerelease `3.5.0-pre.1` and record its source SHA and digest.
 - [x] Configure and verify staging Environment settings.
 - [x] Deploy the recorded prerelease digest to staging and verify health in run `29697412933`.
-- [ ] Configure and approve production Environment settings.
+- [x] Configure and approve production Environment settings.
 - [ ] Record and validate a prior known-good stable rollback target.
-- [ ] Deploy production by digest and verify health.
+- [x] Deploy stable `3.5.0` to production by digest and verify health.
 - [ ] Roll back to the prior known-good version and verify health/digest.
 
 Do not mark a phase operationally complete from workflow source alone. Completion
@@ -468,8 +468,8 @@ production deployment.
 - [x] Add GitHub Environment `production` as the manual approval boundary.
 - [x] Implement pinned stable deployment through a restricted Tailscale deployment agent and Docker Compose.
 - [x] Verify required reviewer protection.
-- [ ] Configure production-visible Tailscale and deployment-agent settings.
-- [ ] Publish stable `3.5.0` and validate production deployment.
+- [x] Configure production-visible Tailscale and deployment-agent settings.
+- [x] Publish stable `3.5.0` and validate production deployment.
 - [ ] Preflight and execute the rollback runbook.
 
 ## Implemented Workflow Inventory
