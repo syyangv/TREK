@@ -6,15 +6,15 @@ This document defines a senior-engineer CI/CD design for TREK. The goal is to ma
 
 ## Implementation Status
 
-**Last updated:** 2026-07-15
+**Last updated:** 2026-07-19
 **Release fork:** `syyangv/TREK`
 
 | Phase | Implementation | Operational validation | Current evidence / blocker |
 | --- | --- | --- | --- |
 | Phase 1 — CI reliability | Complete on `main` | Complete for the aggregate CI model | Hardening merged in `5210ff4d`; `Phase 1 Checks`, Docker smoke, and Helm chart validation passed. Requiring separate Security/target-branch checks remains an explicit governance follow-up. |
 | Phase 2 — stable release gating | Complete, including retry-gate fix | Ready for stable-release rerun | Fix `825bf6bb` is on `main`; CI runs `29467234562` and `29467262444`, plus Security runs `29467234565` and `29467263383`, passed. No stable release has completed after the fix. |
-| Phase 3 — prerelease/staging | Implemented on `main`; not yet synchronized to `dev` | Blocked | `dev` must first receive the hardened prerelease/staging workflows, pass exact-SHA CI/security, and publish a prerelease. GitHub also currently reports no staging `KUBE_CONFIG_DATA` or `APP_URL`. |
-| Phase 4 — production/rollback | Workflow implemented | Not started | The approval-gated Environment exists, but GitHub currently reports no production `KUBE_CONFIG_DATA` or `APP_URL`. Production and rollback remain blocked until staging succeeds. |
+| Phase 3 — prerelease/staging | Complete on `main` | Complete | Prerelease `3.5.0-pre.1` deployed by immutable digest through Tailscale/SSH; staging run `29697412933` passed image identity and health validation. |
+| Phase 4 — production/rollback | Tailscale/SSH workflow implemented | Not started | Production Environment approval, stable `3.5.0` publication, deployment, and rollback still require operational validation. |
 
 Current execution order:
 
@@ -26,13 +26,11 @@ Current execution order:
   [`29467263383`](https://github.com/syyangv/TREK/actions/runs/29467263383)
   for `825bf6bb`.
 - [ ] Publish and verify one stable multi-architecture release, Helm chart, SBOM, provenance, and GitHub Release.
-- [ ] Reconcile `dev` with current `main` so it contains the hardened prerelease,
-  security-gating, metadata, and staging workflows.
-- [ ] Complete CI and Security Scan for the resulting exact `dev` SHA.
-- [ ] Publish and verify one prerelease from that `dev` SHA; record its source
-  SHA, version, and digest.
-- [ ] Configure and verify staging Environment settings.
-- [ ] Deploy the recorded prerelease digest to staging and verify health.
+- [x] Reconcile the prerelease lane with the hardened staging workflow.
+- [x] Complete CI and Security Scan for the prerelease source.
+- [x] Publish and verify prerelease `3.5.0-pre.1` and record its source SHA and digest.
+- [x] Configure and verify staging Environment settings.
+- [x] Deploy the recorded prerelease digest to staging and verify health in run `29697412933`.
 - [ ] Configure and approve production Environment settings.
 - [ ] Record and validate a prior known-good stable rollback target.
 - [ ] Deploy production by digest and verify health.
@@ -456,10 +454,9 @@ with the previous pinned image tag.
 
 - [x] Add prerelease image deployment to staging.
 - [x] Add post-deploy health checks.
-- [ ] Merge/synchronize the hardened workflow commits from `main` into `dev`.
-- [ ] Verify the resulting `dev` SHA passes CI and Security Scan.
-- [ ] Publish a prerelease from that `dev` SHA, record its digest, and validate
-  it in staging.
+- [x] Synchronize the hardened prerelease and staging workflow path.
+- [x] Verify the prerelease source passes required checks.
+- [x] Publish `3.5.0-pre.1` and validate its immutable digest in staging.
 
 Staging validates the prerelease lane; it does not deploy the stable Phase 2
 artifact. The current workflows do not implement byte-for-byte promotion from
@@ -468,9 +465,11 @@ production deployment.
 
 ### Phase 4: Production Deployment
 
-- [x] Add GitHub Environment `production` with manual approval.
-- [x] Deploy pinned versions resolved to digests.
-- [ ] Configure Environment settings and validate production deployment.
+- [x] Add GitHub Environment `production` as the manual approval boundary.
+- [x] Implement pinned stable deployment through Tailscale, SSH, and Docker Compose.
+- [x] Verify required reviewer protection.
+- [ ] Configure production-visible Tailscale/SSH settings.
+- [ ] Publish stable `3.5.0` and validate production deployment.
 - [ ] Preflight and execute the rollback runbook.
 
 ## Implemented Workflow Inventory

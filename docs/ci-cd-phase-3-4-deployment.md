@@ -1,167 +1,114 @@
-# CI/CD Phases 3–4: Environment Deployment
+# CI/CD Phases 3–4: Tailscale Deployment
 
-**Implementation status:** The hardened workflow set is synchronized into
-`dev`. Exact-SHA CI and Security Scan passed for merge `efb6a9f8`, and
-prerelease `3.4.0-pre.1` was published from that SHA. Phase 3 is being adapted
-for a single-user private installation: staging uses Docker Compose on a
-dedicated Tailscale host rather than Kubernetes. Validation remains pending
-promotion of this workflow to `main`, staging Environment configuration, and a
-successful private deployment. The stable Phase 2 release prerequisite is
-satisfied by `v3.3.1`. Production remains Kubernetes-based until it is
-separately refactored.
+**Implementation status:** Phase 3 staging validation is complete. The staging
+workflow deployed prerelease `3.5.0-pre.1` to `home-macbook-air` by immutable
+Docker digest through Tailscale and SSH, and `/api/health` passed. Phase 4 uses
+the same transport for stable production deployments, but production deployment
+and rollback still require operational validation.
 
-Secret values must never be written to source control or logs.
+Secrets must never be written to source control or workflow logs. Repository-level
+Actions secrets can be reused by both Environments; Environment-scoped secrets
+may be used instead when stronger staging/production isolation is required.
+
+## Shared Tailscale and SSH configuration
+
+The deployment workflows require these GitHub Actions secrets:
+
+- `TS_OAUTH_CLIENT_ID`
+- `TS_OAUTH_SECRET`
+- `DEPLOY_SSH_PRIVATE_KEY`
+- `DEPLOY_SSH_KNOWN_HOSTS`
+
+They also require these repository or Environment variables:
+
+- `TS_TARGETS`: Tailscale target accepted by `tailscale/github-action`
+- `TS_TAGS`: defaults to `tag:trek-staging-ci`
+- `DEPLOY_HOST`: SSH host on the tailnet
+- `DEPLOY_USER`: non-root deployment account
+- `DEPLOY_PATH`: existing remote Compose project directory
+- `COMPOSE_PROJECT_NAME`: defaults to `trek`
+- `APP_URL`: health-check base URL, including scheme
+
+The OAuth credential is limited to **Auth Keys: Write** and creates an ephemeral
+runner carrying `tag:trek-staging-ci`. The tailnet grant permits that tag to
+reach the deployment host tag on `tcp:22` and `tcp:443`.
+
+The remote directory must already contain a protected `.env` file and the
+persistent `data` and `uploads` locations. The workflow transfers only the
+versioned Compose definitions. It never transfers or prints the remote `.env`.
 
 ## Staging (Phase 3)
 
-Once promoted to default branch `main`, `.github/workflows/deploy-staging.yml`
-deploys a pinned prerelease image to the `staging` GitHub Environment after the
-prerelease workflow succeeds. It can also be run manually with an explicit
+`.github/workflows/deploy-staging.yml` deploys a pinned prerelease after the
+prerelease workflow succeeds. It can also be dispatched with an explicit
 prerelease version.
 
-The deployment path is:
+The workflow:
 
-1. A GitHub-hosted ephemeral runner consumes the prerelease metadata artifact.
-2. The runner joins the private tailnet with a dedicated OAuth-created tag.
-3. It connects to the deployment host with pinned standard OpenSSH over the
-   private Tailscale network.
-4. It installs the exact checked-out Compose definitions in a versioned
-   directory under `DEPLOY_PATH/.trek-ci/releases/` and deploys the registry
-   image by immutable digest.
-5. It verifies the container's configured image and calls `/api/health` over
-   the tailnet.
+1. connects a GitHub-hosted runner to the tailnet;
+2. verifies the pinned SSH identity and known host;
+3. resolves the image tag to an immutable registry digest;
+4. transfers the matching Compose files from the release source;
+5. pulls and starts that exact digest with an isolated, credential-free Docker
+   configuration that cannot read the macOS login Keychain;
+6. verifies the running container image and `/api/health`; and
+7. restores the previously recorded immutable image and Compose definition if
+   a deployment fails after a valid rollback target has been captured.
 
-### Required `staging` Environment configuration
+### Phase 3 evidence
 
-Secrets:
-
-- `TS_OAUTH_CLIENT_ID`: ID of a Tailscale OAuth client authorized to create
-  auth keys for the staging runner tag
-- `TS_OAUTH_SECRET`: secret for that Tailscale OAuth client
-- `DEPLOY_SSH_PRIVATE_KEY`: dedicated, unencrypted private key for the CI
-  deployment account; the workflow intentionally has no passphrase agent
-- `DEPLOY_SSH_KNOWN_HOSTS`: pinned OpenSSH host-key entry for `DEPLOY_HOST`
-
-Variables:
-
-- `APP_URL`: tailnet-reachable TREK URL, including scheme
-- `TS_TARGETS`: comma-separated Tailscale IPs or MagicDNS names that the action
-  must reach before deployment; include `DEPLOY_HOST`
-- `DEPLOY_HOST`: Tailscale IP or MagicDNS name of the Compose host
-- `DEPLOY_USER`: non-root macOS Remote Login account authorized to run Docker
-- `DEPLOY_PATH`: absolute persistent deployment directory on that host
-- `TS_TAGS` (optional, default `tag:trek-staging-ci`): dedicated tag for the
-  ephemeral runner
-- `COMPOSE_PROJECT_NAME` (optional, default `trek`): Compose project name
-
-No kubeconfig, Helm release, Kubernetes namespace, or Kubernetes RBAC is needed
-for Phase 3.
-
-### Host and tailnet prerequisites
-
-The dedicated host must be online, enrolled in the tailnet, running Docker
-Engine with Docker Compose v2, and have macOS Remote Login enabled for
-`DEPLOY_USER`. Install only the public half of the dedicated CI key in that
-account's `~/.ssh/authorized_keys`. Source-restrict the key to Tailscale's IPv4
-and IPv6 ranges while also disabling forwarding and PTY features:
-
-```text
-restrict,from="100.64.0.0/10,fd7a:115c:a1e0::/48" ssh-ed25519 <public-key>
-```
-
-Do not expose TCP 22 through router port forwarding, and use the host firewall
-to prevent non-Tailscale access where practical. `DEPLOY_PATH` must already
-contain the protected `.env` file. The workflow preserves state in
-`DEPLOY_PATH/data/` and `DEPLOY_PATH/uploads/`; it creates those directories
-when absent. Do not put credentials in Compose files or GitHub variables.
-
-The OAuth client needs only `auth_keys` write scope and permission to apply the
-exact runner tag (normally `tag:trek-staging-ci`). Configure `tagOwners` so only
-the OAuth identity can apply that tag. Tailnet grants/ACLs must restrict the tag
-to the deployment host on TCP 22 and the required application port. OpenSSH
-strict host-key checking uses `DEPLOY_SSH_KNOWN_HOSTS`; never populate it with
-runtime `ssh-keyscan` output. Do not grant the CI tag access to other tailnet
-nodes.
-
-The automatic path uses the metadata artifact's exact source SHA, version, and
-published registry digest. A manual deployment checks out `v<version>`, resolves
-that Docker tag's current digest at dispatch time, and then uses the digest.
-Prerelease Git and Docker tags must therefore remain immutable.
-
-Before replacement, the workflow captures both the current container's
-immutable configured image and the active versioned Compose definition. It
-switches the `DEPLOY_PATH/.trek-ci/current` symlink only after the new container
-passes image verification. A failed deployment or health check attempts to
-restore both the previous definition and digest. A first deployment, locally
-built image, or legacy deployment without the active symlink may have no
-complete automatic rollback target. Failure diagnostics intentionally exclude
-application logs because first-start output may expose generated credentials.
-
-GitHub evaluates `workflow_run` definitions from the default branch (`main`).
-Until this Compose workflow is promoted to `main`, do not publish another
-prerelease: the old default-branch workflow could run instead. Promotion is the
-enabling step for automatic staging deployment.
+- Version: `3.5.0-pre.1`
+- Source SHA: `b2ce72f1f5a45866213d3590f8ce75984e4c07a1`
+- Image digest: `sha256:e07dd5911d0d81021249f1338acaf32033949e12e93cf40bf2188bb355c2e3d7`
+- Build run: <https://github.com/syyangv/TREK/actions/runs/29695001033>
+- Successful staging run: <https://github.com/syyangv/TREK/actions/runs/29697412933>
+- Final transport/credential fix: <https://github.com/syyangv/TREK/pull/19>
 
 ## Production (Phase 4)
 
-`.github/workflows/deploy-production.yml` remains a manual Kubernetes/Helm
-workflow targeting the `production` GitHub Environment. Configure required
-reviewers on that Environment to enforce approval before a production job can
-run.
+`.github/workflows/deploy-production.yml` is manual-only and targets the
+`production` GitHub Environment. Configure required reviewers on that
+Environment so approval is required before the job can access deployment
+credentials or modify the production service.
 
 Inputs:
 
-- `version`: stable image tag to deploy (or the previous stable tag for rollback)
-- `action`: `deploy` or `rollback` (both use the same pinned-image path)
+- `version`: stable semantic version to deploy, such as `3.5.0`
+- `action`: `deploy` or `rollback`
 
-Required `production` Environment configuration:
+Both actions use the same immutable path: checkout `v<version>`, resolve the
+stable image tag to a digest, transfer that tag's Compose definitions, deploy
+the digest, verify the running container identity, and check `/api/health`.
 
-- Secret `KUBE_CONFIG_DATA`: base64-encoded kubeconfig for the production cluster
-- Variable `KUBE_NAMESPACE` (default: `trek-production`)
-- Variable `HELM_RELEASE_NAME` (default: `trek`)
-- Variable `APP_URL`: externally reachable production URL, including scheme
+Production keeps its release metadata under `.trek-production-ci` in the remote
+project directory, separate from staging's `.trek-ci` metadata. A failed
+production operation automatically restores the prior complete production
+image/Compose pair when one exists. An explicit rollback deploys the selected
+older stable version through the same reviewed workflow.
 
-The production workflow never deploys `latest`. It checks out the versioned Git
-tag, resolves the stable image tag to a registry digest, deploys that digest
-with an atomic Helm upgrade, and performs a health check. Production
-Kubernetes requirements are unchanged by the Phase 3 Compose refactor.
+## Phase 4 validation checklist
 
-## Validation checklist
+- [x] Confirm the `production` GitHub Environment requires reviewer approval.
+- [ ] Confirm the shared repository secrets and required variables are visible
+      to jobs targeting `production`.
+- [ ] Confirm `APP_URL`, `DEPLOY_PATH`, and `COMPOSE_PROJECT_NAME` identify the
+      intended production service.
+- [ ] Publish and verify stable release `3.5.0`, including its source tag and
+      immutable image digest.
+- [ ] Identify the prior known-good stable rollback version and verify that its
+      git tag and Docker manifest still exist.
+- [ ] Record the currently deployed container image and health before deployment.
+- [ ] Approve and run the production `deploy` operation for `3.5.0`.
+- [ ] Verify the recorded digest, running container image, and `/api/health`.
+- [ ] Approve and run `rollback` with the prior stable version.
+- [ ] Verify the rollback digest, running container image, and `/api/health`.
 
-- [x] Merge/reconcile current `main` into `dev` so `dev` contains fork-scoped
-  prerelease publishing, exact-SHA CI/Security gating, the
-  `prerelease-metadata` artifact, and the staging workflow.
-- [x] CI run `29475168886` and Security Scan `29475168909` succeeded for exact
-  `dev` merge SHA `efb6a9f8828a4e7d8cfe35436c658c4e725fce17`.
-- [x] Prerelease run `29475396968` published `3.4.0-pre.1` from that SHA with
-  digest
-  `sha256:3871779f425c4363d9e2191b7a6ef861b00431a0ca8e01706e0898e29531b93d`.
-- [x] Promote the reviewed Compose staging workflow to `dev`, then to default
-  branch `main` (`b2ce72f1` and `abcc0053`).
-- [ ] `staging` exposes secrets `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET`,
-  `DEPLOY_SSH_PRIVATE_KEY`, and `DEPLOY_SSH_KNOWN_HOSTS`.
-- [ ] `staging` exposes variables `APP_URL`, `TS_TARGETS`, `DEPLOY_HOST`,
-  `DEPLOY_USER`, and `DEPLOY_PATH` (plus optional `TS_TAGS` and
-  `COMPOSE_PROJECT_NAME`).
-- [ ] The deployment host has Docker Engine, Compose v2, macOS Remote Login,
-  the dedicated source-restricted authorized key, no public TCP 22 exposure,
-  `.env`, and persistent `data/` and `uploads/` paths configured.
-- [ ] Publish a new prerelease only after the workflow is on `main`.
-- [ ] Staging deploys the recorded prerelease digest and `/api/health` succeeds.
-- [x] Phase 2 stable release completed as `v3.3.1`: source/tag commit
-  `63c28ff843a0e937a71640260a4f7665d0830198`, image digest
-  `sha256:aeffe1614d4f84a7ddbf95ca323d72213ac753cb58c4d71550ee2306a8c68794`,
-  matching GitHub Release assets, and Helm repository resolution are verified.
-- [ ] `production` exposes secret `KUBE_CONFIG_DATA` and variable `APP_URL`.
-- [ ] Before production deployment, identify and verify the prior known-good
-  stable rollback tag, digest, chart source, and healthy deployed baseline.
-- [ ] Record the current production Helm revision and deployed image digest.
-- [ ] Production approval is granted through GitHub Environments.
-- [ ] Production deploys the recorded digest and `/api/health` succeeds.
-- [ ] Production rollback deploys the prior known-good version/digest and health
-  succeeds.
+If no prior stable production deployment exists, the first stable deployment
+can be validated, but rollback cannot be marked complete until two known-good
+stable releases exist and the older version has been exercised successfully.
 
-If this is the first production deployment and no prior known-good release
-exists, rollback cannot be operationally validated. Record that limitation and
-do not mark Phase 4 complete until two known-good stable releases exist and the
-older one has been exercised as a rollback target.
+As of 2026-07-19, the required-reviewer rule is configured on `production`, but
+that Environment has no deployment secrets or variables. The Tailscale/SSH
+settings currently exist only under `staging`; Environment-scoped settings are
+not inherited by `production`. Copy them manually or promote them to repository
+scope before dispatching the production workflow.
