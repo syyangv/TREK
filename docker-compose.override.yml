@@ -8,3 +8,6 @@ services:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://home-macbook-air.tailcd6e49.ts.net}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@trek.local}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - OBSIDIAN_VAULT_PATH=/obsidian-vault
+    volumes:
+      - ${OBSIDIAN_VAULT_PATH:?Set OBSIDIAN_VAULT_PATH in .env}:/obsidian-vault:ro

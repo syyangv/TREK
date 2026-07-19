@@ -40,6 +40,9 @@ vi.mock('../../src/config', () => ({
   SESSION_DURATION_MS: 86400000,
   SESSION_DURATION_SECONDS: 86400,
   DEFAULT_LANGUAGE: 'en',
+  OBSIDIAN_VAULT_PATH: '',
+  OBSIDIAN_DAILY_NOTES_FOLDER: '',
+  OBSIDIAN_DAILY_NOTES_FORMAT: '',
 }));
 vi.mock('../../src/websocket', () => ({ broadcast: vi.fn(), broadcastToUser: vi.fn() }));
 

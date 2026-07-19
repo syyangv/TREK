@@ -23,6 +23,8 @@ const vacay: TranslationStrings = {
   'vacay.add': 'Eklemek',
   'vacay.legend': 'Efsane',
   'vacay.publicHoliday': 'Resmi Tatil',
+  'vacay.pto': 'Ücretli izin',
+  'vacay.sickLeave': 'Hastalık izni',
   'vacay.companyHoliday': 'Şirket Tatili',
   'vacay.weekend': 'Hafta sonu',
   'vacay.modeVacation': 'Tatil',

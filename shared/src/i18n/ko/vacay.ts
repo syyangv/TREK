@@ -23,6 +23,8 @@ const vacay: TranslationStrings = {
   'vacay.add': '추가',
   'vacay.legend': '범례',
   'vacay.publicHoliday': '공휴일',
+  'vacay.pto': '유급 휴가',
+  'vacay.sickLeave': '병가',
   'vacay.companyHoliday': '회사 휴일',
   'vacay.weekend': '주말',
   'vacay.modeVacation': '휴가',
