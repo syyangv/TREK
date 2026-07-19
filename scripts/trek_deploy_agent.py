@@ -58,6 +58,8 @@ class Agent:
         self.health_url = config.get("health_url", "http://127.0.0.1:3000/api/health")
         self.raw_base = config.get("raw_base", "https://raw.githubusercontent.com/syyangv/TREK")
         self.command_timeout = int(config.get("command_timeout_seconds", 360))
+        # Local health traffic must never be sent through a system proxy.
+        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         self._lock = threading.Lock()
         self._nonce_lock = threading.Lock()
         self._nonces: dict[str, int] = {}
@@ -160,10 +162,33 @@ class Agent:
         ref = urllib.parse.quote(source_ref, safe="")
         url = f"{self.raw_base}/{ref}/{filename}"
         try:
-            with urllib.request.urlopen(url, timeout=30) as response:
-                data = response.read(MAX_COMPOSE + 1)
-        except (urllib.error.URLError, TimeoutError) as exc:
+            # The Mac has nonfunctional outbound IPv6. Python's HTTP stack can
+            # remain in SYN_SENT for minutes, while curl's explicit IPv4 path
+            # fails fast and keeps the source fetch deterministic.
+            result = subprocess.run(
+                [
+                    "/usr/bin/curl",
+                    "--ipv4",
+                    "--fail",
+                    "--silent",
+                    "--show-error",
+                    "--location",
+                    "--max-time",
+                    "30",
+                    "--max-filesize",
+                    str(MAX_COMPOSE),
+                    url,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=35,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
             raise DeployError(f"unable to fetch {filename} from approved repository") from exc
+        if result.returncode:
+            raise DeployError(f"unable to fetch {filename} from approved repository")
+        data = result.stdout
         if not data or len(data) > MAX_COMPOSE:
             raise DeployError(f"invalid {filename} size")
         return data
@@ -210,7 +235,7 @@ class Agent:
         if actual != image:
             raise DeployError("running container image does not match requested digest")
         try:
-            with urllib.request.urlopen(self.health_url, timeout=15) as response:
+            with self._opener.open(self.health_url, timeout=15) as response:
                 if response.status != HTTPStatus.OK:
                     raise DeployError("local health check failed")
         except (urllib.error.URLError, TimeoutError) as exc:
