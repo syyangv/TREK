@@ -133,7 +133,7 @@ A self-hosted, real-time collaborative travel planner — with maps, budgets, pa
 - **Costs** — expense tracker with splits and settle-up (who owes whom), multi-currency
 - **Documents** — file attachments on trips, places, and reservations
 - **Collab** — chat, notes, polls, day-by-day attendance
-- **Vacay** — personal vacation planner with calendar, 100+ country holidays, carry-over tracking
+- **Vacay** — personal vacation planner with calendar, 100+ country holidays, carry-over tracking, and optional read-only Obsidian Yearly Glance import
 - **Atlas** — world map of visited countries, bucket list, travel stats, streak tracking, liquid-glass UI
 - **Journey** — magazine-style travel journal with entries, photos (Immich/Synology), maps, moods
 - **AirTrail** — connect a self-hosted AirTrail instance to import and sync flights into reservations
@@ -448,6 +448,13 @@ Caddy handles TLS and WebSockets automatically.
 
 ## Data sources
 
+### Optional Obsidian Yearly Glance import
+
+Vacay can import PTO, sick leave, and public-holiday entries from an Obsidian
+Yearly Glance vault. The vault remains the source of truth and is mounted
+read-only; TREK does not modify its notes. Keep the vault path and any
+deployment credentials in ignored local configuration, never in the repository.
+
 The Atlas map's country and sub-national (province/county) boundaries come from
 [**geoBoundaries**](https://www.geoboundaries.org/) (Runfola et al., 2020), licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). See [NOTICE.md](NOTICE.md)
@@ -456,4 +463,3 @@ for full third-party attributions.
 ## License
 
 TREK is [AGPL v3](LICENSE). Self-host freely for personal or internal company use. If you modify and offer TREK as a network service to third parties, your modifications must be open-sourced under the same licence.
-
