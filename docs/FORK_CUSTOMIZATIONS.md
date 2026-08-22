@@ -43,6 +43,13 @@ See [CI/CD deployment](ci-cd-phase-3-4-deployment.md) and
 - Verify imported entries, company holidays, user entitlements, and existing
   persisted data after an upstream sync.
 
+## Solo trip UI gating & companion visibility
+
+- When a trip has only the owner (`tripMembers.length <= 1`), sharing controls and collaboration elements are hidden:
+  - **Packing Lists**: The "Shared" and "My list" view pills, per-item sharing toggles, contributor/bringer badges, and category assignee controls are hidden; all items render in the user's personal list.
+  - **Collaboration Tab**: The communication/collaboration tab (`id: 'collab'`) in `TRIP_TABS` is conditionally hidden when `tripMembers.length <= 1`, even if the collab addon is enabled.
+  - **Session Tab Invalidation**: If a user previously navigated to `'collab'`, the active tab evicts to `'plan'` once the member roster resolves as a solo trip. Roster hydration waits for `membersLoaded` before evicting so trips with companions retain their active tab on refresh.
+
 ## PWA and offline behavior
 
 - Workbox uses `registerType: 'prompt'` and a user-controlled update banner.
