@@ -923,7 +923,7 @@ describe('mapsApi', () => {
 
     expect(capturedBody).toEqual({
       input: 'Par',
-      lang: 'fr',
+      lang: 'en',
       locationBias: { low: { lat: 48.5, lng: 2.0 }, high: { lat: 49.0, lng: 2.8 } },
     });
     expect(result.suggestions).toHaveLength(1);
@@ -935,7 +935,7 @@ describe('mapsApi', () => {
     server.use(
       http.post('/api/maps/autocomplete', async ({ request }) => {
         const body: any = await request.json();
-        expect(body.lang).toBeUndefined();
+      expect(body.lang).toBe('en');
         expect(body.locationBias).toBeUndefined();
         return HttpResponse.json({ suggestions: [], source: 'nominatim' });
       })
