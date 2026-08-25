@@ -154,6 +154,13 @@ export function getMapsKey(userId: number): string | null {
     | undefined;
   const user_key = decrypt_api_key(user?.maps_api_key);
   if (user_key) return user_key;
+
+  // An instance-wide key is useful for deployments that manage credentials
+  // outside the admin UI (Docker/Kubernetes secrets). Never expose this value
+  // to the client; it is only used in server-side Google Places requests.
+  const env_key = process.env.GOOGLE_MAPS_API_KEY?.trim();
+  if (env_key) return env_key;
+
   const admin = db
     .prepare(
       "SELECT maps_api_key FROM users WHERE role = 'admin' AND maps_api_key IS NOT NULL AND maps_api_key != '' LIMIT 1",

@@ -284,7 +284,8 @@ export function getAppConfig(authenticatedUser: { id: number } | null) {
   const isDemo = process.env.DEMO_MODE?.toLowerCase() === 'true';
   const toggles = resolveAuthToggles();
   const version: string = process.env.APP_VERSION ?? require('../../package.json').version;
-  const hasGoogleKey = !!db.prepare("SELECT maps_api_key FROM users WHERE role = 'admin' AND maps_api_key IS NOT NULL AND maps_api_key != '' LIMIT 1").get();
+  const hasGoogleKey = !!process.env.GOOGLE_MAPS_API_KEY?.trim() ||
+    !!db.prepare("SELECT maps_api_key FROM users WHERE role = 'admin' AND maps_api_key IS NOT NULL AND maps_api_key != '' LIMIT 1").get();
   const oidcDisplayName = process.env.OIDC_DISPLAY_NAME ||
     (db.prepare("SELECT value FROM app_settings WHERE key = 'oidc_display_name'").get() as { value: string } | undefined)?.value || null;
   const oidcConfigured = !!(
@@ -782,7 +783,9 @@ export async function validateKeys(userId: number): Promise<{ error?: string; st
     };
   } = { maps: false, weather: false, maps_details: null };
 
-  const maps_api_key = decrypt_api_key(user.maps_api_key);
+  // Prefer the admin's encrypted key when present; otherwise validate the
+  // instance-wide secret without ever returning its plaintext to the client.
+  const maps_api_key = decrypt_api_key(user.maps_api_key) || process.env.GOOGLE_MAPS_API_KEY?.trim();
   if (maps_api_key) {
     try {
       const mapsRes = await fetch(

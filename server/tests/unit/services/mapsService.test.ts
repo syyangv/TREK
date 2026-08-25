@@ -213,6 +213,10 @@ describe('buildOsmDetails', () => {
 // ── getMapsKey ────────────────────────────────────────────────────────────────
 
 describe('getMapsKey', () => {
+  afterEach(() => {
+    delete process.env.GOOGLE_MAPS_API_KEY;
+  });
+
   it('MAPS-015: returns user key when user has one', () => {
     mockDbGet.mockReturnValueOnce({ maps_api_key: 'user-api-key' });
     expect(getMapsKey(1)).toBe('user-api-key');
@@ -227,6 +231,12 @@ describe('getMapsKey', () => {
   it('MAPS-017: returns null when neither user nor admin has a key', () => {
     mockDbGet.mockReturnValue(undefined);
     expect(getMapsKey(1)).toBeNull();
+  });
+
+  it('MAPS-017b: uses the instance environment key when database keys are absent', () => {
+    process.env.GOOGLE_MAPS_API_KEY = 'env-google-key';
+    mockDbGet.mockReturnValue(undefined);
+    expect(getMapsKey(1)).toBe('env-google-key');
   });
 });
 
