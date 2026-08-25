@@ -64,6 +64,15 @@ vi.mock('../Map/RouteCalculator', () => ({
 class MockIO { observe = vi.fn(); disconnect = vi.fn(); unobserve = vi.fn() }
 beforeAll(() => { (globalThis as any).IntersectionObserver = MockIO })
 
+// Keep the existing 2025 fixture dates in the future so the default-expansion
+// tests continue to exercise the normal upcoming-day state.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2025-05-01T12:00:00Z'))
+})
+
+afterAll(() => vi.useRealTimers())
+
 vi.mock('../../services/photoService', () => ({
   getCached: vi.fn(() => null),
   isLoading: vi.fn(() => false),
@@ -219,6 +228,29 @@ describe('DayPlanSidebar', () => {
     const assignments = { '10': [assignment] }
     render(<DayPlanSidebar {...makeDefaultProps({ days: [day], places: [place], assignments })} />)
     expect(screen.getByText('Eiffel Tower')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-006b: folds passed days but keeps today and future days expanded', () => {
+    const pastPlace = buildPlace({ name: 'Past stop' })
+    const todayPlace = buildPlace({ name: 'Today stop' })
+    const futurePlace = buildPlace({ name: 'Future stop' })
+    const pastDay = buildDay({ id: 10, date: '2025-04-30', title: 'Past day' })
+    const today = buildDay({ id: 11, date: '2025-05-01', title: 'Today' })
+    const futureDay = buildDay({ id: 12, date: '2025-05-02', title: 'Future day' })
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [pastDay, today, futureDay],
+      places: [pastPlace, todayPlace, futurePlace],
+      assignments: {
+        '10': [buildAssignment({ id: 101, day_id: 10, order_index: 0, place: pastPlace })],
+        '11': [buildAssignment({ id: 102, day_id: 11, order_index: 0, place: todayPlace })],
+        '12': [buildAssignment({ id: 103, day_id: 12, order_index: 0, place: futurePlace })],
+      },
+    })} />)
+
+    expect(screen.queryByText('Past stop')).not.toBeInTheDocument()
+    expect(screen.getByText('Today stop')).toBeInTheDocument()
+    expect(screen.getByText('Future stop')).toBeInTheDocument()
   })
 
   it('FE-PLANNER-DAYPLAN-007: clicking chevron collapses that day', async () => {

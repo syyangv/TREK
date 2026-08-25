@@ -43,6 +43,12 @@ import { DayPlanSidebarFooter } from './DayPlanSidebarFooter'
 import type { Trip, Day, Place, Category, Assignment, Accommodation, Reservation, AssignmentsMap, RouteResult, RouteSegment, DayNote } from '../../types'
 import { getGoogleMapsUrlForPlace } from './placeGoogleMaps'
 
+function isPastDay(day: Pick<Day, 'date'>): boolean {
+  const date = day.date?.slice(0, 10)
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false
+  return date < new Date().toISOString().slice(0, 10)
+}
+
 interface DayPlanSidebarProps {
   tripId: number
   trip: Trip
@@ -170,7 +176,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
       const saved = localStorage.getItem(`day-expanded-${tripId}`)
       if (saved) return new Set<number>(JSON.parse(saved) as number[])
     } catch {}
-    return new Set<number>(days.map(d => d.id))
+    return new Set<number>(days.filter(d => !isPastDay(d)).map(d => d.id))
   })
   useEffect(() => { onExpandedDaysChange?.(expandedDays) }, [expandedDays])
   const [editingDayId, setEditingDayId] = useState(null)
@@ -272,14 +278,15 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     return { placeId, assignmentId: '', noteId: '', reservationId: '', fromDayId: 0, phase: 'single' as const }
   }
 
-  // Only auto-expand genuinely new days (not on initial load from storage)
+  // Only auto-expand genuinely new days (not on initial load from storage). Past
+  // days stay folded when the trip arrives asynchronously after the first render.
   const prevDayCount = React.useRef(days.length)
   useEffect(() => {
     if (days.length > prevDayCount.current) {
       // New days added — expand only those
       setExpandedDays(prev => {
         const n = new Set(prev)
-        days.forEach(d => { if (!prev.has(d.id)) n.add(d.id) })
+        days.forEach(d => { if (!prev.has(d.id) && !isPastDay(d)) n.add(d.id) })
         try { localStorage.setItem(`day-expanded-${tripId}`, JSON.stringify([...n])) } catch {}
         return n
       })

@@ -43,6 +43,7 @@ interface GooglePlaceResult {
   displayName?: { text: string };
   formattedAddress?: string;
   location?: { latitude: number; longitude: number };
+  primaryType?: string;
   rating?: number;
   websiteUri?: string;
   nationalPhoneNumber?: string;
@@ -71,6 +72,19 @@ interface GooglePlaceDetails extends GooglePlaceResult {
     relativePublishTimeDescription?: string;
   }[];
   photos?: { name: string; authorAttributions?: { displayName?: string }[] }[];
+}
+
+/**
+ * Google exposes both a canonical primary type and a broader list of types.
+ * Keep the domain-facing value stable while tolerating older responses that
+ * only include `types`.
+ */
+export function mapGooglePlaceType(place: { primaryType?: string; types?: string[] }): string | null {
+  const primaryType = place.primaryType?.trim();
+  if (primaryType) return primaryType;
+
+  const firstType = place.types?.find((type) => typeof type === 'string' && type.trim());
+  return firstType?.trim() || null;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -206,6 +220,7 @@ export async function searchNominatim(query: string, lang?: string) {
     rating: null,
     website: null,
     phone: null,
+    location_type: null,
     source: 'openstreetmap',
   }));
 }
@@ -722,7 +737,7 @@ export async function searchPlaces(
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': apiKey,
       'X-Goog-FieldMask':
-        'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.websiteUri,places.nationalPhoneNumber,places.types,places.googleMapsUri',
+        'places.id,places.displayName,places.formattedAddress,places.location,places.primaryType,places.rating,places.websiteUri,places.nationalPhoneNumber,places.types,places.googleMapsUri',
     },
     body: JSON.stringify(searchBody),
   });
@@ -745,6 +760,7 @@ export async function searchPlaces(
     rating: p.rating || null,
     website: p.websiteUri || null,
     phone: p.nationalPhoneNumber || null,
+    location_type: mapGooglePlaceType(p),
     types: p.types || [],
     source: 'google',
   }));
@@ -889,7 +905,7 @@ export async function getPlaceDetails(
       headers: {
         'X-Goog-Api-Key': apiKey,
         'X-Goog-FieldMask':
-          'id,displayName,formattedAddress,location,rating,userRatingCount,websiteUri,nationalPhoneNumber,regularOpeningHours,googleMapsUri',
+          'id,displayName,formattedAddress,location,primaryType,types,rating,userRatingCount,websiteUri,nationalPhoneNumber,regularOpeningHours,googleMapsUri',
       },
     },
   );
@@ -913,6 +929,8 @@ export async function getPlaceDetails(
     rating_count: data.userRatingCount || null,
     website: data.websiteUri || null,
     phone: data.nationalPhoneNumber || null,
+    location_type: mapGooglePlaceType(data),
+    types: data.types || [],
     opening_hours: data.regularOpeningHours?.weekdayDescriptions || null,
     open_now: data.regularOpeningHours?.openNow ?? null,
     google_maps_url: data.googleMapsUri || null,
@@ -959,7 +977,7 @@ export async function getPlaceDetailsExpanded(
       headers: {
         'X-Goog-Api-Key': apiKey,
         'X-Goog-FieldMask':
-          'id,displayName,formattedAddress,location,rating,userRatingCount,websiteUri,nationalPhoneNumber,regularOpeningHours,googleMapsUri,reviews,editorialSummary',
+          'id,displayName,formattedAddress,location,primaryType,types,rating,userRatingCount,websiteUri,nationalPhoneNumber,regularOpeningHours,googleMapsUri,reviews,editorialSummary',
       },
     },
   );
@@ -983,6 +1001,8 @@ export async function getPlaceDetailsExpanded(
     rating_count: data.userRatingCount || null,
     website: data.websiteUri || null,
     phone: data.nationalPhoneNumber || null,
+    location_type: mapGooglePlaceType(data),
+    types: data.types || [],
     opening_hours: data.regularOpeningHours?.weekdayDescriptions || null,
     open_now: data.regularOpeningHours?.openNow ?? null,
     google_maps_url: data.googleMapsUri || null,

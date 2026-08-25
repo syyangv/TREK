@@ -30,6 +30,7 @@ export interface JourneyEntry {
   location_name?: string | null
   location_lat?: number | null
   location_lng?: number | null
+  location_type?: string | null
   mood?: string | null
   weather?: string | null
   tags?: string[]

@@ -3493,6 +3493,48 @@ describe('JourneyDetailPage', () => {
       // The input should now show "Vatican City"
       expect(locationInput).toHaveValue('Vatican City');
     });
+
+    it('persists the Google location type when the selected location is saved', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      let requestBody: Record<string, unknown> | undefined;
+
+      server.use(
+        http.post('/api/maps/search', () => HttpResponse.json({
+          places: [{
+            name: 'Vatican City', address: 'Vatican, Rome', lat: 41.9, lng: 12.45,
+            location_type: 'tourist_attraction',
+          }],
+        })),
+        http.post('/api/journeys/1/entries', async ({ request }) => {
+          requestBody = await request.json() as Record<string, unknown>;
+          return HttpResponse.json({
+            id: 99, journey_id: 1, author_id: 1, type: 'entry',
+            entry_date: '2026-08-25', title: null, story: null,
+            location_name: 'Vatican City', location_lat: 41.9, location_lng: 12.45,
+            location_type: 'tourist_attraction', mood: null, weather: null,
+            tags: [], pros_cons: null, visibility: 'private', sort_order: 0,
+            entry_time: null, photos: [], created_at: now, updated_at: now,
+          });
+        }),
+      );
+
+      await renderAndWait();
+      await openEntryEditor(user);
+
+      const locationInput = screen.getByPlaceholderText('Search location...');
+      await user.type(locationInput, 'Vatican');
+      vi.advanceTimersByTime(500);
+      await waitFor(() => expect(screen.getByText('Vatican City')).toBeInTheDocument());
+      await user.click(screen.getByText('Vatican City'));
+      await user.click(screen.getByText('Save'));
+
+      await waitFor(() => expect(requestBody).toMatchObject({
+        location_name: 'Vatican City',
+        location_lat: 41.9,
+        location_lng: 12.45,
+        location_type: 'tourist_attraction',
+      }));
+    });
   });
 
   // ── FE-PAGE-JOURNEYDETAIL-146 ──────────────────────────────────────────

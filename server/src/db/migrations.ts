@@ -3710,6 +3710,16 @@ function runMigrations(db: Database.Database): void {
         if (!err.message?.includes('duplicate column name')) throw err;
       }
     },
+
+    // Preserve the canonical type returned by Google Places for Journey locations.
+    // Nullable keeps manually entered and OpenStreetMap-backed locations valid.
+    () => {
+      try {
+        db.exec('ALTER TABLE journey_entries ADD COLUMN location_type TEXT');
+      } catch (err: any) {
+        if (!err.message?.includes('duplicate column name')) throw err;
+      }
+    },
   ];
 
   if (currentVersion < migrations.length) {

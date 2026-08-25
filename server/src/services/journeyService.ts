@@ -792,6 +792,7 @@ export function createEntry(
     location_name?: string;
     location_lat?: number;
     location_lng?: number;
+    location_type?: string | null;
     mood?: string;
     weather?: string;
     tags?: string[];
@@ -816,8 +817,8 @@ export function createEntry(
   const res = db
     .prepare(
       `
-    INSERT INTO journey_entries (journey_id, author_id, type, title, story, entry_date, entry_time, location_name, location_lat, location_lng, mood, weather, tags, pros_cons, visibility, sort_order, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO journey_entries (journey_id, author_id, type, title, story, entry_date, entry_time, location_name, location_lat, location_lng, location_type, mood, weather, tags, pros_cons, visibility, sort_order, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     )
     .run(
@@ -831,6 +832,7 @@ export function createEntry(
       data.location_name || null,
       data.location_lat ?? null,
       data.location_lng ?? null,
+      data.location_type || null,
       data.mood || null,
       data.weather || null,
       data.tags?.length ? JSON.stringify(data.tags) : null,
@@ -860,6 +862,7 @@ export function updateEntry(
     location_name: string;
     location_lat: number;
     location_lng: number;
+    location_type?: string | null;
     mood: string;
     weather: string;
     tags: string[];
@@ -888,6 +891,7 @@ export function updateEntry(
     'location_name',
     'location_lat',
     'location_lng',
+    'location_type',
     'mood',
     'weather',
     'tags',

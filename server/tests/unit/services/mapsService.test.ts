@@ -11,6 +11,7 @@ import {
   buildOsmDetails,
   getMapsKey,
   googleFtidFromMapsUrl,
+  mapGooglePlaceType,
   buildUserAgent,
   resolveOverpassEndpoints,
   resolveOverpassTimeoutMs,
@@ -845,6 +846,12 @@ describe('fetchWikimediaPhoto (fetch stubbed)', () => {
 // ── searchPlaces (fetch stubbed) ─────────────────────────────────────────────
 
 describe('searchPlaces (fetch stubbed)', () => {
+  it('MAPS-038b: prefers Google primaryType and falls back to the first type', () => {
+    expect(mapGooglePlaceType({ primaryType: 'museum', types: ['tourist_attraction'] })).toBe('museum');
+    expect(mapGooglePlaceType({ types: ['', 'tourist_attraction'] })).toBe('tourist_attraction');
+    expect(mapGooglePlaceType({})).toBeNull();
+  });
+
   it('MAPS-038: uses Nominatim when user has no API key', async () => {
     vi.stubGlobal(
       'fetch',
@@ -874,6 +881,8 @@ describe('searchPlaces (fetch stubbed)', () => {
               displayName: { text: 'Eiffel Tower' },
               formattedAddress: 'Paris',
               location: { latitude: 48.8, longitude: 2.3 },
+              primaryType: 'tourist_attraction',
+              types: ['tourist_attraction', 'point_of_interest'],
               // Real search API returns a cid-style URL with no ftid → google_ftid stays null.
               googleMapsUri: 'https://maps.google.com/?cid=10403719659250533155',
             },
@@ -886,6 +895,7 @@ describe('searchPlaces (fetch stubbed)', () => {
     expect(result.source).toBe('google');
     expect((result.places[0] as any).google_place_id).toBe('gid1');
     expect((result.places[0] as any).google_ftid).toBeNull();
+    expect((result.places[0] as any).location_type).toBe('tourist_attraction');
   });
 
   it('MAPS-039b: throws with Google error status when Google API returns non-ok', async () => {
@@ -961,6 +971,7 @@ describe('searchPlaces (fetch stubbed)', () => {
     expect(place.rating).toBeNull();
     expect(place.website).toBeNull();
     expect(place.phone).toBeNull();
+    expect(place.location_type).toBeNull();
   });
 });
 

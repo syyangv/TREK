@@ -13,6 +13,24 @@ import { photoUrl } from '../../pages/journeyDetail/JourneyDetailPage.helpers'
 import MarkdownToolbar from './MarkdownToolbar'
 import { DatePicker } from './JourneyDetailPageDatePicker'
 
+type LocationSearchResult = {
+  name: string
+  address?: string
+  lat: number
+  lng: number
+  location_type: string | null
+}
+
+function mapLocationType(place: Record<string, unknown>): string | null {
+  if (typeof place.location_type === 'string' && place.location_type.trim()) return place.location_type.trim()
+  if (typeof place.primaryType === 'string' && place.primaryType.trim()) return place.primaryType.trim()
+  if (Array.isArray(place.types)) {
+    const firstType = place.types.find((type): type is string => typeof type === 'string' && type.trim().length > 0)
+    return firstType?.trim() || null
+  }
+  return null
+}
+
 export function EntryEditor({ entry, journeyId, tripDates, galleryPhotos, onClose, onSave, onUploadPhotos, onDone }: {
   entry: JourneyEntry
   journeyId: number
@@ -33,8 +51,9 @@ export function EntryEditor({ entry, journeyId, tripDates, galleryPhotos, onClos
   const [locationName, setLocationName] = useState(entry.location_name || '')
   const [locationLat, setLocationLat] = useState<number | null>(entry.location_lat ?? null)
   const [locationLng, setLocationLng] = useState<number | null>(entry.location_lng ?? null)
+  const [locationType, setLocationType] = useState<string | null>(entry.location_type ?? null)
   const [locationQuery, setLocationQuery] = useState('')
-  const [locationResults, setLocationResults] = useState<{ name: string; address?: string; lat: number; lng: number }[]>([])
+  const [locationResults, setLocationResults] = useState<LocationSearchResult[]>([])
   const [locationSearching, setLocationSearching] = useState(false)
   const [showLocationResults, setShowLocationResults] = useState(false)
   const locationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -63,6 +82,7 @@ export function EntryEditor({ entry, journeyId, tripDates, galleryPhotos, onClos
     locationName !== (entry.location_name || '') ||
     (locationLat ?? null) !== (entry.location_lat ?? null) ||
     (locationLng ?? null) !== (entry.location_lng ?? null) ||
+    locationType !== (entry.location_type ?? null) ||
     mood !== (entry.mood || '') ||
     weather !== (entry.weather || '') ||
     pros.filter(p => p.trim()).join('\n') !== originalPros ||
@@ -89,6 +109,7 @@ export function EntryEditor({ entry, journeyId, tripDates, galleryPhotos, onClos
         location_name: locationName || null,
         location_lat: locationLat,
         location_lng: locationLng,
+        location_type: locationType,
         mood: mood || null,
         weather: weather || null,
         pros_cons: { pros: pros.filter(p => p.trim()), cons: cons.filter(c => c.trim()) },
@@ -391,8 +412,12 @@ export function EntryEditor({ entry, journeyId, tripDates, galleryPhotos, onClos
                         setLocationSearching(true)
                         try {
                           const res = await mapsApi.search(q)
-                          setLocationResults((res.places || []).slice(0, 6).map((p: any) => ({
-                            name: p.name, address: p.address, lat: Number(p.lat), lng: Number(p.lng),
+                          setLocationResults((res.places || []).slice(0, 6).map((p: Record<string, unknown>) => ({
+                            name: typeof p.name === 'string' ? p.name : '',
+                            address: typeof p.address === 'string' ? p.address : undefined,
+                            lat: Number(p.lat),
+                            lng: Number(p.lng),
+                            location_type: mapLocationType(p),
                           })))
                         } catch { setLocationResults([]) }
                         finally { setLocationSearching(false) }
@@ -422,6 +447,7 @@ export function EntryEditor({ entry, journeyId, tripDates, galleryPhotos, onClos
                           setLocationName(r.name)
                           setLocationLat(r.lat)
                           setLocationLng(r.lng)
+                          setLocationType(r.location_type)
                           setLocationQuery('')
                           setShowLocationResults(false)
                           setLocationResults([])

@@ -1420,6 +1420,23 @@ describe('Edge cases', () => {
     expect(JSON.parse(raw.pros_cons)).toEqual({ pros: ['Great view'], cons: ['Expensive'] });
   });
 
+  it('JOURNEY-SVC-084b: createEntry stores the selected location type', () => {
+    const { user } = createUser(testDb);
+    const journey = createJourney(testDb, user.id);
+
+    const entry = createEntry(journey.id, user.id, {
+      entry_date: '2026-03-10',
+      location_name: 'Eiffel Tower',
+      location_lat: 48.8584,
+      location_lng: 2.2945,
+      location_type: 'tourist_attraction',
+    });
+
+    expect(entry?.location_type).toBe('tourist_attraction');
+    expect((testDb.prepare('SELECT location_type FROM journey_entries WHERE id = ?').get(entry!.id) as any).location_type)
+      .toBe('tourist_attraction');
+  });
+
   it('JOURNEY-SVC-085: updateEntry handles tags and pros_cons update', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);

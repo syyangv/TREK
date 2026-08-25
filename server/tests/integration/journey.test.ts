@@ -286,11 +286,13 @@ describe('Journey entries', () => {
         entry_date: '2026-04-01',
         entry_time: '14:00',
         location_name: 'Narita Airport',
+        location_type: 'airport',
       });
 
     expect(res.status).toBe(201);
     expect(res.body.title).toBe('First day in Tokyo');
     expect(res.body.entry_date).toBe('2026-04-01');
+    expect(res.body.location_type).toBe('airport');
     expect(res.body.id).toBeDefined();
   });
 
