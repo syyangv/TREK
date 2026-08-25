@@ -1302,7 +1302,7 @@ describe('getPlaceDetails (fetch stubbed)', () => {
     expect(place.summary).toBeNull();
   });
 
-  it('MAPS-041b2: normalises non-standard TREK language codes for Google (br→pt-BR, gr→el)', async () => {
+  it('MAPS-041b2: keeps Google place details in English regardless of UI language', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ id: 'ChIJ1', displayName: { text: 'X' }, location: { latitude: 0, longitude: 0 } }),
@@ -1312,14 +1312,14 @@ describe('getPlaceDetails (fetch stubbed)', () => {
     const { getPlaceDetails } = await import('../../../src/services/mapsService');
 
     await getPlaceDetails(1, 'ChIJ-br', 'br');
-    expect(String(fetchMock.mock.calls[0][0])).toContain('languageCode=pt-BR');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('languageCode=en');
 
     await getPlaceDetails(1, 'ChIJ-gr', 'gr');
-    expect(String(fetchMock.mock.calls[1][0])).toContain('languageCode=el');
+    expect(String(fetchMock.mock.calls[1][0])).toContain('languageCode=en');
 
-    // A code that is already valid passes through unchanged.
+    // A UI language that is already valid is still overridden.
     await getPlaceDetails(1, 'ChIJ-de', 'de');
-    expect(String(fetchMock.mock.calls[2][0])).toContain('languageCode=de');
+    expect(String(fetchMock.mock.calls[2][0])).toContain('languageCode=en');
   });
 
   it('MAPS-041c: throws with status when Google API returns non-ok response', async () => {

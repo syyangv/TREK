@@ -99,6 +99,12 @@ const API_LANG_OVERRIDES: Record<string, string> = {
   gr: 'el',
   'el-GR': 'el',
 };
+
+// Google location content is intentionally English even when TREK's UI is
+// localized. The client normally sends this value too, but keeping the policy
+// here prevents stale PWA bundles from reintroducing a UI locale such as `zh`.
+const GOOGLE_CONTENT_LANGUAGE = 'en';
+
 function toApiLang(lang: string | undefined, fallback = 'en'): string {
   const code = (lang || '').trim();
   if (!code) return fallback;
@@ -698,7 +704,7 @@ export async function searchPlaces(
     return { places, source: 'openstreetmap' };
   }
 
-  const searchBody: Record<string, unknown> = { textQuery: query, languageCode: toApiLang(lang) };
+  const searchBody: Record<string, unknown> = { textQuery: query, languageCode: GOOGLE_CONTENT_LANGUAGE };
   // Bias results toward the caller's area when supplied — without it Google Text
   // Search falls back to the API key's billing region, which skews foreign-region queries.
   if (locationBias) {
@@ -762,7 +768,7 @@ export async function autocompletePlaces(
 
   const body: Record<string, unknown> = {
     input,
-    languageCode: toApiLang(lang),
+    languageCode: GOOGLE_CONTENT_LANGUAGE,
   };
   if (locationBias) {
     body.locationBias = {
@@ -860,7 +866,7 @@ export async function getPlaceDetails(
   }
 
   // Google details
-  const langKey = toApiLang(lang, 'de');
+  const langKey = GOOGLE_CONTENT_LANGUAGE;
   const apiKey = getMapsKey(userId);
   if (!apiKey) {
     throw Object.assign(new Error('Google Maps API key not configured'), { status: 400 });
@@ -933,7 +939,7 @@ export async function getPlaceDetailsExpanded(
   lang?: string,
   refresh = false,
 ): Promise<{ place: Record<string, unknown> }> {
-  const langKey = toApiLang(lang, 'de');
+  const langKey = GOOGLE_CONTENT_LANGUAGE;
   const apiKey = getMapsKey(userId);
   if (!apiKey) throw Object.assign(new Error('Google Maps API key not configured'), { status: 400 });
 
