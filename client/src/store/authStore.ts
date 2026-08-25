@@ -8,6 +8,7 @@ import { tripSyncManager } from '../sync/tripSyncManager'
 import { reopenForUser, deleteCurrentUserDb } from '../db/offlineDb'
 import { setAuthed } from '../sync/authGate'
 import { unregisterSyncTriggers } from '../sync/syncTriggers'
+import { isEffectivelyOffline } from '../sync/networkMode'
 import { useSystemNoticeStore } from './systemNoticeStore.js'
 import { clearAppearanceSnapshot } from '../theme/applyAppearance'
 
@@ -243,9 +244,12 @@ export const useAuthStore = create<AuthState>()(
           isLoading: false,
           authCheckFailed: false,
         })
-      } else if (status === undefined && typeof navigator !== 'undefined' && !navigator.onLine) {
-        // Genuinely offline — keep the persisted session so the PWA serves cached
-        // data without a scary error. This is the offline-first happy path.
+      } else if (status === undefined && typeof navigator !== 'undefined' && isEffectivelyOffline()) {
+        // Genuinely or intentionally offline — keep the persisted session so the
+        // PWA serves cached data without a scary error. The shared network-mode
+        // helper also covers Settings → Offline's force-offline switch; checking
+        // navigator.onLine directly here would incorrectly show the outage banner
+        // while that mode is active.
         set({ isLoading: false })
       } else {
         // Server erroring (5xx) or unreachable while we're online: keep the session
