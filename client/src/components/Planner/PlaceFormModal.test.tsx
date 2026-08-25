@@ -437,6 +437,15 @@ describe('PlaceFormModal', () => {
     expect(submitBtn).toBeDisabled();
   });
 
+  it('FE-PLANNER-PLACEFORM-027b: end-before-start warning renders in the place editor', () => {
+    // The warning now comes from the shared Time Slot editor the row editor also uses;
+    // it must keep appearing here so the two cannot drift apart.
+    const place = buildPlace({ name: 'Test', place_time: '14:00', end_time: '13:00' });
+    const assignment = buildAssignment({ id: 11, day_id: 5, place });
+    render(<PlaceFormModal {...defaultProps} place={place} assignmentId={11} dayAssignments={[assignment]} />);
+    expect(screen.getByText('End time is before start time')).toBeInTheDocument();
+  });
+
   it('FE-PLANNER-PLACEFORM-028: time collision warning appears when assignments overlap', () => {
     // Create an assignment for the "current" place being edited
     const currentPlace = buildPlace({ name: 'My Event', place_time: '12:30', end_time: '13:30' });

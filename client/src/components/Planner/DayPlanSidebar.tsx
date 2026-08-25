@@ -37,6 +37,7 @@ import { MobileAddPlaceButton } from './DayPlanSidebarMobileAddPlaceButton'
 import { DayPlanSidebarToolbar } from './DayPlanSidebarToolbar'
 import { DayPlanSidebarNoteModal } from './DayPlanSidebarNoteModal'
 import { DayPlanSidebarTimeConfirmModal } from './DayPlanSidebarTimeConfirmModal'
+import { DayPlanSidebarTimeSlotModal, type TimeSlotEditState } from './DayPlanSidebarTimeSlotModal'
 import { DayPlanSidebarTransportDetailModal } from './DayPlanSidebarTransportDetailModal'
 import { TransitTitle, TransitLegChips, TransitItineraryInline } from './transitDisplay'
 import { DayPlanSidebarFooter } from './DayPlanSidebarFooter'
@@ -229,6 +230,10 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     // For arrow reorder
     reorderIds?: number[];
   } | null>(null)
+  // The Assignment row's own Time Slot editor: which Assignment is open, and the
+  // start/end being edited before they are written back (#40).
+  const [timeSlotEdit, setTimeSlotEdit] = useState<TimeSlotEditState | null>(null)
+  const [isSavingTimeSlot, setIsSavingTimeSlot] = useState(false)
   const inputRef = useRef(null)
   const dragDataRef = useRef(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
@@ -781,6 +786,32 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     dragDataRef.current = null
   }
 
+  // A Time Slot set from within a day writes the Assignment override only — never
+  // the Place's own default time, which the same Place's Assignment on another day
+  // would inherit, silently rewriting that day (#40).
+  const saveTimeSlot = async (placeTime: string | null, endTime: string | null) => {
+    if (!timeSlotEdit || isSavingTimeSlot) return
+    const { dayId, assignmentId } = timeSlotEdit
+    setIsSavingTimeSlot(true)
+    try {
+      await assignmentsApi.updateTime(tripId, assignmentId, { place_time: placeTime, end_time: endTime })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('common.unknownError'))
+      return
+    } finally {
+      setIsSavingTimeSlot(false)
+    }
+    const key = String(dayId)
+    const currentAssignments = { ...assignments }
+    if (currentAssignments[key]) {
+      currentAssignments[key] = currentAssignments[key].map(a =>
+        a.id === assignmentId ? { ...a, place: { ...a.place, place_time: placeTime, end_time: endTime } } : a
+      )
+      tripActions.setAssignments(currentAssignments)
+    }
+    setTimeSlotEdit(null)
+  }
+
   const confirmTimeRemoval = async () => {
     if (!timeConfirm) return
     const saved = { ...timeConfirm }
@@ -1118,6 +1149,10 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     setTransportPosVersion,
     timeConfirm,
     setTimeConfirm,
+    timeSlotEdit,
+    setTimeSlotEdit,
+    isSavingTimeSlot,
+    saveTimeSlot,
     inputRef,
     dragDataRef,
     scrollContainerRef,
@@ -1289,6 +1324,10 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
     setTransportPosVersion,
     timeConfirm,
     setTimeConfirm,
+    timeSlotEdit,
+    setTimeSlotEdit,
+    isSavingTimeSlot,
+    saveTimeSlot,
     inputRef,
     dragDataRef,
     scrollContainerRef,
@@ -1946,6 +1985,35 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                                 </div>
                               )}
                             </div>
+                            {/* The Time Slot's visible door: persistent, tappable, and no
+                                context-menu gesture required (#40). */}
+                            {canEditDays && (
+                              <button
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  setTimeSlotEdit({
+                                    dayId: day.id,
+                                    assignmentId: assignment.id,
+                                    place_time: (place.place_time || '').substring(0, 5),
+                                    end_time: (place.end_time || '').substring(0, 5),
+                                  })
+                                }}
+                                title={t('dayplan.timeSlot')}
+                                className="bg-transparent text-content-faint"
+                                style={{
+                                  flexShrink: 0, appearance: 'none',
+                                  width: 20, height: 20, borderRadius: 4,
+                                  display: 'grid', placeItems: 'center', cursor: 'pointer',
+                                  border: 'none',
+                                  transition: 'color 120ms cubic-bezier(0.23,1,0.32,1)',
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)' }}
+                                onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-faint)' }}
+                              >
+                                <Clock size={11} strokeWidth={2} />
+                              </button>
+                            )}
                             {canEditDays && <div className="reorder-buttons" style={{ flexShrink: 0, display: 'flex', gap: 1, transition: 'opacity 0.15s' }}>
                               <button onClick={moveUp} disabled={idx === 0} className={idx === 0 ? 'text-[var(--border-primary)]' : 'text-content-faint'} style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: idx === 0 ? 'default' : 'pointer', display: 'flex', lineHeight: 1 }}>
                                 <ChevronUp size={12} strokeWidth={2} />
@@ -2495,6 +2563,16 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
         noteInputRef={noteInputRef}
         cancelNote={cancelNote}
         saveNote={saveNote}
+        t={t}
+      />
+
+      {/* Time Slot editor for one Assignment row */}
+      <DayPlanSidebarTimeSlotModal
+        timeSlotEdit={timeSlotEdit}
+        setTimeSlotEdit={setTimeSlotEdit}
+        dayAssignments={timeSlotEdit ? getDayAssignments(timeSlotEdit.dayId) : []}
+        saveTimeSlot={saveTimeSlot}
+        isSaving={isSavingTimeSlot}
         t={t}
       />
 

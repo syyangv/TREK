@@ -4,6 +4,7 @@ const dayplan: TranslationStrings = {
   'dayplan.icsTooltip': 'İhracat takvimi (ICS)',
   'dayplan.emptyDay': 'Bu gün için planlanmış yer yok',
   'dayplan.cannotReorderTransport': 'Sabit zamanlı rezervasyonlar yeniden sıralanamaz',
+  'dayplan.timeSlot': 'Zaman aralığı',
   'dayplan.confirmRemoveTimeTitle': 'Saat kaldırılsın mı?',
   'dayplan.confirmRemoveTimeBody':
     'Bu yerin sabit bir saati var ({time}). Taşımak saati kaldırır ve serbest sıralamaya izin verir.',

@@ -27,6 +27,7 @@ const dayplan: TranslationStrings = {
   'dayplan.pdfTooltip': 'Exportovat denní plán do PDF',
   'dayplan.pdfError': 'Export do PDF se nezdařil',
   'dayplan.cannotReorderTransport': 'Rezervace s pevným časem nelze přeuspořádat',
+  'dayplan.timeSlot': 'Časový úsek',
   'dayplan.confirmRemoveTimeTitle': 'Odebrat čas?',
   'dayplan.confirmRemoveTimeBody':
     'Toto místo má pevný čas ({time}). Přesunutím se čas odebere a povolí se volné řazení.',

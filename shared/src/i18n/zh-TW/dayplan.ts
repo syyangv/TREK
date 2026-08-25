@@ -27,6 +27,7 @@ const dayplan: TranslationStrings = {
   'dayplan.pdfTooltip': '匯出當天計劃為 PDF',
   'dayplan.pdfError': 'PDF 匯出失敗',
   'dayplan.cannotReorderTransport': '有固定時間的預訂無法重新排序',
+  'dayplan.timeSlot': '時間段',
   'dayplan.confirmRemoveTimeTitle': '移除時間？',
   'dayplan.confirmRemoveTimeBody': '此地點有固定時間（{time}）。移動後將移除時間並允許自由排序。',
   'dayplan.confirmRemoveTimeAction': '移除時間並移動',

@@ -1,5 +1,5 @@
-// FE-PLANNER-DAYPLAN-001 to FE-PLANNER-DAYPLAN-042
-import { render, screen, waitFor, fireEvent } from '../../../tests/helpers/render'
+// FE-PLANNER-DAYPLAN-001 to FE-PLANNER-DAYPLAN-114
+import { render, screen, waitFor, fireEvent, within } from '../../../tests/helpers/render'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../../../tests/helpers/msw/server'
@@ -88,17 +88,31 @@ vi.mock('../Weather/WeatherWidget', () => ({
   default: () => <span data-testid="weather-widget" />,
 }))
 
+const mockToast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }))
+
 vi.mock('../shared/Toast', () => ({
-  useToast: () => ({ error: vi.fn(), success: vi.fn() }),
+  useToast: () => mockToast,
+}))
+
+// The Time Slot editor uses the real time picker, whose dropdown renders through a
+// portal; a plain text input keeps the assertions on what the planner types.
+vi.mock('../shared/CustomTimePicker', () => ({
+  default: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+    <input data-testid="time-picker" type="text" value={value} onChange={e => onChange(e.target.value)} />
+  ),
 }))
 
 // ── Permissions mock ────────────────────────────────────────────────────────
+
+const mockPermissions = vi.hoisted(() => ({
+  can: (_action: string, _trip?: unknown): boolean => true,
+}))
 
 vi.mock('../../store/permissionsStore', async (importOriginal) => {
   const actual = await importOriginal() as any
   return {
     ...actual,
-    useCanDo: () => () => true,
+    useCanDo: () => mockPermissions.can,
   }
 })
 
@@ -135,6 +149,14 @@ function makeDefaultProps(overrides = {}) {
   }
 }
 
+/** The planner page feeds the sidebar its Assignments straight from the trip store,
+ *  so a Time Slot written back to the store re-renders the row. Mirrors that wiring
+ *  for the tests that assert the row chip updates without a reload. */
+function StoreBackedSidebar(props: any) {
+  const assignments = useTripStore(s => s.assignments)
+  return <DayPlanSidebar {...props} assignments={assignments} />
+}
+
 // ── Setup ───────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
@@ -148,6 +170,7 @@ beforeEach(() => {
   // Reset mutable day-notes state
   mockDayNotesState.noteUi = {}
   mockDayNotesState.dayNotes = {}
+  mockPermissions.can = () => true
   seedStore(useAuthStore, { user: buildUser(), isAuthenticated: true })
   seedStore(useTripStore, { trip: buildTrip({ id: 1 }) })
   seedStore(useSettingsStore, { settings: { time_format: '24h', temperature_unit: 'celsius' } } as any)
@@ -2089,5 +2112,148 @@ describe('DayPlanSidebar', () => {
     // Only day 2 has places, so it renders the sole Route toggle.
     await user.click(screen.getByRole('button', { name: 'Route' }))
     expect(await screen.findByText('2 km')).toBeInTheDocument()
+  })
+  // ── Time Slot editor on Assignment rows (#40) ────────────────────────────
+
+  it('FE-PLANNER-DAYPLAN-107: Assignment row opens the Time Slot editor without a context-menu gesture', async () => {
+    const user = userEvent.setup()
+    const place = buildPlace({ id: 1, name: 'Palace of Fine Arts' })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const assignment = buildAssignment({ id: 11, day_id: 10, order_index: 0, place })
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places: [place], assignments: { '10': [assignment] },
+    })} />)
+
+    await user.click(screen.getByRole('button', { name: 'Time slot' }))
+
+    const editor = screen.getByRole('dialog', { name: 'Time slot' })
+    // Start and end only — the row editor carries no other place fields.
+    expect(within(editor).getAllByRole('textbox')).toHaveLength(2)
+    expect(within(editor).getByText('Start')).toBeInTheDocument()
+    expect(within(editor).getByText('End')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-108: saving a Time Slot updates the Assignment and the row chip without a reload', async () => {
+    const user = userEvent.setup()
+    const { assignmentsApi } = await import('../../api/client')
+    const place = buildPlace({ id: 1, name: 'Palace of Fine Arts' })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const assignment = buildAssignment({ id: 11, day_id: 10, order_index: 0, place })
+    seedStore(useTripStore, { assignments: { '10': [assignment] } })
+    render(<StoreBackedSidebar {...makeDefaultProps({ days: [day], places: [place] })} />)
+
+    await user.click(screen.getByRole('button', { name: 'Time slot' }))
+    const [start, end] = screen.getAllByTestId('time-picker')
+    await user.type(start, '14:00')
+    await user.type(end, '16:00')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect((assignmentsApi as any).updateTime).toHaveBeenCalledWith(
+      1, 11, { place_time: '14:00', end_time: '16:00' },
+    ))
+    expect(await screen.findByText('14:00 – 16:00')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-109: clearing a Time Slot leaves the Assignment on its day, untimed', async () => {
+    const user = userEvent.setup()
+    const { assignmentsApi } = await import('../../api/client')
+    const place = buildPlace({ id: 1, name: 'Palace of Fine Arts', place_time: '14:00', end_time: '16:00' })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const assignment = buildAssignment({ id: 11, day_id: 10, order_index: 0, place })
+    seedStore(useTripStore, { assignments: { '10': [assignment] } })
+    render(<StoreBackedSidebar {...makeDefaultProps({ days: [day], places: [place] })} />)
+
+    await user.click(screen.getByRole('button', { name: 'Time slot' }))
+    await user.click(screen.getByRole('button', { name: 'Clear' }))
+
+    await waitFor(() => expect((assignmentsApi as any).updateTime).toHaveBeenCalledWith(
+      1, 11, { place_time: null, end_time: null },
+    ))
+    await waitFor(() => expect(screen.queryByText('14:00 – 16:00')).not.toBeInTheDocument())
+    expect(screen.getByText('Palace of Fine Arts')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-110: a start-only Time Slot renders without a dangling separator', () => {
+    const place = buildPlace({ id: 1, name: 'Palace of Fine Arts', place_time: '14:00', end_time: null })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const assignment = buildAssignment({ id: 11, day_id: 10, order_index: 0, place })
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places: [place], assignments: { '10': [assignment] },
+    })} />)
+
+    // Exact match: the chip reads "14:00" and nothing else — no trailing "–".
+    expect(screen.getByText('14:00')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-111: without day-edit permission the Time Slot stays visible but its affordance is gone', () => {
+    mockPermissions.can = (action: string) => action !== 'day_edit'
+    const place = buildPlace({ id: 1, name: 'Palace of Fine Arts', place_time: '14:00', end_time: '16:00' })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const assignment = buildAssignment({ id: 11, day_id: 10, order_index: 0, place })
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places: [place], assignments: { '10': [assignment] },
+    })} />)
+
+    expect(screen.getByText('14:00 – 16:00')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Time slot' })).not.toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-112: an end time before its start warns but stays saveable', async () => {
+    const user = userEvent.setup()
+    const { assignmentsApi } = await import('../../api/client')
+    const place = buildPlace({ id: 1, name: 'Palace of Fine Arts', place_time: '14:00' })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const assignment = buildAssignment({ id: 11, day_id: 10, order_index: 0, place })
+    seedStore(useTripStore, { assignments: { '10': [assignment] } })
+    render(<StoreBackedSidebar {...makeDefaultProps({ days: [day], places: [place] })} />)
+
+    await user.click(screen.getByRole('button', { name: 'Time slot' }))
+    await user.type(screen.getAllByTestId('time-picker')[1], '13:00')
+
+    expect(screen.getByText('End time is before start time')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect((assignmentsApi as any).updateTime).toHaveBeenCalledWith(
+      1, 11, { place_time: '14:00', end_time: '13:00' },
+    ))
+  })
+
+  it('FE-PLANNER-DAYPLAN-113: a Time Slot overlapping another on the same day warns but stays saveable', async () => {
+    const user = userEvent.setup()
+    const { assignmentsApi } = await import('../../api/client')
+    const place = buildPlace({ id: 1, name: 'Palace of Fine Arts' })
+    const other = buildPlace({ id: 2, name: 'Morella', place_time: '13:00', end_time: '15:00' })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const a1 = buildAssignment({ id: 11, day_id: 10, order_index: 0, place })
+    const a2 = buildAssignment({ id: 12, day_id: 10, order_index: 1, place: other })
+    seedStore(useTripStore, { assignments: { '10': [a1, a2] } })
+    render(<StoreBackedSidebar {...makeDefaultProps({ days: [day], places: [place, other] })} />)
+
+    await user.click(screen.getAllByRole('button', { name: 'Time slot' })[0])
+    await user.type(screen.getAllByTestId('time-picker')[0], '14:00')
+
+    expect(screen.getByText(/Time overlap with:/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect((assignmentsApi as any).updateTime).toHaveBeenCalledWith(
+      1, 11, { place_time: '14:00', end_time: null },
+    ))
+  })
+
+  it('FE-PLANNER-DAYPLAN-114: a failed Time Slot save is surfaced instead of silently discarded', async () => {
+    const user = userEvent.setup()
+    const { assignmentsApi } = await import('../../api/client')
+    ;(assignmentsApi as any).updateTime.mockRejectedValueOnce(new Error('Save failed'))
+    const place = buildPlace({ id: 1, name: 'Palace of Fine Arts' })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const assignment = buildAssignment({ id: 11, day_id: 10, order_index: 0, place })
+    seedStore(useTripStore, { assignments: { '10': [assignment] } })
+    render(<StoreBackedSidebar {...makeDefaultProps({ days: [day], places: [place] })} />)
+
+    await user.click(screen.getByRole('button', { name: 'Time slot' }))
+    await user.type(screen.getAllByTestId('time-picker')[0], '14:00')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith('Save failed'))
+    // The editor stays open so the planner can retry rather than lose the edit.
+    expect(screen.getByRole('dialog', { name: 'Time slot' })).toBeInTheDocument()
   })
 })

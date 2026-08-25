@@ -4,6 +4,7 @@ const dayplan: TranslationStrings = {
   'dayplan.icsTooltip': 'Ekspor kalender (ICS)',
   'dayplan.emptyDay': 'Belum ada tempat yang direncanakan untuk hari ini',
   'dayplan.cannotReorderTransport': 'Pemesanan dengan waktu tetap tidak bisa diurutkan ulang',
+  'dayplan.timeSlot': 'Slot waktu',
   'dayplan.confirmRemoveTimeTitle': 'Hapus waktu?',
   'dayplan.confirmRemoveTimeBody':
     'Tempat ini memiliki waktu tetap ({time}). Memindahkannya akan menghapus waktu dan mengizinkan pengurutan bebas.',

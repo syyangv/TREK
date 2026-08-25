@@ -4,6 +4,7 @@ const dayplan: TranslationStrings = {
   'dayplan.icsTooltip': 'Eksportuj kalendarz (ICS)',
   'dayplan.emptyDay': 'Brak miejsc zaplanowanych na ten dzień',
   'dayplan.cannotReorderTransport': 'Nie można zmieniać kolejności dla rezerwacji z określoną godziną',
+  'dayplan.timeSlot': 'Przedział czasu',
   'dayplan.confirmRemoveTimeTitle': 'Usunąć godzinę?',
   'dayplan.confirmRemoveTimeBody':
     'To miejsce ma określoną godzinę ({time}). Przeniesienie go usunie godzinę i umożliwi swobodne sortowanie.',

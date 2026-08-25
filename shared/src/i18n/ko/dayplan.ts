@@ -4,6 +4,7 @@ const dayplan: TranslationStrings = {
   'dayplan.icsTooltip': '캘린더 내보내기 (ICS)',
   'dayplan.emptyDay': '이 날에 계획된 장소가 없습니다',
   'dayplan.cannotReorderTransport': '고정된 시간이 있는 예약은 순서를 변경할 수 없습니다',
+  'dayplan.timeSlot': '시간대',
   'dayplan.confirmRemoveTimeTitle': '시간을 제거할까요?',
   'dayplan.confirmRemoveTimeBody':
     '이 장소에 고정된 시간 ({time})이 있습니다. 이동하면 시간이 제거되고 자유 정렬이 허용됩니다.',

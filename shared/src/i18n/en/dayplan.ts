@@ -4,6 +4,7 @@ const dayplan: TranslationStrings = {
   'dayplan.icsTooltip': 'Export calendar (ICS)',
   'dayplan.emptyDay': 'No places planned for this day',
   'dayplan.cannotReorderTransport': 'Bookings with a fixed time cannot be reordered',
+  'dayplan.timeSlot': 'Time slot',
   'dayplan.confirmRemoveTimeTitle': 'Remove time?',
   'dayplan.confirmRemoveTimeBody':
     'This place has a fixed time ({time}). Moving it will remove the time and allow free sorting.',
