@@ -807,13 +807,18 @@ export const journeyApi = {
   getPublicJourney: (token: string) => apiClient.get(`/public/journey/${token}`).then(r => r.data),
 }
 
+// Keep Google/OSM location content in English without changing the app's UI language.
+// Callers still accept a locale for backwards compatibility, but location labels and
+// details must not follow a user's translation preference (e.g. Chinese UI -> Chinese POIs).
+const MAPS_CONTENT_LANGUAGE = 'en'
+
 export const mapsApi = {
-  search: (query: string, lang?: string) => apiClient.post(`/maps/search?lang=${lang || 'en'}`, { query }).then(r => checkInDev(mapsSearchResultSchema, r.data, 'maps.search')),
-  autocomplete: (input: string, lang?: string, locationBias?: { low: { lat: number; lng: number }; high: { lat: number; lng: number } }, signal?: AbortSignal) =>
-      apiClient.post('/maps/autocomplete', { input, lang, locationBias }, { signal }).then(r => checkInDev(mapsAutocompleteResultSchema, r.data, 'maps.autocomplete')),
-  details: (placeId: string, lang?: string) => apiClient.get(`/maps/details/${encodeURIComponent(placeId)}`, { params: { lang } }).then(r => checkInDev(mapsPlaceDetailsResultSchema, r.data, 'maps.details')),
+  search: (query: string, _lang?: string) => apiClient.post(`/maps/search?lang=${MAPS_CONTENT_LANGUAGE}`, { query }).then(r => checkInDev(mapsSearchResultSchema, r.data, 'maps.search')),
+  autocomplete: (input: string, _lang?: string, locationBias?: { low: { lat: number; lng: number }; high: { lat: number; lng: number } }, signal?: AbortSignal) =>
+      apiClient.post('/maps/autocomplete', { input, lang: MAPS_CONTENT_LANGUAGE, locationBias }, { signal }).then(r => checkInDev(mapsAutocompleteResultSchema, r.data, 'maps.autocomplete')),
+  details: (placeId: string, _lang?: string) => apiClient.get(`/maps/details/${encodeURIComponent(placeId)}`, { params: { lang: MAPS_CONTENT_LANGUAGE } }).then(r => checkInDev(mapsPlaceDetailsResultSchema, r.data, 'maps.details')),
   placePhoto: (placeId: string, lat?: number, lng?: number, name?: string) => apiClient.get(`/maps/place-photo/${encodeURIComponent(placeId)}`, { params: { lat, lng, name } }).then(r => checkInDev(mapsPlacePhotoResultSchema, r.data, 'maps.placePhoto')),
-  reverse: (lat: number, lng: number, lang?: string) => apiClient.get('/maps/reverse', { params: { lat, lng, lang } }).then(r => checkInDev(mapsReverseResultSchema, r.data, 'maps.reverse')),
+  reverse: (lat: number, lng: number, _lang?: string) => apiClient.get('/maps/reverse', { params: { lat, lng, lang: MAPS_CONTENT_LANGUAGE } }).then(r => checkInDev(mapsReverseResultSchema, r.data, 'maps.reverse')),
   resolveUrl: (url: string) => apiClient.post('/maps/resolve-url', { url }).then(r => checkInDev(mapsResolveUrlResultSchema, r.data, 'maps.resolveUrl')),
   // OSM-only POI explore: places of a category within the current map viewport bbox.
   // Overpass can be slow on a fresh (uncached) area, so this call gets a longer
