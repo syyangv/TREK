@@ -1,0 +1,15 @@
+{
+  "action": "deploy",
+  "compose_sha256": {
+    "docker-compose.override.yml": "147715f361efe5538e7abe348eddc4f851a7d0f0d4548db14bb14bc5ede4cb1e",
+    "docker-compose.yml": "57a7e884275b4c4e2647167985474c7ba8ba37d2ef7b732a77bc1fde592b9789"
+  },
+  "environment": "production",
+  "image": "thvysy44/trek-fork@sha256:cb6bf2a0290f0143d2130abc8266d8146ca7bdf347d3a9c544faa608de5444e9",
+  "promoted_at": "2026-08-26T18:16:36.073685Z",
+  "release_sha": "d0fa0e50cdceae94b50d88c8bb0d706b8da2b4f0",
+  "schema": 1,
+  "source_ref": "v3.5.14",
+  "source_sha": "49bc22061c563b3af50698a5c2db9ca711c02908",
+  "version": "3.5.14"
+}
