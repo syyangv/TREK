@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom'
-import { X, Sun, Cloud, CloudRain, CloudSnow, CloudDrizzle, CloudLightning, Wind, Droplets, Sunrise, Sunset, Hotel, Calendar, MapPin, LogIn, LogOut, Hash, Pencil, Plane, Utensils, Train, Car, Ship, Ticket, FileText, Users, ChevronsDown, ChevronsUp, TramFront } from 'lucide-react'
+import { X, Sun, Cloud, CloudRain, CloudSnow, CloudDrizzle, CloudLightning, Wind, Droplets, Sunrise, Sunset, Hotel, Calendar, Clock, MapPin, LogIn, LogOut, Hash, Pencil, Plane, Utensils, Train, Car, Ship, Ticket, FileText, Users, ChevronsDown, ChevronsUp, TramFront } from 'lucide-react'
 
 const RES_TYPE_ICONS = { flight: Plane, hotel: Hotel, restaurant: Utensils, train: Train, car: Car, cruise: Ship, transit: TramFront, event: Ticket, tour: Users, other: FileText }
 const RES_TYPE_COLORS = { flight: '#3b82f6', hotel: '#8b5cf6', restaurant: '#ef4444', train: '#06b6d4', car: '#6b7280', cruise: '#0ea5e9', transit: '#7c3aed', event: '#f59e0b', tour: '#10b981', other: '#6b7280' }
-import { weatherApi, accommodationsApi } from '../../api/client'
+import { assignmentsApi, weatherApi, accommodationsApi } from '../../api/client'
 import { usePluginViewContributions, PluginCardFooter } from '../Plugins/PluginContributions'
 import { usePluginStore } from '../../store/pluginStore'
 import PluginFrame from '../Plugins/PluginFrame'
@@ -14,10 +14,12 @@ import CustomSelect from '../shared/CustomSelect'
 import CustomTimePicker from '../shared/CustomTimePicker'
 import { useSettingsStore } from '../../store/settingsStore'
 import { getLocaleForLanguage, useTranslation } from '../../i18n'
-import type { Day, Place, Category, Reservation, AssignmentsMap } from '../../types'
+import { useToast } from '../shared/Toast'
+import type { Assignment, Day, Place, Category, Reservation, AssignmentsMap } from '../../types'
 import { isDayInAccommodationRange } from '../../utils/dayOrder'
-import { splitReservationDateTime } from '../../utils/formatters'
+import { formatTime, splitReservationDateTime } from '../../utils/formatters'
 import { useDayDetail } from './useDayDetail'
+import { TimeSlotModal, type TimeSlotEditState } from './TimeSlotModal'
 
 const WEATHER_ICON_MAP = {
   Clear: Sun, Clouds: Cloud, Rain: CloudRain, Drizzle: CloudDrizzle,
@@ -46,6 +48,17 @@ function formatTime12(val, is12h) {
   return `${h12}:${String(m).padStart(2, '0')} ${period}`
 }
 
+/** The 计划 section's reading order: timed Assignments ascending by Time Slot start,
+ *  then the untimed ones in their existing manual order — an unscheduled intention
+ *  should not interrupt the scheduled sequence (#41). */
+function orderByTimeSlot(dayAssignments: Assignment[]): Assignment[] {
+  const timed = dayAssignments.filter(a => a.place?.place_time)
+  const untimed = dayAssignments.filter(a => !a.place?.place_time)
+  // Sort is stable, so equal starts keep their manual order too.
+  timed.sort((a, b) => (a.place!.place_time as string).localeCompare(b.place!.place_time as string))
+  return [...timed, ...untimed]
+}
+
 interface DayDetailPanelProps {
   day: Day
   days: Day[]
@@ -70,10 +83,12 @@ interface DayDetailPanelProps {
 export default function DayDetailPanel({ day, days, places, categories = [], tripId, assignments, reservations = [], lat, lng, onClose, onAccommodationChange, leftWidth = 0, rightWidth = 0, collapsed: collapsedProp = false, onToggleCollapse, mobile = false, onUpdateDayTitle }: DayDetailPanelProps) {
   const { t, language, locale } = useTranslation()
   const can = useCanDo()
+  const toast = useToast()
   const tripObj = useTripStore((s) => s.trip)
   const canEditDays = can('day_edit', tripObj)
   const isFahrenheit = useSettingsStore(s => s.settings.temperature_unit) === 'fahrenheit'
-  const is12h = useSettingsStore(s => s.settings.time_format) === '12h'
+  const timeFormat = useSettingsStore(s => s.settings.time_format)
+  const is12h = timeFormat === '12h'
   const blurCodes = useSettingsStore(s => s.settings.blur_booking_codes)
   const fmtTime = (v) => {
     if (!v) return v
@@ -83,6 +98,38 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
   const unit = isFahrenheit ? '°F' : '°C'
   const collapsed = collapsedProp
   const toggleCollapse = () => onToggleCollapse?.()
+
+  // The 计划 section's Time Slot editor: which Assignment is open, and the start/end
+  // being edited before they are written back (#41).
+  const [timeSlotEdit, setTimeSlotEdit] = useState<TimeSlotEditState | null>(null)
+  const [isSavingTimeSlot, setIsSavingTimeSlot] = useState(false)
+
+  // A Time Slot set from within a day writes the Assignment override only — never the
+  // Place's own default time, which the same Place's Assignment on another day would
+  // inherit, silently rewriting that day (#41).
+  const saveTimeSlot = async (placeTime: string | null, endTime: string | null) => {
+    if (!timeSlotEdit || isSavingTimeSlot) return
+    const { dayId, assignmentId } = timeSlotEdit
+    setIsSavingTimeSlot(true)
+    try {
+      await assignmentsApi.updateTime(tripId, assignmentId, { place_time: placeTime, end_time: endTime })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('common.unknownError'))
+      return
+    } finally {
+      setIsSavingTimeSlot(false)
+    }
+    const key = String(dayId)
+    if (assignments[key]) {
+      useTripStore.getState().setAssignments({
+        ...assignments,
+        [key]: assignments[key].map(a =>
+          a.id === assignmentId ? { ...a, place: { ...a.place, place_time: placeTime, end_time: endTime } } : a
+        ),
+      })
+    }
+    setTimeSlotEdit(null)
+  }
 
   // Inline day rename (#1065) — took over from the sidebar's pencil, which the
   // transit search button replaced.
@@ -282,6 +329,53 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
             )
           )}
 
+          {/* ── 计划: this day's Assignments ── */}
+          {(() => {
+            const dayAssignments = assignments[String(day.id)] || []
+            return (
+              <div>
+                {day.date && lat && lng && <div style={{ height: 1, background: 'var(--border-faint)', margin: '12px 0' }} />}
+                <div className="text-content-faint" style={{ fontSize: 'calc(11px * var(--fs-scale-caption, 1))', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{t('day.plan')}</div>
+                {dayAssignments.length === 0 ? (
+                  // Say so explicitly — an empty region reads as a loading failure.
+                  <div className="text-content-faint" style={{ fontSize: 'calc(11px * var(--fs-scale-caption, 1))', padding: '2px 0' }}>{t('day.noPlannedItems')}</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {orderByTimeSlot(dayAssignments).map(a => (
+                      <div key={a.id} className="bg-surface-secondary" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderRadius: 8 }}>
+                        <MapPin size={12} style={{ color: 'var(--text-faint)', flexShrink: 0 }} />
+                        <span data-testid="day-plan-item-name" style={{ flex: 1, minWidth: 0, fontSize: 'calc(11px * var(--fs-scale-caption, 1))', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.place?.name}</span>
+                        {a.place?.place_time && (
+                          // A start-only Time Slot renders alone — no dangling separator.
+                          <span style={{ fontSize: 'calc(10px * var(--fs-scale-caption, 1))', color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                            {formatTime(a.place.place_time, locale, timeFormat)}{a.place.end_time ? ` – ${formatTime(a.place.end_time, locale, timeFormat)}` : ''}
+                          </span>
+                        )}
+                        {canEditDays && (
+                          <button
+                            type="button"
+                            onClick={() => setTimeSlotEdit({
+                              dayId: day.id,
+                              assignmentId: a.id,
+                              place_time: (a.place?.place_time || '').substring(0, 5),
+                              end_time: (a.place?.end_time || '').substring(0, 5),
+                            })}
+                            aria-label={t('dayplan.timeSlot')}
+                            title={t('dayplan.timeSlot')}
+                            className="text-content-faint"
+                            style={{ flexShrink: 0, border: 'none', background: 'none', padding: 2, cursor: 'pointer', display: 'flex' }}
+                          >
+                            <Clock size={12} strokeWidth={1.8} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
           {/* ── Reservations for this day's assignments ── */}
           {dayContributions.length > 0 && <PluginCardFooter items={dayContributions} tripId={tripId} />}
           {(() => {
@@ -294,7 +388,7 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
             if (dayReservations.length === 0) return null
             return (
               <div style={{ marginBottom: 0 }}>
-                {day.date && lat && lng && <div style={{ height: 1, background: 'var(--border-faint)', margin: '12px 0' }} />}
+                <div style={{ height: 1, background: 'var(--border-faint)', margin: '12px 0' }} />
                 <div className="text-content-faint" style={{ fontSize: 'calc(11px * var(--fs-scale-caption, 1))', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{t('day.reservations')}</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {dayReservations.map(r => {
@@ -359,6 +453,15 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
           )}
         </div>
       </div>
+      {/* The one Time Slot editor, shared with the Day Plan sidebar (#41) */}
+      <TimeSlotModal
+        timeSlotEdit={timeSlotEdit}
+        setTimeSlotEdit={setTimeSlotEdit}
+        dayAssignments={timeSlotEdit ? (assignments[String(timeSlotEdit.dayId)] || []) : []}
+        saveTimeSlot={saveTimeSlot}
+        isSaving={isSavingTimeSlot}
+        t={t}
+      />
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   )

@@ -21,5 +21,7 @@ const day: TranslationStrings = {
   'day.confirmation': '확인',
   'day.editAccommodation': '숙박 편집',
   'day.reservations': '예약',
+  'day.plan': '계획',
+  'day.noPlannedItems': '아직 이 날에 계획된 일정이 없습니다',
 };
 export default day;

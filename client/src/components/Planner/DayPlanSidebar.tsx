@@ -37,7 +37,7 @@ import { MobileAddPlaceButton } from './DayPlanSidebarMobileAddPlaceButton'
 import { DayPlanSidebarToolbar } from './DayPlanSidebarToolbar'
 import { DayPlanSidebarNoteModal } from './DayPlanSidebarNoteModal'
 import { DayPlanSidebarTimeConfirmModal } from './DayPlanSidebarTimeConfirmModal'
-import { DayPlanSidebarTimeSlotModal, type TimeSlotEditState } from './DayPlanSidebarTimeSlotModal'
+import { TimeSlotModal, type TimeSlotEditState } from './TimeSlotModal'
 import { DayPlanSidebarTransportDetailModal } from './DayPlanSidebarTransportDetailModal'
 import { TransitTitle, TransitLegChips, TransitItineraryInline } from './transitDisplay'
 import { DayPlanSidebarFooter } from './DayPlanSidebarFooter'
@@ -2567,7 +2567,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
       />
 
       {/* Time Slot editor for one Assignment row */}
-      <DayPlanSidebarTimeSlotModal
+      <TimeSlotModal
         timeSlotEdit={timeSlotEdit}
         setTimeSlotEdit={setTimeSlotEdit}
         dayAssignments={timeSlotEdit ? getDayAssignments(timeSlotEdit.dayId) : []}

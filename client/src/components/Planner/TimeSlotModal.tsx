@@ -10,7 +10,7 @@ export interface TimeSlotEditState {
   end_time: string
 }
 
-interface DayPlanSidebarTimeSlotModalProps {
+interface TimeSlotModalProps {
   timeSlotEdit: TimeSlotEditState | null
   setTimeSlotEdit: (v: TimeSlotEditState | null) => void
   dayAssignments: Assignment[]
@@ -20,8 +20,10 @@ interface DayPlanSidebarTimeSlotModalProps {
 }
 
 /** Compact Time Slot editor for one Assignment row — start and end only, never the
- *  full place editor. Both of its warnings stay warnings: Save is always available. */
-export function DayPlanSidebarTimeSlotModal({ timeSlotEdit, setTimeSlotEdit, dayAssignments, saveTimeSlot, isSaving, t }: DayPlanSidebarTimeSlotModalProps) {
+ *  full place editor. Shared by the Day Plan sidebar and the Day Detail panel's 计划
+ *  section, so a Time Slot has one editor and one write path (#41).
+ *  Both of its warnings stay warnings: Save is always available. */
+export function TimeSlotModal({ timeSlotEdit, setTimeSlotEdit, dayAssignments, saveTimeSlot, isSaving, t }: TimeSlotModalProps) {
   if (!timeSlotEdit) return null
   const title = t('dayplan.timeSlot')
   return ReactDOM.createPortal(
