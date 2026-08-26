@@ -463,7 +463,7 @@ artifact. The current workflows do not implement byte-for-byte promotion from
 staging to production. Stable artifacts have their own release proof before
 production deployment.
 
-### Phase 4: Production Deployment
+### Phase 4: Production Deployment (historical HTTP path)
 
 - [x] Add GitHub Environment `production` as the manual approval boundary.
 - [x] Implement pinned stable deployment through a restricted Tailscale deployment agent and Docker Compose.
@@ -471,6 +471,11 @@ production deployment.
 - [x] Configure production-visible Tailscale and deployment-agent settings.
 - [x] Publish stable `3.5.0` and validate production deployment.
 - [ ] Preflight and execute the rollback runbook.
+
+The primary production path is now the signed `deploy/production` promotion
+branch and outbound host poller. The GitHub workflow remains a restricted
+break-glass path until the poller has completed the documented rollback and
+soak gates.
 
 ## Implemented Workflow Inventory
 
