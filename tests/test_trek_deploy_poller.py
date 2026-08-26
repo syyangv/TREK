@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -113,8 +114,16 @@ class PollerTest(unittest.TestCase):
                 capture_output=True,
                 text=True,
             ).stdout.strip()
+            commit_env = {
+                **os.environ,
+                "GIT_AUTHOR_NAME": "test",
+                "GIT_AUTHOR_EMAIL": "test@example.com",
+                "GIT_COMMITTER_NAME": "test",
+                "GIT_COMMITTER_EMAIL": "test@example.com",
+            }
             commit = subprocess.check_output(
                 ["git", "--git-dir", str(remote), "commit-tree", tree, "-m", "test promotion"],
+                env=commit_env,
                 text=True,
             ).strip()
             subprocess.run(
