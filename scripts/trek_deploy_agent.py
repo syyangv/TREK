@@ -15,6 +15,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import threading
 import time
@@ -226,6 +227,119 @@ class Agent:
         image = metadata.get("image", "")
         return (release_dir, image) if IMAGE_RE.fullmatch(image) else None
 
+    def _health_check(self) -> None:
+        try:
+            with self._opener.open(self.health_url, timeout=15) as response:
+                if response.status != HTTPStatus.OK:
+                    raise DeployError("local health check failed")
+                body = response.read(4097)
+            if len(body) > 4096 or json.loads(body) != {"status": "ok"}:
+                raise DeployError("local health check failed")
+        except (urllib.error.URLError, TimeoutError) as exc:
+            raise DeployError("local health check failed") from exc
+        except (OSError, TypeError, ValueError) as exc:
+            raise DeployError("local health check failed") from exc
+
+    def _start_existing_container(self, image: str) -> bool:
+        try:
+            inspected = self._run(
+                [self.docker, "inspect", "--format", "{{.Config.Image}}", self.container],
+                check=False,
+            )
+            if inspected.returncode or inspected.stdout.strip() != image:
+                return False
+            status = self._run(
+                [self.docker, "inspect", "--format", "{{.State.Status}}", self.container],
+                check=False,
+            )
+            if status.returncode:
+                return False
+            if status.stdout.strip() != "running":
+                self._run([self.docker, "start", self.container], image=image)
+            self._health_check()
+        except (DeployError, OSError, subprocess.SubprocessError):
+            return False
+        return True
+
+    def _recover_release(self, previous: tuple[Path, str]) -> None:
+        if self._start_existing_container(previous[1]):
+            return
+        self._deploy_release(*previous)
+
+    def _hash_release_file(self, path: Path) -> str:
+        if path.is_symlink() or not path.is_file():
+            raise DeployError("existing release artifact is not a regular file")
+        try:
+            data = path.read_bytes()
+        except OSError as exc:
+            raise DeployError("unable to read existing release artifact") from exc
+        if not data or len(data) > MAX_COMPOSE:
+            raise DeployError("existing release artifact size is invalid")
+        return hashlib.sha256(data).hexdigest()
+
+    def _validate_existing_release(
+        self,
+        release_dir: Path,
+        request_metadata: dict[str, str],
+        expected_compose_hashes: dict[str, str] | None,
+    ) -> None:
+        if release_dir.is_symlink() or not release_dir.is_dir():
+            raise DeployError("request_id already exists")
+        metadata_path = release_dir / "metadata.json"
+        if metadata_path.is_symlink() or not metadata_path.is_file():
+            raise DeployError("request_id already exists")
+        try:
+            existing_metadata = json.loads(metadata_path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise DeployError("request_id already exists") from exc
+        if not isinstance(existing_metadata, dict):
+            raise DeployError("request_id already exists")
+        if any(existing_metadata.get(key) != value for key, value in request_metadata.items()):
+            raise DeployError("request_id already exists")
+        allowed_keys = set(request_metadata) | {"compose_sha256"}
+        if set(existing_metadata) - allowed_keys:
+            raise DeployError("request_id already exists")
+
+        actual_hashes = {
+            filename: self._hash_release_file(release_dir / filename) for filename in COMPOSE_FILES
+        }
+        recorded_hashes = existing_metadata.get("compose_sha256")
+        if recorded_hashes is not None and recorded_hashes != actual_hashes:
+            raise DeployError("existing release artifacts do not match recorded hashes")
+        if expected_compose_hashes is not None and actual_hashes != expected_compose_hashes:
+            raise DeployError("existing release artifacts do not match the promoted Compose hashes")
+
+    def _prepare_release(
+        self,
+        releases: Path,
+        release_dir: Path,
+        request_metadata: dict[str, str],
+        source_ref: str,
+        expected_compose_hashes: dict[str, str] | None,
+    ) -> None:
+        if release_dir.is_symlink() or release_dir.exists():
+            self._validate_existing_release(release_dir, request_metadata, expected_compose_hashes)
+            return
+
+        temporary = releases / f".{release_dir.name}.{secrets.token_hex(8)}.tmp"
+        temporary.mkdir(mode=0o700)
+        try:
+            compose_hashes: dict[str, str] = {}
+            for filename in COMPOSE_FILES:
+                compose_bytes = self._fetch(source_ref, filename)
+                compose_hash = hashlib.sha256(compose_bytes).hexdigest()
+                expected_hash = expected_compose_hashes.get(filename) if expected_compose_hashes else None
+                if expected_hash and compose_hash != expected_hash:
+                    raise DeployError(f"{filename} does not match the promoted Compose hash")
+                (temporary / filename).write_bytes(compose_bytes)
+                compose_hashes[filename] = compose_hash
+            release_metadata = {**request_metadata, "compose_sha256": compose_hashes}
+            (temporary / "metadata.json").write_text(json.dumps(release_metadata, sort_keys=True) + "\n")
+            os.replace(temporary, release_dir)
+        finally:
+            if temporary.exists():
+                shutil.rmtree(temporary, ignore_errors=True)
+
     def _deploy_release(self, release_dir: Path, image: str) -> None:
         self._run([self.docker, "--config", str(self.docker_config), "pull", image])
         compose = self._compose_command(release_dir)
@@ -236,12 +350,7 @@ class Agent:
         actual = self._run([self.docker, "inspect", "--format", "{{.Config.Image}}", self.container]).stdout.strip()
         if actual != image:
             raise DeployError("running container image does not match requested digest")
-        try:
-            with self._opener.open(self.health_url, timeout=15) as response:
-                if response.status != HTTPStatus.OK:
-                    raise DeployError("local health check failed")
-        except (urllib.error.URLError, TimeoutError) as exc:
-            raise DeployError("local health check failed") from exc
+        self._health_check()
 
     def deploy(
         self,
@@ -266,24 +375,23 @@ class Agent:
             releases = env_root / "releases"
             releases.mkdir(mode=0o700, parents=True, exist_ok=True)
             release_dir = releases / request["request_id"]
-            if release_dir.exists():
-                raise DeployError("request_id already exists")
+            metadata = {key: request[key] for key in ("environment", "action", "version", "source_ref", "image", "request_id")}
             previous = self._current_target(environment)
-            release_dir.mkdir(mode=0o700)
+            self._prepare_release(
+                releases,
+                release_dir,
+                metadata,
+                request["source_ref"],
+                expected_compose_hashes,
+            )
+            if previous and previous[0] == release_dir and self._start_existing_container(request["image"]):
+                return metadata
             try:
-                for filename in COMPOSE_FILES:
-                    compose_bytes = self._fetch(request["source_ref"], filename)
-                    expected_hash = expected_compose_hashes.get(filename) if expected_compose_hashes else None
-                    if expected_hash and hashlib.sha256(compose_bytes).hexdigest() != expected_hash:
-                        raise DeployError(f"{filename} does not match the promoted Compose hash")
-                    (release_dir / filename).write_bytes(compose_bytes)
-                metadata = {key: request[key] for key in ("environment", "action", "version", "source_ref", "image", "request_id")}
-                (release_dir / "metadata.json").write_text(json.dumps(metadata, sort_keys=True) + "\n")
                 self._deploy_release(release_dir, request["image"])
             except Exception as deployment_error:
                 if previous:
                     try:
-                        self._deploy_release(*previous)
+                        self._recover_release(previous)
                     except Exception as rollback_error:
                         print(f"automatic recovery failed: {rollback_error}", flush=True)
                         raise DeployError("deployment and automatic recovery failed; inspect the local agent log") from deployment_error
