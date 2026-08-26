@@ -303,7 +303,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [verify-ci, version-bump, build]
     outputs:
-      image: ${{ steps.resolve_image.outputs.image }}
       digest: ${{ steps.resolve_image.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
@@ -410,16 +409,20 @@ jobs:
           BASE_SHA: ${{ needs.verify-ci.outputs.base_sha }}
           RELEASE_SHA: ${{ needs.version-bump.outputs.source_sha }}
           VERSION: ${{ needs.version-bump.outputs.version }}
-          IMAGE: ${{ needs.merge.outputs.image }}
+          IMAGE_DIGEST: ${{ needs.merge.outputs.digest }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import hashlib
           import json
           import os
+          import re
           from pathlib import Path
 
           version = os.environ["VERSION"]
+          digest = os.environ["IMAGE_DIGEST"]
+          if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+              raise SystemExit("release image digest is invalid")
           files = ("docker-compose.yml", "docker-compose.override.yml")
           payload = {
               "schema": 1,
@@ -427,7 +430,7 @@ jobs:
               "source_ref": f"v{version}",
               "source_sha": os.environ["BASE_SHA"],
               "release_sha": os.environ["RELEASE_SHA"],
-              "image": os.environ["IMAGE"],
+              "image": f"thvysy44/trek-fork@{digest}",
               "compose_sha256": {
                   name: hashlib.sha256(Path(name).read_bytes()).hexdigest()
                   for name in files
