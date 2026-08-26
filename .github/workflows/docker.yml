@@ -303,8 +303,6 @@ jobs:
     needs: [verify-ci, version-bump, build]
     outputs:
       digest: ${{ steps.resolve_image.outputs.digest }}
-      image: ${{ steps.resolve_image.outputs.image }}
-      candidate_tag: ${{ steps.resolve_image.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -383,7 +381,7 @@ jobs:
 
       - name: Verify candidate digest is unchanged
         env:
-          CANDIDATE: ${{ needs.merge.outputs.candidate_tag }}
+          CANDIDATE: thvysy44/trek-fork:release-${{ github.run_id }}-${{ needs.version-bump.outputs.version }}
           EXPECTED_DIGEST: ${{ needs.merge.outputs.digest }}
         run: |
           set -euo pipefail
@@ -431,7 +429,6 @@ jobs:
     if: needs.version-bump.outputs.already_released != 'true'
     outputs:
       digest: ${{ steps.publish_image.outputs.digest }}
-      image: ${{ steps.publish_image.outputs.image }}
     permissions:
       contents: read
     steps:
@@ -446,7 +443,7 @@ jobs:
         id: publish_image
         env:
           VERSION: ${{ needs.version-bump.outputs.version }}
-          SOURCE_IMAGE: ${{ needs.merge.outputs.image }}
+          SOURCE_IMAGE: thvysy44/trek-fork@${{ needs.merge.outputs.digest }}
           EXPECTED_DIGEST: ${{ needs.merge.outputs.digest }}
         run: |
           set -euo pipefail
@@ -509,7 +506,7 @@ jobs:
       - name: Generate SBOM for released image
         uses: anchore/sbom-action@v0
         with:
-          image: ${{ needs.publish.outputs.image }}
+          image: thvysy44/trek-fork@${{ needs.publish.outputs.digest }}
           format: cyclonedx-json
           output-file: trek-${{ needs.version-bump.outputs.version }}-sbom.cdx.json
           upload-artifact: false
