@@ -9,7 +9,7 @@ from pathlib import Path
 SCRIPTS = Path(__file__).parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from trek_deploy_poller import PromotionPoller, load_config
+from trek_deploy_poller import GITHUB_API_BASE, DEFAULT_REPO_URL, PromotionPoller, load_config
 from trek_promotion import COMPOSE_FILES, PromotionError
 
 
@@ -63,7 +63,7 @@ class PollerTest(unittest.TestCase):
                 json.dumps(
                     {
                         "agent_config": str(root / "agent.json"),
-                        "repo_url": "https://github.com/syangv/TREK.git",
+                        "repo_url": "https://github.com/syyangv/TREK.git",
                         "repo_dir": str(root / "repo"),
                         "state_path": str(root / "state.json"),
                         "lock_path": str(root / "lock"),
@@ -76,6 +76,8 @@ class PollerTest(unittest.TestCase):
 
             self.assertTrue(config.dry_run)
             self.assertEqual(config.promotion_ref, "refs/heads/deploy/production")
+            self.assertEqual(DEFAULT_REPO_URL, "https://github.com/syyangv/TREK.git")
+            self.assertEqual(GITHUB_API_BASE, "https://api.github.com/repos/syyangv/TREK")
 
             invalid = json.loads(config_path.read_text())
             invalid["promotion_ref"] = "refs/heads/main"

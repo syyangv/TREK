@@ -36,14 +36,14 @@ from trek_promotion import (
     validate_release_provenance,
 )
 
-DEFAULT_REPO_URL = "https://github.com/syangv/TREK.git"
+DEFAULT_REPO_URL = "https://github.com/syyangv/TREK.git"
 DEFAULT_PROMOTION_PATH = "promotion.json"
 DEFAULT_POLL_INTERVAL_SECONDS = 60
 MIN_POLL_INTERVAL_SECONDS = 15
 MAX_PROMOTION_BYTES = 16 * 1024
 MAX_API_BYTES = 256 * 1024
 STATE_SCHEMA = 1
-GITHUB_API_BASE = "https://api.github.com/repos/syangv/TREK"
+GITHUB_API_BASE = "https://api.github.com/repos/syyangv/TREK"
 REQUIRED_WORKFLOWS = frozenset(("CI", "Security Scan"))
 
 

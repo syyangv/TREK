@@ -45,7 +45,7 @@ install -m 700 "$repo_root/scripts/trek_deploy_poller.py" "$install_root/trek_de
 
 if [[ ! -f "$config" ]]; then
   AGENT_CONFIG="$agent_config" \
-  REPO_URL="${TREK_PROMOTION_REPO_URL:-https://github.com/syangv/TREK.git}" \
+REPO_URL="${TREK_PROMOTION_REPO_URL:-https://github.com/syyangv/TREK.git}" \
   PROMOTION_REF="${TREK_PROMOTION_REF:-refs/heads/deploy/production}" \
   PROMOTION_PATH="${TREK_PROMOTION_PATH:-promotion.json}" \
   REPO_DIR="${TREK_PROMOTION_REPO_DIR:-$agent_state_root/promotion-repo}" \
