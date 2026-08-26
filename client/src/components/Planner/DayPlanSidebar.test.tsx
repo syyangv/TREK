@@ -276,6 +276,50 @@ describe('DayPlanSidebar', () => {
     expect(screen.getByText('Future stop')).toBeInTheDocument()
   })
 
+  it('FE-PLANNER-DAYPLAN-006c: migrates legacy expanded state so passed days start folded', () => {
+    const pastPlace = buildPlace({ name: 'Legacy past stop' })
+    const todayPlace = buildPlace({ name: 'Legacy today stop' })
+    const pastDay = buildDay({ id: 10, date: '2025-04-30', title: 'Past day' })
+    const today = buildDay({ id: 11, date: '2025-05-01', title: 'Today' })
+    // Before the past-day default existed, this snapshot was commonly saved
+    // with every day expanded.
+    localStorage.setItem('day-expanded-1', JSON.stringify([pastDay.id, today.id]))
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [pastDay, today],
+      places: [pastPlace, todayPlace],
+      assignments: {
+        '10': [buildAssignment({ id: 101, day_id: 10, order_index: 0, place: pastPlace })],
+        '11': [buildAssignment({ id: 102, day_id: 11, order_index: 0, place: todayPlace })],
+      },
+    })} />)
+
+    expect(screen.queryByText('Legacy past stop')).not.toBeInTheDocument()
+    expect(screen.getByText('Legacy today stop')).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('day-expanded-1') || '[]')).toEqual([today.id])
+  })
+
+  it('FE-PLANNER-DAYPLAN-006d: applies the folded default after days hydrate asynchronously', async () => {
+    const pastPlace = buildPlace({ name: 'Hydrated past stop' })
+    const todayPlace = buildPlace({ name: 'Hydrated today stop' })
+    const pastDay = buildDay({ id: 10, date: '2025-04-30', title: 'Past day' })
+    const today = buildDay({ id: 11, date: '2025-05-01', title: 'Today' })
+    localStorage.setItem('day-expanded-1', JSON.stringify([pastDay.id, today.id]))
+
+    const { rerender } = render(<DayPlanSidebar {...makeDefaultProps()} />)
+    rerender(<DayPlanSidebar {...makeDefaultProps({
+      days: [pastDay, today],
+      places: [pastPlace, todayPlace],
+      assignments: {
+        '10': [buildAssignment({ id: 101, day_id: 10, order_index: 0, place: pastPlace })],
+        '11': [buildAssignment({ id: 102, day_id: 11, order_index: 0, place: todayPlace })],
+      },
+    })} />)
+
+    await waitFor(() => expect(screen.queryByText('Hydrated past stop')).not.toBeInTheDocument())
+    expect(screen.getByText('Hydrated today stop')).toBeInTheDocument()
+  })
+
   it('FE-PLANNER-DAYPLAN-007: clicking chevron collapses that day', async () => {
     const user = userEvent.setup()
     const place = buildPlace({ name: 'Eiffel Tower' })

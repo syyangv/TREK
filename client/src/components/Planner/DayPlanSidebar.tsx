@@ -50,6 +50,12 @@ function isPastDay(day: Pick<Day, 'date'>): boolean {
   return date < new Date().toISOString().slice(0, 10)
 }
 
+// Expansion state predates the past-day default. Keep the migration marker
+// separate from the user's actual choices so an old "all expanded" snapshot
+// is normalized once, while later manual expand/collapse choices remain
+// persistent.
+const PAST_DAY_EXPANSION_DEFAULT_VERSION = 'past-days-collapsed-v1'
+
 interface DayPlanSidebarProps {
   tripId: number
   trip: Trip
@@ -172,10 +178,23 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
 
   const { noteUi, setNoteUi, noteInputRef, dayNotes, openAddNote: _openAddNote, openEditNote: _openEditNote, cancelNote, saveNote, deleteNote: _deleteNote, moveNote: _moveNote } = useDayNotes(tripId)
 
+  const pastDayDefaultsAppliedRef = useRef(false)
+  const pastDayDefaultsVersionKey = `day-expanded-defaults-${tripId}`
   const [expandedDays, setExpandedDays] = useState(() => {
     try {
       const saved = localStorage.getItem(`day-expanded-${tripId}`)
-      if (saved) return new Set<number>(JSON.parse(saved) as number[])
+      const defaultsApplied = localStorage.getItem(pastDayDefaultsVersionKey) === PAST_DAY_EXPANSION_DEFAULT_VERSION
+      if (defaultsApplied) {
+        pastDayDefaultsAppliedRef.current = true
+        if (saved) return new Set<number>(JSON.parse(saved) as number[])
+      } else if (saved) {
+        // Existing users may have a persisted pre-feature snapshot with every
+        // day expanded. Normalize the days already available on first mount;
+        // the effect below covers trips whose days hydrate asynchronously.
+        const expanded = new Set<number>(JSON.parse(saved) as number[])
+        days.forEach(day => { if (isPastDay(day)) expanded.delete(day.id) })
+        return expanded
+      }
     } catch {}
     return new Set<number>(days.filter(d => !isPastDay(d)).map(d => d.id))
   })
@@ -287,17 +306,36 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
   // days stay folded when the trip arrives asynchronously after the first render.
   const prevDayCount = React.useRef(days.length)
   useEffect(() => {
-    if (days.length > prevDayCount.current) {
-      // New days added — expand only those
-      setExpandedDays(prev => {
-        const n = new Set(prev)
-        days.forEach(d => { if (!prev.has(d.id) && !isPastDay(d)) n.add(d.id) })
-        try { localStorage.setItem(`day-expanded-${tripId}`, JSON.stringify([...n])) } catch {}
-        return n
-      })
+    if (days.length === 0) return
+
+    const applyPastDayDefaults = !pastDayDefaultsAppliedRef.current
+    const hasNewDays = days.length > prevDayCount.current
+    if (!applyPastDayDefaults && !hasNewDays) {
+      prevDayCount.current = days.length
+      return
     }
+
+    // Apply the new default exactly once per mounted planner. This handles
+    // both legacy localStorage and the initial async trip hydration, without
+    // collapsing a past day again after the user explicitly re-expands it.
+    if (applyPastDayDefaults) pastDayDefaultsAppliedRef.current = true
+    setExpandedDays(prev => {
+      const n = new Set(prev)
+      if (applyPastDayDefaults) {
+        days.forEach(day => { if (isPastDay(day)) n.delete(day.id) })
+      }
+      if (hasNewDays) {
+        // New days added — expand only upcoming days.
+        days.forEach(day => { if (!prev.has(day.id) && !isPastDay(day)) n.add(day.id) })
+      }
+      try {
+        localStorage.setItem(`day-expanded-${tripId}`, JSON.stringify([...n]))
+        if (applyPastDayDefaults) localStorage.setItem(pastDayDefaultsVersionKey, PAST_DAY_EXPANSION_DEFAULT_VERSION)
+      } catch {}
+      return n
+    })
     prevDayCount.current = days.length
-  }, [days.length, tripId])
+  }, [days, pastDayDefaultsVersionKey, tripId])
 
   useEffect(() => {
     if (editingDayId && inputRef.current) inputRef.current.focus()
