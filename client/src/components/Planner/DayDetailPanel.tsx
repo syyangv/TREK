@@ -363,7 +363,11 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
                             aria-label={t('dayplan.timeSlot')}
                             title={t('dayplan.timeSlot')}
                             className="text-content-faint"
-                            style={{ flexShrink: 0, border: 'none', background: 'none', padding: 2, cursor: 'pointer', display: 'flex' }}
+                            style={{
+                              flexShrink: 0, border: 'none', background: 'none', padding: 2,
+                              minWidth: 44, minHeight: 44, cursor: 'pointer', display: 'grid', placeItems: 'center',
+                              touchAction: 'manipulation',
+                            }}
                           >
                             <Clock size={12} strokeWidth={1.8} />
                           </button>

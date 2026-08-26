@@ -1,4 +1,4 @@
-// FE-PLANNER-DAYPLAN-001 to FE-PLANNER-DAYPLAN-114
+// FE-PLANNER-DAYPLAN-001 to FE-PLANNER-DAYPLAN-119
 import { render, screen, waitFor, fireEvent, within } from '../../../tests/helpers/render'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
@@ -2255,5 +2255,136 @@ describe('DayPlanSidebar', () => {
     await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith('Save failed'))
     // The editor stays open so the planner can retry rather than lose the edit.
     expect(screen.getByRole('dialog', { name: 'Time slot' })).toBeInTheDocument()
+  })
+
+  // ── Time Slot reach on touch devices (#42) ───────────────────────────────
+
+  it('FE-PLANNER-DAYPLAN-115: on a phone viewport the Assignment row Time Slot affordance opens by tap', async () => {
+    // Touch devices cannot produce a context-menu gesture, so the affordance must
+    // stand on its own — no right-click, no long press.
+    const user = userEvent.setup()
+    const place = buildPlace({ id: 1, name: 'Palace of Fine Arts' })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const assignment = buildAssignment({ id: 11, day_id: 10, order_index: 0, place })
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places: [place], assignments: { '10': [assignment] }, isMobile: true, isTouch: true,
+    })} />)
+
+    await user.click(screen.getByRole('button', { name: 'Time slot' }))
+
+    const editor = screen.getByRole('dialog', { name: 'Time slot' })
+    expect(within(editor).getByText('Start')).toBeInTheDocument()
+    expect(within(editor).getByText('End')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-116: on a phone viewport a Time Slot can be set, edited and cleared', async () => {
+    const user = userEvent.setup()
+    const { assignmentsApi } = await import('../../api/client')
+    const place = buildPlace({ id: 1, name: 'Palace of Fine Arts' })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const assignment = buildAssignment({ id: 11, day_id: 10, order_index: 0, place })
+    seedStore(useTripStore, { assignments: { '10': [assignment] } })
+    const mobileProps = makeDefaultProps({ days: [day], places: [place], isMobile: true, isTouch: true })
+    render(<StoreBackedSidebar {...mobileProps} />)
+
+    // Set
+    await user.click(screen.getByRole('button', { name: 'Time slot' }))
+    await user.type(screen.getAllByTestId('time-picker')[0], '14:00')
+    await user.type(screen.getAllByTestId('time-picker')[1], '16:00')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect((assignmentsApi as any).updateTime).toHaveBeenCalledWith(
+      1, 11, { place_time: '14:00', end_time: '16:00' },
+    ))
+    expect(await screen.findByText('14:00 – 16:00')).toBeInTheDocument()
+
+    // Edit
+    await user.click(screen.getByRole('button', { name: 'Time slot' }))
+    await user.clear(screen.getAllByTestId('time-picker')[1])
+    await user.type(screen.getAllByTestId('time-picker')[1], '17:30')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect((assignmentsApi as any).updateTime).toHaveBeenCalledWith(
+      1, 11, { place_time: '14:00', end_time: '17:30' },
+    ))
+    expect(await screen.findByText('14:00 – 17:30')).toBeInTheDocument()
+
+    // Clear — the Assignment stays on its day, just untimed.
+    await user.click(screen.getByRole('button', { name: 'Time slot' }))
+    await user.click(screen.getByRole('button', { name: 'Clear' }))
+    await waitFor(() => expect((assignmentsApi as any).updateTime).toHaveBeenCalledWith(
+      1, 11, { place_time: null, end_time: null },
+    ))
+    await waitFor(() => expect(screen.queryByText('14:00 – 17:30')).not.toBeInTheDocument())
+    expect(screen.getByText('Palace of Fine Arts')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-117: a Time Slot set on a phone viewport writes the Assignment override, never the Place default', async () => {
+    const user = userEvent.setup()
+    const { assignmentsApi } = await import('../../api/client')
+    let placeWrites = 0
+    server.use(http.put('/api/trips/1/places/:placeId', () => { placeWrites += 1; return HttpResponse.json({}) }))
+    const place = buildPlace({ id: 1, name: 'Palace of Fine Arts' })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const assignment = buildAssignment({ id: 11, day_id: 10, order_index: 0, place })
+    seedStore(useTripStore, { assignments: { '10': [assignment] } })
+    render(<StoreBackedSidebar {...makeDefaultProps({ days: [day], places: [place], isMobile: true, isTouch: true })} />)
+
+    await user.click(screen.getByRole('button', { name: 'Time slot' }))
+    await user.type(screen.getAllByTestId('time-picker')[0], '14:00')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect((assignmentsApi as any).updateTime).toHaveBeenCalledWith(
+      1, 11, { place_time: '14:00', end_time: null },
+    ))
+    // The same Place on another Day must keep its own Time Slot, so the Place's own
+    // default time is never touched from a day context.
+    expect(placeWrites).toBe(0)
+  })
+
+  it('FE-PLANNER-DAYPLAN-118: the phone editor carries the same two warnings as the desktop one', async () => {
+    const user = userEvent.setup()
+    const place = buildPlace({ id: 1, name: 'Palace of Fine Arts', place_time: '14:00' })
+    const other = buildPlace({ id: 2, name: 'Morella', place_time: '13:00', end_time: '15:00' })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const a1 = buildAssignment({ id: 11, day_id: 10, order_index: 0, place })
+    const a2 = buildAssignment({ id: 12, day_id: 10, order_index: 1, place: other })
+    seedStore(useTripStore, { assignments: { '10': [a1, a2] } })
+    render(<StoreBackedSidebar {...makeDefaultProps({ days: [day], places: [place, other], isMobile: true, isTouch: true })} />)
+
+    // Rows read in Time Slot order, so scope to the row rather than trusting position.
+    const row = screen.getByText('Palace of Fine Arts').closest('.dp-row') as HTMLElement
+    await user.click(within(row).getByRole('button', { name: 'Time slot' }))
+    // 14:00 – 13:30 is both backwards and overlapping Morella's 13:00 – 15:00.
+    await user.type(screen.getAllByTestId('time-picker')[1], '13:30')
+
+    expect(screen.getByText('End time is before start time')).toBeInTheDocument()
+    expect(screen.getByText(/Time overlap with:/)).toBeInTheDocument()
+    // Both stay warnings on touch too — Save is still there.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+  })
+
+  it('FE-PLANNER-DAYPLAN-119: on a phone viewport a viewer without day-edit sees the Time Slot but no affordance', () => {
+    mockPermissions.can = (action: string) => action !== 'day_edit'
+    const place = buildPlace({ id: 1, name: 'Palace of Fine Arts', place_time: '14:00', end_time: '16:00' })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const assignment = buildAssignment({ id: 11, day_id: 10, order_index: 0, place })
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places: [place], assignments: { '10': [assignment] }, isMobile: true, isTouch: true,
+    })} />)
+
+    expect(screen.getByText('14:00 – 16:00')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Time slot' })).not.toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-120: the phone Time Slot affordance has an explicit accessible 44px tap target', () => {
+    const place = buildPlace({ id: 1, name: 'Palace of Fine Arts' })
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const assignment = buildAssignment({ id: 11, day_id: 10, order_index: 0, place })
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day], places: [place], assignments: { '10': [assignment] }, isMobile: true, isTouch: true,
+    })} />)
+
+    const affordance = screen.getByRole('button', { name: 'Time slot' })
+    expect(affordance).toHaveAttribute('aria-label', 'Time slot')
+    expect(affordance).toHaveStyle({ width: '44px', height: '44px', touchAction: 'manipulation' })
   })
 })

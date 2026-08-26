@@ -2000,12 +2000,20 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                                   })
                                 }}
                                 title={t('dayplan.timeSlot')}
+                                aria-label={t('dayplan.timeSlot')}
                                 className="bg-transparent text-content-faint"
                                 style={{
                                   flexShrink: 0, appearance: 'none',
-                                  width: 20, height: 20, borderRadius: 4,
+                                  // Keep the compact desktop control, but give coarse/mobile
+                                  // pointers a real tap target (#42).
+                                  width: dragDisabled ? 44 : 20,
+                                  height: dragDisabled ? 44 : 20,
+                                  minWidth: dragDisabled ? 44 : 20,
+                                  minHeight: dragDisabled ? 44 : 20,
+                                  borderRadius: 4,
                                   display: 'grid', placeItems: 'center', cursor: 'pointer',
                                   border: 'none',
+                                  touchAction: 'manipulation',
                                   transition: 'color 120ms cubic-bezier(0.23,1,0.32,1)',
                                 }}
                                 onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)' }}
