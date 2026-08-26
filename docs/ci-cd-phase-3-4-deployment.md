@@ -8,6 +8,12 @@ rollback after GitHub Environment approval. Stable `3.5.0` is deployed and
 healthy; rollback validation remains pending a second known-good stable
 production release.
 
+**Commit-driven migration status:** The outbound promotion poller and promotion
+record tooling are now implemented, but are not production-enabled by this
+repository change. The existing GitHub deployment workflow remains the
+break-glass path until the protection, shadow, staging, and rollback gates below
+are completed on the deployment host.
+
 Secrets must never be written to source control or workflow logs.
 
 ## Architecture
@@ -45,6 +51,97 @@ from `syyangv/TREK`, validates the resolved image digest, runs fixed Docker
 commands without a shell, verifies the running container identity, and performs
 a local health check before advancing the environment's current-release marker.
 A failed deployment restores the prior complete release when one exists.
+
+## Recommended commit-driven production path
+
+The target path moves only the final deployment execution off GitHub Actions.
+GitHub Actions remains responsible for CI, security scanning, multi-architecture
+image publication, SBOMs, and GitHub Releases. A production-host LaunchAgent
+polls a protected `deploy/production` branch and invokes the local agent only
+after verifying a signed promotion commit:
+
+```text
+normal application commit/push
+        |
+        v
+main -> CI + Security Scan -> stable immutable release
+                                      |
+                         signed promotion.json commit
+                         pushed to deploy/production
+                                      |
+                                      v
+                    production LaunchAgent (outbound poll)
+                    -> verify signed commit and release tag
+                    -> verify Compose hashes and fast-forward
+                    -> deploy locally by immutable digest
+                    -> verify container identity and /api/health
+```
+
+The promotion branch contains only `promotion.json`. It is not a source
+checkout and must be protected separately from `main`. The record binds the
+environment, action, release version/tag, gated `main` SHA, generated release
+SHA, immutable Docker image digest, both Compose SHA-256 hashes, and promotion
+timestamp. It never contains credentials. Create it with:
+
+```bash
+python3 scripts/trek_promote.py create \
+  --environment production \
+  --action deploy \
+  --version 3.5.15 \
+  --source-sha <gated-main-sha> \
+  --release-sha <generated-release-sha> \
+  --image thvysy44/trek-fork@sha256:<64-lowercase-hex-digits> \
+  --output promotion.json
+git add promotion.json
+git commit -S -m "promote TREK 3.5.15 to production"
+git push origin HEAD:deploy/production
+```
+
+The command does not commit or push for the caller. The release approver must
+review the generated record and sign the commit with the SSH signing key whose
+public key is installed in the production poller's allowed-signers file.
+Never force-push or move an existing promotion commit to change its meaning;
+rollback is a new signed commit targeting the older immutable release.
+
+### Poller installation and migration gates
+
+Install the poller only after the existing local deployment agent is healthy:
+
+```bash
+./scripts/install_trek_deploy_poller.sh
+```
+
+The installer creates a separate `com.syang.trek-deploy-poller` LaunchAgent and
+starts it with `dry_run: true`. It uses a bare Git repository under the agent's
+state directory, never checks out promotion contents, verifies SSH-signed
+commits with `git verify-commit`, and keeps a locked, atomically-written state
+file. It performs no inbound network serving and does not use the HMAC endpoint.
+
+Before changing `dry_run` to `false`:
+
+1. Protect `deploy/production`: no force pushes/deletions, fast-forward-only,
+   designated release reviewers, and signed commits required by policy.
+2. Restore and verify the documented `main`, `staging`, and `production`
+   protection rules; do not assume the GitHub UI state matches this document.
+3. Create an owner-readable allowed-signers file on the host and verify a
+   signed sample promotion in poller dry-run mode.
+4. Run the poller in shadow mode across at least two stable releases and test
+   missing checks, moved tags, wrong digests, wrong Compose hashes, rewritten
+   promotion history, and network outages.
+5. Bootstrap the current already-deployed promotion explicitly in
+   `poller.json`; the first live poll must not deploy an unreviewed historical
+   record.
+6. Validate staging, persistent SQLite/uploads mounts, app health, PWA update
+   prompt/cache advancement, and a two-release rollback drill.
+7. Enable production polling with a human-signed promotion commit. Retain
+   `deploy-production.yml` as a restricted break-glass path for one soak cycle,
+   then retire its tailnet/HMAC credentials only after successful verification.
+
+The implementation is split across `scripts/trek_promotion.py`,
+`scripts/trek_promote.py`, `scripts/trek_deploy_poller.py`, and
+`scripts/install_trek_deploy_poller.sh`. The existing
+`scripts/trek_deploy_agent.py` remains the single fixed Docker/health/recovery
+implementation used by both the break-glass HTTP path and the local poller.
 
 ## Local agent installation
 

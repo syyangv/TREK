@@ -41,6 +41,7 @@ jobs:
       contents: read
     outputs:
       release_ref: ${{ steps.resolve.outputs.release_ref }}
+      base_sha: ${{ steps.resolve.outputs.release_ref }}
     steps:
       - name: Resolve release ref
         id: resolve
@@ -301,6 +302,9 @@ jobs:
   merge:
     runs-on: ubuntu-latest
     needs: [verify-ci, version-bump, build]
+    outputs:
+      image: ${{ steps.resolve_image.outputs.image }}
+      digest: ${{ steps.resolve_image.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -334,6 +338,18 @@ jobs:
 
       - name: Inspect manifest
         run: docker buildx imagetools inspect thvysy44/trek-fork:latest
+
+      - name: Resolve immutable image digest
+        id: resolve_image
+        env:
+          VERSION: ${{ needs.version-bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          IMAGE="thvysy44/trek-fork:${VERSION}"
+          DIGEST="$(docker buildx imagetools inspect "$IMAGE" --format '{{json .}}' | jq -er '.manifest.digest')"
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "image=thvysy44/trek-fork@$DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Export release manifest metadata
         run: |
@@ -389,6 +405,40 @@ jobs:
         with:
           name: trek-${{ needs.version-bump.outputs.version }}-manifest
 
+      - name: Create release provenance record
+        env:
+          BASE_SHA: ${{ needs.verify-ci.outputs.base_sha }}
+          RELEASE_SHA: ${{ needs.version-bump.outputs.source_sha }}
+          VERSION: ${{ needs.version-bump.outputs.version }}
+          IMAGE: ${{ needs.merge.outputs.image }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          files = ("docker-compose.yml", "docker-compose.override.yml")
+          payload = {
+              "schema": 1,
+              "version": version,
+              "source_ref": f"v{version}",
+              "source_sha": os.environ["BASE_SHA"],
+              "release_sha": os.environ["RELEASE_SHA"],
+              "image": os.environ["IMAGE"],
+              "compose_sha256": {
+                  name: hashlib.sha256(Path(name).read_bytes()).hexdigest()
+                  for name in files
+              },
+          }
+          Path(f"trek-{version}-release.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@v4
         with:
@@ -409,7 +459,8 @@ jobs:
               --repo "${GITHUB_REPOSITORY}" \
               --clobber \
               "trek-${VERSION}-sbom.cdx.json#SBOM (CycloneDX)" \
-              "trek-${VERSION}-manifest.json#Multi-arch image manifest"
+              "trek-${VERSION}-manifest.json#Multi-arch image manifest" \
+              "trek-${VERSION}-release.json#Release provenance"
           else
             gh release create "v${VERSION}" \
               --repo "${GITHUB_REPOSITORY}" \
@@ -418,7 +469,8 @@ jobs:
               --draft \
               --generate-notes \
               "trek-${VERSION}-sbom.cdx.json#SBOM (CycloneDX)" \
-              "trek-${VERSION}-manifest.json#Multi-arch image manifest"
+              "trek-${VERSION}-manifest.json#Multi-arch image manifest" \
+              "trek-${VERSION}-release.json#Release provenance"
           fi
 
           TARGET="$(gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" --json targetCommitish --jq .targetCommitish)"

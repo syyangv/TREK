@@ -35,6 +35,8 @@ REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 MAX_BODY = 16 * 1024
 MAX_COMPOSE = 1024 * 1024
 AUTH_WINDOW_SECONDS = 300
+COMPOSE_FILES = ("docker-compose.yml", "docker-compose.override.yml")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class DeployError(RuntimeError):
@@ -241,8 +243,21 @@ class Agent:
         except (urllib.error.URLError, TimeoutError) as exc:
             raise DeployError("local health check failed") from exc
 
-    def deploy(self, payload: dict[str, Any]) -> dict[str, str]:
+    def deploy(
+        self,
+        payload: dict[str, Any],
+        *,
+        expected_compose_hashes: dict[str, str] | None = None,
+    ) -> dict[str, str]:
         request = self.validate_request(payload)
+        if expected_compose_hashes is not None and (
+            set(expected_compose_hashes) != set(COMPOSE_FILES)
+            or not all(
+                isinstance(value, str) and SHA256_RE.fullmatch(value)
+                for value in expected_compose_hashes.values()
+            )
+        ):
+            raise DeployError("expected Compose hashes are invalid")
         if not self._lock.acquire(blocking=False):
             raise DeployError("another deployment is already running")
         try:
@@ -256,10 +271,12 @@ class Agent:
             previous = self._current_target(environment)
             release_dir.mkdir(mode=0o700)
             try:
-                (release_dir / "docker-compose.yml").write_bytes(self._fetch(request["source_ref"], "docker-compose.yml"))
-                (release_dir / "docker-compose.override.yml").write_bytes(
-                    self._fetch(request["source_ref"], "docker-compose.override.yml")
-                )
+                for filename in COMPOSE_FILES:
+                    compose_bytes = self._fetch(request["source_ref"], filename)
+                    expected_hash = expected_compose_hashes.get(filename) if expected_compose_hashes else None
+                    if expected_hash and hashlib.sha256(compose_bytes).hexdigest() != expected_hash:
+                        raise DeployError(f"{filename} does not match the promoted Compose hash")
+                    (release_dir / filename).write_bytes(compose_bytes)
                 metadata = {key: request[key] for key in ("environment", "action", "version", "source_ref", "image", "request_id")}
                 (release_dir / "metadata.json").write_text(json.dumps(metadata, sort_keys=True) + "\n")
                 self._deploy_release(release_dir, request["image"])

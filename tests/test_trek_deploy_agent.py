@@ -101,6 +101,14 @@ class AgentTest(unittest.TestCase):
         assert current
         self.assertEqual(current[1], request["image"])
 
+    def test_deploy_rejects_compose_hash_mismatch(self) -> None:
+        request = self.request()
+        self.agent._fetch = lambda _ref, filename: f"# {filename}\n".encode()  # type: ignore[method-assign]
+        expected = {filename: "0" * 64 for filename in agent_module.COMPOSE_FILES}
+
+        with self.assertRaisesRegex(agent_module.DeployError, "Compose hash"):
+            self.agent.deploy(request, expected_compose_hashes=expected)
+
     def test_failed_release_does_not_advance_current(self) -> None:
         request = self.request()
         self.agent._fetch = lambda _ref, filename: f"# {filename}\n".encode()  # type: ignore[method-assign]
