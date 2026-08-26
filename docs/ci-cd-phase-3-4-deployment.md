@@ -3,16 +3,16 @@
 **Implementation status:** Phase 3 staging validation is complete. The original
 validation used pinned SSH over Tailscale, but the maintained deployment path now
 uses a restricted local deployment agent and does not permit remote shell access.
-Phase 4 uses the same agent for stable production deployments and explicit
-rollback after GitHub Environment approval. Stable `3.5.0` is deployed and
-healthy; rollback validation remains pending a second known-good stable
-production release.
+Production is currently healthy on `v3.5.16` through the commit-driven poller;
+the stable `v3.5.0` material below is retained as historical evidence.
 
 **Commit-driven migration status:** The outbound promotion poller and promotion
-record tooling are now implemented, but are not production-enabled by this
-repository change. The existing GitHub deployment workflow remains the
-break-glass path until the protection, shadow, staging, and rollback gates below
-are completed on the deployment host.
+record tooling are production-enabled. The protected `deploy/production` branch
+requires signed, linear, non-rewritable history, and promotion `edf6faae` has
+deployed `v3.5.16` successfully. GitHub Actions remains responsible for CI,
+security, image publication, and release provenance. The existing GitHub
+deployment workflow is break-glass only until the shadow, rollback, and soak
+gates below are completed.
 
 Secrets must never be written to source control or workflow logs.
 
@@ -117,7 +117,8 @@ state directory, never checks out promotion contents, verifies SSH-signed
 commits with `git verify-commit`, and keeps a locked, atomically-written state
 file. It performs no inbound network serving and does not use the HMAC endpoint.
 
-Before changing `dry_run` to `false`:
+The poller is now live with `dry_run: false`. The remaining gates below are
+required before retiring the break-glass workflow and its credentials:
 
 1. Protect `deploy/production`: no force pushes/deletions, fast-forward-only,
    designated release reviewers, and signed commits required by policy.
@@ -214,8 +215,8 @@ Tailscale connectivity, Compose deployment, container identity, and health.
 ## Production (Phase 4)
 
 `.github/workflows/deploy-production.yml` is manual-only and targets the
-`production` GitHub Environment. Required reviewers must approve the job before
-it receives Environment secrets or contacts the deployment agent.
+`production` GitHub Environment. It is retained as break-glass while the poller
+soak and rollback gates are completed; it is not the normal production path.
 
 Inputs:
 
@@ -236,7 +237,7 @@ selected older stable version rather than executing arbitrary rollback commands.
 - Recorded agent release: `releases/run-29701278056-1`
 - Running container digest and both Docker/application health checks passed.
 
-## Validation checklist
+## Historical validation checklist
 
 - [x] Install the local agent and verify its localhost health endpoint.
 - [x] Add `TREK_DEPLOY_TOKEN` to `staging` and `production`.
@@ -251,6 +252,18 @@ selected older stable version rather than executing arbitrary rollback commands.
 - [x] Approve and run the production deployment for `3.5.0`.
 - [ ] Identify and exercise a prior known-good stable rollback version.
 
-If no prior stable production deployment exists, rollback cannot be marked
-complete until two known-good stable releases exist and the older version has
-been exercised successfully.
+The original HTTP/Tailscale checklist above is historical. Its rollback item
+does not describe the current poller state.
+
+## Commit-driven migration checklist
+
+- [x] Protect `deploy/production` against force-push and deletion and require
+  signed linear history.
+- [x] Install and enable the outbound poller in production.
+- [x] Promote `v3.5.16` through a signed fast-forward promotion.
+- [x] Verify the live digest, poller state, and `/api/health` agree.
+- [ ] Exercise a second stable promotion and a signed rollback/re-forward.
+- [ ] Complete persistence, uploads, PWA update, outage, and failed-candidate
+  drills.
+- [ ] Retire the break-glass workflow and production-only HMAC/Tailscale path
+  after the soak cycle.

@@ -303,6 +303,8 @@ jobs:
     needs: [verify-ci, version-bump, build]
     outputs:
       digest: ${{ steps.resolve_image.outputs.digest }}
+      image: ${{ steps.resolve_image.outputs.image }}
+      candidate_tag: ${{ steps.resolve_image.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -322,36 +324,150 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Create and push multi-arch manifest
+      - name: Create candidate multi-arch manifest
+        id: candidate
         working-directory: /tmp/digests
         run: |
+          set -euo pipefail
           VERSION="${{ needs.version-bump.outputs.version }}"
+          CANDIDATE="thvysy44/trek-fork:release-${GITHUB_RUN_ID}-${VERSION}"
           mapfile -t digests < <(printf 'thvysy44/trek-fork@sha256:%s\n' *)
+          docker buildx imagetools create -t "$CANDIDATE" "${digests[@]}"
+          echo "tag=$CANDIDATE" >> "$GITHUB_OUTPUT"
+
+      - name: Inspect manifest
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.tag }}
+        run: docker buildx imagetools inspect "$CANDIDATE"
+
+      - name: Resolve immutable image digest
+        id: resolve_image
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          DIGEST="$(docker buildx imagetools inspect "$CANDIDATE" --format '{{json .}}' | jq -er '.manifest.digest')"
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "image=thvysy44/trek-fork@$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "tag=$CANDIDATE" >> "$GITHUB_OUTPUT"
+
+      - name: Export candidate manifest metadata
+        run: |
+          VERSION="${{ needs.version-bump.outputs.version }}"
+          CANDIDATE="${{ steps.resolve_image.outputs.image }}"
+          docker buildx imagetools inspect --raw "$CANDIDATE" \
+            > "trek-${VERSION}-candidate-manifest.json"
+
+      - name: Upload candidate manifest metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: trek-${{ needs.version-bump.outputs.version }}-candidate-manifest
+          path: trek-${{ needs.version-bump.outputs.version }}-candidate-manifest.json
+          retention-days: 90
+
+  exact-artifact-gate:
+    name: Exact Artifact Gate
+    runs-on: ubuntu-latest
+    needs: [verify-ci, version-bump, merge]
+    if: needs.version-bump.outputs.already_released != 'true'
+    permissions:
+      contents: read
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Verify candidate digest is unchanged
+        env:
+          CANDIDATE: ${{ needs.merge.outputs.candidate_tag }}
+          EXPECTED_DIGEST: ${{ needs.merge.outputs.digest }}
+        run: |
+          set -euo pipefail
+          ACTUAL_DIGEST="$(docker buildx imagetools inspect "$CANDIDATE" --format '{{json .}}' | jq -er '.manifest.digest')"
+          [[ "$ACTUAL_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          if [ "$ACTUAL_DIGEST" != "$EXPECTED_DIGEST" ]; then
+            echo "::error::Candidate digest moved from $EXPECTED_DIGEST to $ACTUAL_DIGEST."
+            exit 1
+          fi
+
+      - name: Smoke-test exact amd64 digest
+        env:
+          IMAGE: ${{ needs.merge.outputs.image }}
+        run: |
+          set -euo pipefail
+          docker pull --platform linux/amd64 "$IMAGE"
+          docker run -d --name trek-release-smoke -p 3000:3000 \
+            -e ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000 \
+            "$IMAGE"
+          trap 'docker logs trek-release-smoke || true; docker rm -f trek-release-smoke || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:3000/api/health; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 30 ]; then
+              sleep 2
+            fi
+          done
+          echo "Exact release image did not become healthy in time."
+          exit 1
+
+      - name: Scan exact candidate digest
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: ${{ needs.merge.outputs.image }}
+          only-severities: critical,high
+          only-fixed: true
+          exit-code: true
+
+  publish:
+    name: Publish Verified Image
+    runs-on: ubuntu-latest
+    needs: [verify-ci, version-bump, merge, exact-artifact-gate]
+    if: needs.version-bump.outputs.already_released != 'true'
+    outputs:
+      digest: ${{ steps.publish_image.outputs.digest }}
+      image: ${{ steps.publish_image.outputs.image }}
+    permissions:
+      contents: read
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Publish final image tags
+        id: publish_image
+        env:
+          VERSION: ${{ needs.version-bump.outputs.version }}
+          SOURCE_IMAGE: ${{ needs.merge.outputs.image }}
+          EXPECTED_DIGEST: ${{ needs.merge.outputs.digest }}
+        run: |
+          set -euo pipefail
           MAJOR_TAG="$(echo "$VERSION" | cut -d. -f1)"
           docker buildx imagetools create \
             -t "thvysy44/trek-fork:latest" \
             -t "thvysy44/trek-fork:$MAJOR_TAG" \
             -t "thvysy44/trek-fork:$VERSION" \
-            "${digests[@]}"
+            "$SOURCE_IMAGE"
+          ACTUAL_DIGEST="$(docker buildx imagetools inspect "thvysy44/trek-fork:$VERSION" --format '{{json .}}' | jq -er '.manifest.digest')"
+          if [ "$ACTUAL_DIGEST" != "$EXPECTED_DIGEST" ]; then
+            echo "::error::Published digest $ACTUAL_DIGEST differs from candidate $EXPECTED_DIGEST."
+            exit 1
+          fi
+          echo "digest=$ACTUAL_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "image=thvysy44/trek-fork@$ACTUAL_DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Inspect manifest
-        run: docker buildx imagetools inspect thvysy44/trek-fork:latest
-
-      - name: Resolve immutable image digest
-        id: resolve_image
+      - name: Export release manifest metadata
         env:
           VERSION: ${{ needs.version-bump.outputs.version }}
         run: |
-          set -euo pipefail
-          IMAGE="thvysy44/trek-fork:${VERSION}"
-          DIGEST="$(docker buildx imagetools inspect "$IMAGE" --format '{{json .}}' | jq -er '.manifest.digest')"
-          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-          echo "image=thvysy44/trek-fork@$DIGEST" >> "$GITHUB_OUTPUT"
-
-      - name: Export release manifest metadata
-        run: |
-          VERSION="${{ needs.version-bump.outputs.version }}"
           docker buildx imagetools inspect --raw "thvysy44/trek-fork:${VERSION}" \
             > "trek-${VERSION}-manifest.json"
 
@@ -364,7 +480,7 @@ jobs:
 
   release-helm:
     runs-on: ubuntu-latest
-    needs: [verify-ci, version-bump, merge]
+    needs: [verify-ci, version-bump]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -380,7 +496,7 @@ jobs:
   release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
-    needs: [verify-ci, version-bump, merge, release-helm]
+    needs: [verify-ci, version-bump, publish]
     permissions:
       contents: write
       actions: read
@@ -393,7 +509,7 @@ jobs:
       - name: Generate SBOM for released image
         uses: anchore/sbom-action@v0
         with:
-          image: thvysy44/trek-fork:${{ needs.version-bump.outputs.version }}
+          image: ${{ needs.publish.outputs.image }}
           format: cyclonedx-json
           output-file: trek-${{ needs.version-bump.outputs.version }}-sbom.cdx.json
           upload-artifact: false
@@ -408,38 +524,15 @@ jobs:
           BASE_SHA: ${{ needs.verify-ci.outputs.base_sha }}
           RELEASE_SHA: ${{ needs.version-bump.outputs.source_sha }}
           VERSION: ${{ needs.version-bump.outputs.version }}
-          IMAGE_DIGEST: ${{ needs.merge.outputs.digest }}
+          IMAGE_DIGEST: ${{ needs.publish.outputs.digest }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import hashlib
-          import json
-          import os
-          import re
-          from pathlib import Path
-
-          version = os.environ["VERSION"]
-          digest = os.environ["IMAGE_DIGEST"]
-          if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
-              raise SystemExit("release image digest is invalid")
-          files = ("docker-compose.yml", "docker-compose.override.yml")
-          payload = {
-              "schema": 1,
-              "version": version,
-              "source_ref": f"v{version}",
-              "source_sha": os.environ["BASE_SHA"],
-              "release_sha": os.environ["RELEASE_SHA"],
-              "image": f"thvysy44/trek-fork@{digest}",
-              "compose_sha256": {
-                  name: hashlib.sha256(Path(name).read_bytes()).hexdigest()
-                  for name in files
-              },
-          }
-          Path(f"trek-{version}-release.json").write_text(
-              json.dumps(payload, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
-          PY
+          python3 scripts/trek_release_provenance.py \
+            --version "$VERSION" \
+            --source-sha "$BASE_SHA" \
+            --release-sha "$RELEASE_SHA" \
+            --image-digest "$IMAGE_DIGEST" \
+            --output "trek-${VERSION}-release.json"
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@v4

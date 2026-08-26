@@ -22,7 +22,11 @@ Server integration tests require a local listening socket; rerun outside the san
 
 ### Production release
 
-Merge to `main`, wait for CI, Security Scan, and the stable release, then deploy the verified version through `deploy-production.yml`.
+Merge to `main`, wait for CI, Security Scan, and the stable release, then
+create, review, sign, and push the verified promotion record to the protected
+`deploy/production` branch. The production-host poller performs the deployment
+and health verification. Keep `deploy-production.yml` only as the restricted
+break-glass path until the documented soak and rollback gates are complete.
 
 Production deployment requires environment approval and must finish with `/api/health` returning `{"status":"ok"}`.
 

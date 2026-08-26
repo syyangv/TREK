@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -9,7 +10,15 @@ from pathlib import Path
 SCRIPTS = Path(__file__).parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from trek_deploy_poller import GITHUB_API_BASE, DEFAULT_REPO_URL, PromotionPoller, load_config
+from trek_deploy_poller import (
+    DEFAULT_REPO_URL,
+    GITHUB_API_BASE,
+    GitPromotionSource,
+    PollerConfig,
+    PromotionPoller,
+    deployment_lock,
+    load_config,
+)
 from trek_promotion import COMPOSE_FILES, PromotionError
 
 
@@ -84,6 +93,111 @@ class PollerTest(unittest.TestCase):
             config_path.write_text(json.dumps(invalid))
             with self.assertRaisesRegex(PromotionError, "promotion_ref"):
                 load_config(config_path)
+
+    def test_git_promotion_source_fetches_promotion_from_a_bare_remote(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            remote = root / "remote.git"
+            repo = root / "poller.git"
+            subprocess.run(["git", "init", "--bare", "--quiet", str(remote)], check=True)
+            promotion_path = root / "promotion.json"
+            promotion_path.write_text(json.dumps(promotion_payload()))
+            blob = subprocess.check_output(
+                ["git", "--git-dir", str(remote), "hash-object", "-w", "--path=promotion.json", str(promotion_path)],
+                text=True,
+            ).strip()
+            tree = subprocess.run(
+                ["git", "--git-dir", str(remote), "mktree"],
+                input=f"100644 blob {blob}\tpromotion.json\n",
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            commit = subprocess.check_output(
+                ["git", "--git-dir", str(remote), "commit-tree", tree, "-m", "test promotion"],
+                text=True,
+            ).strip()
+            subprocess.run(
+                ["git", "--git-dir", str(remote), "update-ref", "refs/heads/deploy/production", commit],
+                check=True,
+            )
+            allowed_signers = root / "allowed_signers"
+            allowed_signers.write_text("test@example.com ssh-ed25519 AAAA\n")
+            allowed_signers.chmod(0o600)
+            config = PollerConfig(
+                agent_config=root / "agent.json",
+                repo_url=str(remote),
+                promotion_ref="refs/heads/deploy/production",
+                promotion_path="promotion.json",
+                repo_dir=repo,
+                state_path=root / "state.json",
+                lock_path=root / "lock",
+                allowed_signers_file=allowed_signers,
+                environment="production",
+            )
+            source = GitPromotionSource(config)
+            source._verify_commit_signature = lambda _sha: None  # type: ignore[method-assign]
+
+            fetched_sha, raw = source.fetch_candidate()
+
+            self.assertEqual(fetched_sha, commit)
+            self.assertEqual(raw, promotion_payload())
+
+    def test_corrupt_state_is_rejected_before_release_verification(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            state_path.write_text(json.dumps({"schema": 1, "unexpected": True}))
+            source = FakeSource("e" * 40, promotion_payload())
+            poller = PromotionPoller(
+                agent=FakeAgent(), source=source, state_path=state_path, environment="production", dry_run=True
+            )
+
+            with self.assertRaisesRegex(PromotionError, "state fields"):
+                poller.poll_once()
+            self.assertEqual(source.release_checks, 0)
+
+    def test_executor_failure_does_not_advance_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            initial = {
+                "schema": 1,
+                "promotion_sha": "e" * 40,
+                "version": "3.5.14",
+                "image": "thvysy44/trek-fork@sha256:" + "9" * 64,
+                "updated_at": "2026-08-26T15:00:00Z",
+            }
+            state_path.write_text(json.dumps(initial))
+
+            class FailingAgent(FakeAgent):
+                def deploy(
+                    self,
+                    payload: dict[str, str],
+                    *,
+                    expected_compose_hashes: dict[str, str] | None = None,
+                ) -> dict[str, str]:
+                    raise RuntimeError("deployment failed")
+
+            agent = FailingAgent()
+            poller = PromotionPoller(
+                agent=agent,
+                source=FakeSource("f" * 40, promotion_payload()),
+                state_path=state_path,
+                environment="production",
+                dry_run=False,
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "deployment failed"):
+                poller.poll_once()
+
+            self.assertEqual(json.loads(state_path.read_text()), initial)
+
+    def test_deployment_lock_rejects_contention(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            lock_path = Path(directory) / "poller.lock"
+            with deployment_lock(lock_path), self.assertRaisesRegex(
+                PromotionError, "another TREK deployment poller"
+            ), deployment_lock(lock_path):
+                pass
 
     def test_dry_run_verifies_candidate_without_deploying_or_writing_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

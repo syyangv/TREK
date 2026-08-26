@@ -89,10 +89,16 @@ After merging:
    multi-architecture immutable digest.
 3. If Docker Scout fails, update the vulnerable dependencies through a separate
    protected PR, then allow the release to rebuild from the fixed main commit.
-4. Trigger `deploy-production.yml` with the exact released semantic version.
-5. Approve the protected `production` environment in GitHub.
-6. Confirm the restricted agent deploys the exact digest.
-7. Require both agent success and private tailnet `/api/health` success.
+4. Generate `promotion.json` from the published release provenance, including
+   the exact immutable image digest and Compose hashes.
+5. Review, SSH-sign, and fast-forward-push the promotion commit to the
+   protected `deploy/production` branch.
+6. Confirm the production poller verifies the promotion and deploys the exact
+   digest through the restricted local executor.
+7. Confirm poller state, container identity, and `/api/health` agree.
+
+`deploy-production.yml` is a restricted break-glass path while the poller
+completes its soak and rollback gates; it is not the normal release path.
 
 Do not deploy an image from an earlier commit merely because it already exists.
 
@@ -103,7 +109,7 @@ Record the following in the session or release report:
 - merged commit SHA;
 - release version;
 - immutable image digest;
-- CI, security, release, and deployment run URLs;
+- CI, security, release, promotion, and poller evidence;
 - health response;
 - results of the fork acceptance checklist.
 

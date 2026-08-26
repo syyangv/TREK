@@ -28,6 +28,7 @@ jobs:
       charts_changed: ${{ steps.filter.outputs.charts }}
       plugin_sdk_changed: ${{ steps.filter.outputs.plugin_sdk }}
       ci_changed: ${{ steps.filter.outputs.ci }}
+      deployment_tooling_changed: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.deployment_tooling }}
       docs_only: ${{ github.event_name == 'workflow_dispatch' && 'false' || steps.summary.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v4
@@ -59,6 +60,11 @@ jobs:
             plugin_sdk:
               - 'plugin-sdk/**'
             ci:
+              - '.github/workflows/**'
+            deployment_tooling:
+              - 'scripts/trek_*.py'
+              - 'scripts/install_trek_deploy_*.sh'
+              - 'tests/test_trek_*.py'
               - '.github/workflows/**'
             documentation:
               - 'docs/**'
@@ -299,6 +305,35 @@ jobs:
           helm lint charts/trek
           helm template trek charts/trek >/dev/null
 
+  deployment-tooling-gate:
+    name: Deployment Tooling Gate
+    runs-on: ubuntu-latest
+    needs: changes
+    steps:
+      - name: Not applicable
+        if: ${{ needs.changes.outputs.deployment_tooling_changed != 'true' }}
+        run: echo "Deployment tooling gate not required for this change set."
+
+      - uses: actions/checkout@v4
+        if: ${{ needs.changes.outputs.deployment_tooling_changed == 'true' }}
+
+      - name: Run deployment-tooling tests
+        if: ${{ needs.changes.outputs.deployment_tooling_changed == 'true' }}
+        run: |
+          python3 -m compileall -q scripts tests/test_trek_*.py
+          python3 -m unittest discover -s tests -p 'test_trek_*.py'
+
+      - name: Check installer shell syntax
+        if: ${{ needs.changes.outputs.deployment_tooling_changed == 'true' }}
+        run: |
+          bash -n scripts/install_trek_deploy_agent.sh
+          bash -n scripts/install_trek_deploy_poller.sh
+
+      - name: Parse workflow YAML
+        if: ${{ needs.changes.outputs.deployment_tooling_changed == 'true' }}
+        run: |
+          ruby -e 'require "yaml"; Dir[".github/workflows/*.{yml,yaml}"].each { |path| YAML.load_file(path); puts "parsed #{path}" }'
+
   phase-1-required-checks:
     name: Phase 1 Checks
     runs-on: ubuntu-latest
@@ -308,6 +343,7 @@ jobs:
       - client-gate
       - docker-smoke
       - chart-gate
+      - deployment-tooling-gate
     if: ${{ always() }}
     steps:
       - name: Verify gate results
@@ -318,6 +354,7 @@ jobs:
             "${{ needs.client-gate.result }}"
             "${{ needs.docker-smoke.result }}"
             "${{ needs.chart-gate.result }}"
+            "${{ needs.deployment-tooling-gate.result }}"
           )
 
           for result in "${results[@]}"; do
