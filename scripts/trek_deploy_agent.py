@@ -44,6 +44,15 @@ class DeployError(RuntimeError):
     pass
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
 class Agent:
     def __init__(self, config_path: Path):
         config = json.loads(config_path.read_text())
@@ -233,7 +242,7 @@ class Agent:
                 if response.status != HTTPStatus.OK:
                     raise DeployError("local health check failed")
                 body = response.read(4097)
-            if len(body) > 4096 or json.loads(body) != {"status": "ok"}:
+            if len(body) > 4096 or json.loads(body, object_pairs_hook=_reject_duplicate_json_keys) != {"status": "ok"}:
                 raise DeployError("local health check failed")
         except (urllib.error.URLError, TimeoutError) as exc:
             raise DeployError("local health check failed") from exc
@@ -304,6 +313,8 @@ class Agent:
             filename: self._hash_release_file(release_dir / filename) for filename in COMPOSE_FILES
         }
         recorded_hashes = existing_metadata.get("compose_sha256")
+        if recorded_hashes is None and expected_compose_hashes is None:
+            raise DeployError("existing legacy release requires promoted Compose hashes")
         if recorded_hashes is not None and recorded_hashes != actual_hashes:
             raise DeployError("existing release artifacts do not match recorded hashes")
         if expected_compose_hashes is not None and actual_hashes != expected_compose_hashes:

@@ -161,6 +161,45 @@ class AgentTest(unittest.TestCase):
         with self.assertRaisesRegex(agent_module.DeployError, "recorded hashes"):
             self.agent.deploy(request)
 
+    def test_legacy_release_requires_matching_promoted_hashes(self) -> None:
+        request = self.request()
+        self.agent._fetch = lambda _ref, filename: f"# {filename}\n".encode()  # type: ignore[method-assign]
+        self.agent._deploy_release = lambda _release, _image: None  # type: ignore[method-assign]
+        self.agent.deploy(request)
+        current = self.agent._current_target("staging")
+        assert current
+        metadata_path = current[0] / "metadata.json"
+        metadata = json.loads(metadata_path.read_text())
+        hashes = {
+            filename: hashlib.sha256(f"# {filename}\n".encode()).hexdigest()
+            for filename in agent_module.COMPOSE_FILES
+        }
+        metadata.pop("compose_sha256")
+        metadata_path.write_text(json.dumps(metadata))
+
+        with self.assertRaisesRegex(agent_module.DeployError, "requires promoted Compose hashes"):
+            self.agent.deploy(request)
+        with self.assertRaisesRegex(agent_module.DeployError, "promoted Compose hashes"):
+            self.agent.deploy(request, expected_compose_hashes={name: "0" * 64 for name in hashes})
+        self.agent.deploy(request, expected_compose_hashes=hashes)
+
+    def test_partial_release_fetch_leaves_no_published_directory(self) -> None:
+        request = self.request()
+        fetched = iter((b"first\n", agent_module.DeployError("fetch failed")))
+
+        def fetch(_ref: str, _filename: str) -> bytes:
+            value = next(fetched)
+            if isinstance(value, Exception):
+                raise value
+            return value
+
+        self.agent._fetch = fetch  # type: ignore[method-assign]
+        with self.assertRaisesRegex(agent_module.DeployError, "fetch failed"):
+            self.agent.deploy(request)
+        releases = self.agent.state_root / "staging" / "releases"
+        self.assertFalse((releases / request["request_id"]).exists())
+        self.assertEqual(list(releases.glob("*.tmp")), [])
+
     def test_rejects_reused_request_id_with_changed_metadata(self) -> None:
         request = self.request()
         self.agent._fetch = lambda _ref, filename: f"# {filename}\n".encode()  # type: ignore[method-assign]
@@ -197,15 +236,36 @@ class AgentTest(unittest.TestCase):
         self.agent._deploy_release = lambda _release, _image: (_ for _ in ()).throw(  # type: ignore[method-assign]
             AssertionError("already-current release redeployed")
         )
-        self.agent._start_existing_container = lambda _image: True  # type: ignore[method-assign]
+        image = request["image"]
+        self.agent._run = lambda args, **_kwargs: subprocess.CompletedProcess(  # type: ignore[method-assign]
+            args,
+            0,
+            stdout=f"{image}\n" if any("Config.Image" in item for item in args) else "running\n",
+        )
+        response = MagicMock()
+        response.status = 200
+        response.read.return_value = b'{"status":"ok"}'
+        response.__enter__.return_value = response
+        opener = Mock()
+        opener.open.return_value = response
+        self.agent._opener = opener
 
         result = self.agent.deploy(request)
         self.assertEqual(result["image"], request["image"])
 
     def test_health_check_requires_ok_json_payload(self) -> None:
-        for body, valid in ((b'{"status":"ok"}', True), (b'{"status":"degraded"}', False), (b"not-json", False)):
+        cases = (
+            (200, b'{"status":"ok"}', True),
+            (200, b'{"status":"degraded"}', False),
+            (200, b'{"status":"degraded","status":"ok"}', False),
+            (200, b'{"status":"ok","extra":true}', False),
+            (200, b"not-json", False),
+            (200, b'{"status":"ok"}' + b" " * 4097, False),
+            (503, b'{"status":"ok"}', False),
+        )
+        for status, body, valid in cases:
             response = MagicMock()
-            response.status = 200
+            response.status = status
             response.read.return_value = body
             response.__enter__.return_value = response
             opener = Mock()
@@ -234,6 +294,63 @@ class AgentTest(unittest.TestCase):
         self.assertTrue(self.agent._start_existing_container(image))  # type: ignore[attr-defined]
         self.assertEqual(commands[-1][-2:], ["start", "trek"])
         self.assertEqual(health_checks, [True])
+
+    def test_recovery_does_not_start_a_mismatched_container(self) -> None:
+        expected = self.request()["image"]
+        commands: list[list[str]] = []
+        self.agent._run = lambda args, **_kwargs: (  # type: ignore[method-assign]
+            commands.append(args),
+            subprocess.CompletedProcess(args, 0, stdout="other-image\n"),
+        )[1]
+
+        self.assertFalse(self.agent._start_existing_container(expected))  # type: ignore[attr-defined]
+        self.assertEqual(len(commands), 1)
+        self.assertNotIn("start", commands[0])
+
+    def test_recovery_inspect_failure_returns_false_for_compose_fallback(self) -> None:
+        def run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            raise subprocess.TimeoutExpired(args, 1)
+
+        self.agent._run = run  # type: ignore[method-assign]
+        self.assertFalse(self.agent._start_existing_container(self.request()["image"]))  # type: ignore[attr-defined]
+
+    def test_recovery_start_failure_returns_false_for_compose_fallback(self) -> None:
+        expected = self.request()["image"]
+
+        def run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            if "Config.Image" in args:
+                return subprocess.CompletedProcess(args, 0, stdout=f"{expected}\n")
+            if "State.Status" in args:
+                return subprocess.CompletedProcess(args, 0, stdout="exited\n")
+            raise subprocess.TimeoutExpired(args, 1)
+
+        self.agent._run = run  # type: ignore[method-assign]
+        self.assertFalse(self.agent._start_existing_container(expected))  # type: ignore[attr-defined]
+
+    def test_recovery_health_failure_returns_false_for_compose_fallback(self) -> None:
+        expected = self.request()["image"]
+
+        def run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                stdout=f"{expected}\n" if any("Config.Image" in item for item in args) else "running\n",
+            )
+
+        self.agent._run = run  # type: ignore[method-assign]
+        self.agent._health_check = lambda: (_ for _ in ()).throw(  # type: ignore[method-assign]
+            agent_module.DeployError("health failed")
+        )
+        self.assertFalse(self.agent._start_existing_container(expected))  # type: ignore[attr-defined]
+
+    def test_recovery_operational_failure_falls_back_to_compose(self) -> None:
+        previous = (self.agent.state_root / "previous", self.request()["image"])
+        self.agent._start_existing_container = lambda _image: False  # type: ignore[method-assign]
+        deployed: list[tuple[Path, str]] = []
+        self.agent._deploy_release = lambda release, image: deployed.append((release, image))  # type: ignore[method-assign]
+
+        self.agent._recover_release(previous)
+        self.assertEqual(deployed, [previous])
 
     def test_failed_release_uses_existing_container_recovery(self) -> None:
         first = self.request()
