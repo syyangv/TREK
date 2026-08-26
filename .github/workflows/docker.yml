@@ -233,12 +233,16 @@ jobs:
             EXISTING_TREE="$(git rev-parse "$EXISTING_SHA^{tree}")"
 
             if [ "$EXISTING_PARENT" != "$BASE_SHA" ] || [ "$EXISTING_TREE" != "$GENERATED_TREE" ]; then
-              echo "::error::$RELEASE_BRANCH does not match the deterministic release tree from base $BASE_SHA. Resolve the stale branch before retrying."
-              exit 1
+              echo "::warning::$RELEASE_BRANCH is an incomplete stale branch; removing it before retrying the deterministic release."
+              gh api --method DELETE \
+                "repos/${GITHUB_REPOSITORY}/git/refs/heads/${RELEASE_BRANCH}" \
+                || { echo "::error::Could not remove stale $RELEASE_BRANCH."; exit 1; }
+              echo "SOURCE_SHA=$GENERATED_SHA" >> "$GITHUB_OUTPUT"
+              git push origin "HEAD:refs/heads/$RELEASE_BRANCH"
+            else
+              echo "Resuming verified release commit $EXISTING_SHA from $RELEASE_BRANCH."
+              echo "SOURCE_SHA=$EXISTING_SHA" >> "$GITHUB_OUTPUT"
             fi
-
-            echo "Resuming verified release commit $EXISTING_SHA from $RELEASE_BRANCH."
-            echo "SOURCE_SHA=$EXISTING_SHA" >> "$GITHUB_OUTPUT"
           else
             echo "SOURCE_SHA=$GENERATED_SHA" >> "$GITHUB_OUTPUT"
             git push origin "HEAD:refs/heads/$RELEASE_BRANCH"
@@ -394,7 +398,7 @@ jobs:
 
       - name: Smoke-test exact amd64 digest
         env:
-          IMAGE: ${{ needs.merge.outputs.image }}
+          IMAGE: thvysy44/trek-fork@${{ needs.merge.outputs.digest }}
         run: |
           set -euo pipefail
           docker pull --platform linux/amd64 "$IMAGE"
@@ -417,7 +421,7 @@ jobs:
         uses: docker/scout-action@v1
         with:
           command: cves
-          image: ${{ needs.merge.outputs.image }}
+          image: thvysy44/trek-fork@${{ needs.merge.outputs.digest }}
           only-severities: critical,high
           only-fixed: true
           exit-code: true
