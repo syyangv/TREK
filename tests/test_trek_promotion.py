@@ -113,6 +113,21 @@ class PromotionTest(unittest.TestCase):
         with self.assertRaisesRegex(PromotionError, "image"):
             validate_release_provenance(provenance, promotion)
 
+    def test_release_provenance_rejects_an_empty_image(self) -> None:
+        promotion = validate_promotion(self.payload(), environment="production")
+        provenance = {
+            "schema": 1,
+            "version": promotion.version,
+            "source_ref": promotion.source_ref,
+            "source_sha": promotion.source_sha,
+            "release_sha": promotion.release_sha,
+            "image": "",
+            "compose_sha256": promotion.compose_sha256,
+        }
+
+        with self.assertRaisesRegex(PromotionError, "image"):
+            validate_release_provenance(provenance, promotion)
+
 
 if __name__ == "__main__":
     unittest.main()
