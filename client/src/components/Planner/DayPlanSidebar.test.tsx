@@ -214,6 +214,28 @@ describe('DayPlanSidebar', () => {
     expect(screen.getByText('D2')).toBeInTheDocument()
   })
 
+  it('FE-PLANNER-DAYPLAN-005a: shades past day sections without shading today or future days', () => {
+    const days = [
+      buildDay({ title: 'Past day', date: '2025-04-30' }),
+      buildDay({ title: 'Today', date: '2025-05-01' }),
+      buildDay({ title: 'Future day', date: '2025-05-02' }),
+    ]
+    const { container } = render(<DayPlanSidebar {...makeDefaultProps({ days })} />)
+    const headers = Array.from(container.querySelectorAll<HTMLElement>('.dp-day-header'))
+
+    expect(headers).toHaveLength(3)
+    expect(headers[0]).toHaveAttribute('data-past', 'true')
+    expect(headers[0]).toHaveStyle({ background: 'var(--bg-tertiary)' })
+    expect(headers[1]).toHaveAttribute('data-past', 'false')
+    expect(headers[1]).toHaveStyle({ background: 'transparent' })
+    expect(headers[2]).toHaveAttribute('data-past', 'false')
+    expect(headers[2]).toHaveStyle({ background: 'transparent' })
+
+    fireEvent.mouseEnter(headers[0])
+    fireEvent.mouseLeave(headers[0])
+    expect(headers[0]).toHaveStyle({ background: 'var(--bg-tertiary)' })
+  })
+
   // ── #1330: route tools for a single optimizable place ───────────────────────
   it('FE-PLANNER-DAYPLAN-005b: route tools show for one located place with a bookend hotel (#1330)', () => {
     const place = buildPlace({ name: 'Louvre', lat: 48.86, lng: 2.34 })
@@ -318,6 +340,32 @@ describe('DayPlanSidebar', () => {
 
     await waitFor(() => expect(screen.queryByText('Hydrated past stop')).not.toBeInTheDocument())
     expect(screen.getByText('Hydrated today stop')).toBeInTheDocument()
+  })
+
+  it('FE-PLANNER-DAYPLAN-006e: mobile sheet starts from the planner expansion state', () => {
+    const pastPlace = buildPlace({ name: 'Mobile past stop' })
+    const todayPlace = buildPlace({ name: 'Mobile today stop' })
+    const pastDay = buildDay({ id: 10, date: '2025-04-30', title: 'Past day' })
+    const today = buildDay({ id: 11, date: '2025-05-01', title: 'Today' })
+
+    // A mobile sheet is a second DayPlanSidebar instance. Its local storage can
+    // still contain an expanded snapshot, so seed it from the live planner state.
+    localStorage.setItem('day-expanded-1', JSON.stringify([pastDay.id, today.id]))
+    localStorage.setItem('day-expanded-defaults-1', 'past-days-collapsed-v1')
+
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [pastDay, today],
+      places: [pastPlace, todayPlace],
+      assignments: {
+        '10': [buildAssignment({ id: 101, day_id: 10, order_index: 0, place: pastPlace })],
+        '11': [buildAssignment({ id: 102, day_id: 11, order_index: 0, place: todayPlace })],
+      },
+      initialExpandedDayIds: new Set([today.id]),
+      isMobile: true,
+    })} />)
+
+    expect(screen.queryByText('Mobile past stop')).not.toBeInTheDocument()
+    expect(screen.getByText('Mobile today stop')).toBeInTheDocument()
   })
 
   it('FE-PLANNER-DAYPLAN-007: clicking chevron collapses that day', async () => {

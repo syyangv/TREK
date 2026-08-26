@@ -47,7 +47,12 @@ import { getGoogleMapsUrlForPlace } from './placeGoogleMaps'
 function isPastDay(day: Pick<Day, 'date'>): boolean {
   const date = day.date?.slice(0, 10)
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false
-  return date < new Date().toISOString().slice(0, 10)
+  // Day dates are calendar dates, not instants. Use the browser's local date
+  // rather than UTC so a day does not become "past" while it is still today
+  // for the user around midnight.
+  const today = new Date()
+  const todayDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  return date < todayDate
 }
 
 // Expansion state predates the past-day default. Keep the migration marker
@@ -112,6 +117,8 @@ interface DayPlanSidebarProps {
   onScrollTopChange?: (top: number) => void
   /** Mobile: show the route tools footer (Route toggle / Optimize / travel profile) on expanded days, since selecting a day closes the sheet */
   showRouteToolsWhenExpanded?: boolean
+  /** Seed a second (mobile-sheet) instance from the planner's current expansion state. */
+  initialExpandedDayIds?: Set<number> | null
   isMobile?: boolean
   /** Coarse primary pointer. Drag & drop reorder is disabled here (it hijacks the
    *  touch-scroll gesture, #1432); the grip handle is hidden and the arrow reorder
@@ -164,6 +171,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
   initialScrollTop,
   onScrollTopChange,
   showRouteToolsWhenExpanded = false,
+  initialExpandedDayIds,
   isMobile = false,
   isTouch = false,
   } = props
@@ -181,6 +189,10 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
   const pastDayDefaultsAppliedRef = useRef(false)
   const pastDayDefaultsVersionKey = `day-expanded-defaults-${tripId}`
   const [expandedDays, setExpandedDays] = useState(() => {
+    // The mobile Plan sheet mounts a second sidebar after the desktop/sidebar
+    // instance has already initialized. Prefer that live state when supplied;
+    // localStorage remains the fallback for a cold mobile load.
+    if (initialExpandedDayIds) return new Set(initialExpandedDayIds)
     try {
       const saved = localStorage.getItem(`day-expanded-${tripId}`)
       const defaultsApplied = localStorage.getItem(pastDayDefaultsVersionKey) === PAST_DAY_EXPANSION_DEFAULT_VERSION
@@ -1441,6 +1453,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
       <div className={`scroll-container${draggingId ? '' : ' trek-stagger'}`} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }} ref={scrollContainerRef} onScroll={(e) => onScrollTopChange?.((e.currentTarget as HTMLElement).scrollTop)}>
         {days.map((day, index) => {
           const isSelected = selectedDayId === day.id
+          const isPast = isPastDay(day)
           const isExpanded = expandedDays.has(day.id)
           const da = getDayAssignments(day.id)
           const cost = dayTotalCost(day.id, assignments, costBase, currency, locale, fxRates)
@@ -1466,11 +1479,12 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
           const placeItems = merged.filter(i => i.type === 'place')
 
           return (
-            <div key={day.id} style={{ borderBottom: '1px solid var(--border-faint)' }}>
+            <div key={day.id} style={{ borderBottom: '1px solid var(--border-faint)', background: isPast ? 'var(--bg-tertiary)' : 'transparent' }}>
               {/* Tages-Header — akzeptiert Drops aus der PlacesSidebar */}
               <div
                 className="dp-day-header"
                 data-selected={isSelected}
+                data-past={isPast}
                 onClick={() => { onSelectDay(day.id); if (onDayDetail) onDayDetail(day) }}
                 onDragOver={e => { e.preventDefault(); if (dragOverDayId !== day.id) setDragOverDayId(day.id) }}
                 onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOverDayId(null) }}
@@ -1479,7 +1493,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '11px 14px 11px 16px',
                   cursor: 'pointer',
-                  background: isDragTarget ? 'rgba(17,24,39,0.07)' : (isSelected ? 'var(--bg-selected)' : 'transparent'),
+                  background: isDragTarget ? 'rgba(17,24,39,0.07)' : (isSelected ? 'var(--bg-selected)' : (isPast ? 'var(--bg-tertiary)' : 'transparent')),
                   transition: 'background 0.12s',
                   userSelect: 'none',
                   outline: isDragTarget ? '2px dashed rgba(17,24,39,0.25)' : 'none',
@@ -1488,7 +1502,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                   touchAction: 'manipulation',
                 }}
                 onMouseEnter={e => { if (!isSelected && !isDragTarget) e.currentTarget.style.background = 'var(--bg-tertiary)' }}
-                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = isDragTarget ? 'rgba(17,24,39,0.07)' : 'transparent' }}
+                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = isDragTarget ? 'rgba(17,24,39,0.07)' : (isPast ? 'var(--bg-tertiary)' : 'transparent') }}
               >
                 {/* Tages-Badge: Nummer oben, darunter (falls vorhanden) das Wetter des Tages */}
                 {(() => {
