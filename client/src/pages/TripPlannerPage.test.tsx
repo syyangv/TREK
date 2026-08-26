@@ -1029,8 +1029,10 @@ describe('TripPlannerPage', () => {
       vi.useFakeTimers();
 
       const place = buildPlace({ id: 1, trip_id: 42, lat: 48.8566, lng: 2.3522 });
-      seedTripStore({ id: 42 });
-      seedStore(useTripStore, { places: [place] } as any);
+      const { day } = seedTripStore({ id: 42 });
+      const assignment = buildAssignment({ id: 10, day_id: day.id, place });
+      seedStore(useTripStore, { places: [place], assignments: { [String(day.id)]: [assignment] } } as any);
+      server.use(http.put('/api/trips/42/assignments/10/time', () => HttpResponse.json({})));
 
       renderPlannerPage(42);
 
@@ -1044,7 +1046,10 @@ describe('TripPlannerPage', () => {
 
       // Set editingPlace via captured props (uses the inline lambda that calls setEditingPlace)
       await act(async () => {
-        capturedDayPlanSidebarProps.current.onEditPlace?.(place, null);
+        capturedDayPlanSidebarProps.current.onEditPlace?.(place, assignment.id);
+      });
+      await waitFor(() => {
+        expect(capturedPlaceFormModalProps.current.assignmentId).toBe(assignment.id);
       });
 
       // Now onSave uses the edit path (editingPlace is set)
@@ -1754,6 +1759,47 @@ describe('TripPlannerPage', () => {
       // Pre-fix: collapses to 1 (setMobileSidebarOpen(null) destroyed scroll container).
       // Post-fix: stays at 2, browser preserves scrollTop on the living DOM node.
       expect(screen.getAllByTestId('day-plan-sidebar').length).toBe(2);
+
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
+    });
+  });
+
+  describe('FE-PAGE-PLANNER-052: mobile day-context place editor keeps Assignment identity', () => {
+    it('passes the mobile Assignment ID into PlaceFormModal so Time Slot fields remain available', async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+
+      const place = buildPlace({ id: 1, trip_id: 42, lat: 48.8566, lng: 2.3522 });
+      const { day } = seedTripStore({ id: 42 });
+      const assignment = buildAssignment({ id: 10, day_id: day.id, place, order_index: 0 });
+      seedStore(useTripStore, {
+        places: [place],
+        assignments: { [String(day.id)]: [assignment] },
+      } as any);
+
+      renderPlannerPage(42);
+      act(() => { vi.runAllTimers(); });
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('day-plan-sidebar')).toBeInTheDocument();
+      });
+      const mobilePlanButton = Array.from(document.body.querySelectorAll('button')).find(
+        button => button.textContent === 'Plan' && !button.getAttribute('title'),
+      );
+      expect(mobilePlanButton).toBeTruthy();
+      await act(async () => { fireEvent.click(mobilePlanButton!); });
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('day-plan-sidebar')).toHaveLength(2);
+      });
+      await act(async () => {
+        capturedDayPlanSidebarProps.current.onEditPlace?.(place, assignment.id);
+      });
+      await waitFor(() => {
+        expect(capturedPlaceFormModalProps.current.assignmentId).toBe(assignment.id);
+        expect(capturedPlaceFormModalProps.current.isMobile).toBe(true);
+      });
 
       Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1024 });
     });

@@ -8,10 +8,10 @@ import { useTripStore } from '../../store/tripStore'
 import { useAddonStore } from '../../store/addonStore'
 import CollectionPicker from '../Collections/CollectionPicker'
 import { useToast } from '../shared/Toast'
-import { Search, Paperclip, X, AlertTriangle, Loader2 } from 'lucide-react'
+import { Search, Paperclip, X, Loader2 } from 'lucide-react'
 import { useTranslation } from '../../i18n'
-import CustomTimePicker from '../shared/CustomTimePicker'
 import { DEFAULT_FORM, isGoogleMapsUrl, type PlaceFormData } from './PlaceFormModal.helpers'
+import { TimeSlotFields, isEndBeforeStart } from './TimeSlotFields'
 import { getApiErrorMessage } from '../../utils/apiError'
 import type { Place, Category, Assignment } from '../../types'
 import { NumericInput } from '../shared/NumericInput'
@@ -377,7 +377,7 @@ function usePlaceFormModal(props: PlaceFormModalProps) {
     }
   }
 
-  const hasTimeError = place && form.place_time && form.end_time && form.place_time.length >= 5 && form.end_time.length >= 5 && form.end_time <= form.place_time
+  const hasTimeError = !!place && isEndBeforeStart(form.place_time, form.end_time)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -772,12 +772,12 @@ export default function PlaceFormModal(props: PlaceFormModalProps) {
             creating, and for unassigned / multi-day pool edits where a single time
             is ambiguous and wouldn't persist. */}
         {place && assignmentId && (
-          <TimeSection
-            form={form}
-            handleChange={handleChange}
+          <TimeSlotFields
+            placeTime={form.place_time}
+            endTime={form.end_time}
+            onChange={handleChange}
             assignmentId={assignmentId}
             dayAssignments={dayAssignments}
-            hasTimeError={hasTimeError}
             t={t}
           />
         )}
@@ -830,73 +830,5 @@ export default function PlaceFormModal(props: PlaceFormModalProps) {
       )}
       </div>
     </Modal>
-  )
-}
-
-interface TimeSectionProps {
-  form: PlaceFormData
-  handleChange: (field: string, value: string) => void
-  assignmentId: number | null
-  dayAssignments: Assignment[]
-  hasTimeError: boolean
-  t: (key: string, params?: Record<string, string | number>) => string
-}
-
-function TimeSection({ form, handleChange, assignmentId, dayAssignments, hasTimeError, t }: TimeSectionProps) {
-
-  const collisions = useMemo(() => {
-    if (!assignmentId || !form.place_time || form.place_time.length < 5) return []
-    // Find the day_id for the current assignment
-    const current = dayAssignments.find(a => a.id === assignmentId)
-    if (!current) return []
-    const myStart = form.place_time
-    const myEnd = form.end_time && form.end_time.length >= 5 ? form.end_time : null
-    return dayAssignments.filter(a => {
-      if (a.id === assignmentId) return false
-      if (a.day_id !== current.day_id) return false
-      const aStart = a.place?.place_time
-      const aEnd = a.place?.end_time
-      if (!aStart) return false
-      // Check overlap: two intervals overlap if start < otherEnd AND otherStart < end
-      const s1 = myStart, e1 = myEnd || myStart
-      const s2 = aStart, e2 = aEnd || aStart
-      return s1 < (e2 || '23:59') && s2 < (e1 || '23:59') && s1 !== e2 && s2 !== e1
-    })
-  }, [assignmentId, dayAssignments, form.place_time, form.end_time])
-
-  return (
-    <div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">{t('places.startTime')}</label>
-          <CustomTimePicker
-            value={form.place_time}
-            onChange={v => handleChange('place_time', v)}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">{t('places.endTime')}</label>
-          <CustomTimePicker
-            value={form.end_time}
-            onChange={v => handleChange('end_time', v)}
-          />
-        </div>
-      </div>
-      {hasTimeError && (
-        <div className="flex items-center gap-1.5 mt-2 px-2.5 py-1.5 rounded-lg text-xs" style={{ background: 'var(--bg-warning, #fef3c7)', color: 'var(--text-warning, #92400e)' }}>
-          <AlertTriangle size={13} className="shrink-0" />
-          {t('places.endTimeBeforeStart')}
-        </div>
-      )}
-      {collisions.length > 0 && (
-        <div className="flex items-start gap-1.5 mt-2 px-2.5 py-1.5 rounded-lg text-xs" style={{ background: 'var(--bg-warning, #fef3c7)', color: 'var(--text-warning, #92400e)' }}>
-          <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-          <span>
-            {t('places.timeCollision')}{' '}
-            {collisions.map(a => a.place?.name).filter(Boolean).join(', ')}
-          </span>
-        </div>
-      )}
-    </div>
   )
 }

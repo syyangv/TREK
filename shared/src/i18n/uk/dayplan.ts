@@ -29,6 +29,7 @@ const dayplan: TranslationStrings = {
   'dayplan.pdfTooltip': 'Експортувати план дня в PDF',
   'dayplan.pdfError': 'Помилка експорту PDF',
   'dayplan.cannotReorderTransport': 'Бронювання з фіксованим часом не можна переміщувати',
+  'dayplan.timeSlot': 'Часовий проміжок',
   'dayplan.confirmRemoveTimeTitle': 'Видалити час?',
   'dayplan.confirmRemoveTimeBody':
     'У цього місця фіксований час ({time}). При переміщенні час буде видалено, і стане доступне вільне сортування.',

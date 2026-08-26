@@ -21,5 +21,7 @@ const day: TranslationStrings = {
   'day.confirmation': 'Onay kodu',
   'day.editAccommodation': 'Konaklamayı düzenle',
   'day.reservations': 'Rezervasyonlar',
+  'day.plan': 'Plan',
+  'day.noPlannedItems': 'Bu gün için henüz bir şey planlanmadı',
 };
 export default day;

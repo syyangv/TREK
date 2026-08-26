@@ -4,6 +4,7 @@ const dayplan: TranslationStrings = {
   'dayplan.icsTooltip': 'تصدير التقويم (ICS)',
   'dayplan.emptyDay': 'لا توجد أماكن مخططة لهذا اليوم',
   'dayplan.cannotReorderTransport': 'لا يمكن إعادة ترتيب الحجوزات ذات الوقت الثابت',
+  'dayplan.timeSlot': 'الفترة الزمنية',
   'dayplan.confirmRemoveTimeTitle': 'إزالة الوقت؟',
   'dayplan.confirmRemoveTimeBody': 'هذا المكان له وقت ثابت ({time}). نقله سيزيل الوقت ويسمح بالترتيب الحر.',
   'dayplan.confirmRemoveTimeAction': 'إزالة الوقت ونقل',

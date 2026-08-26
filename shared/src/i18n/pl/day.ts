@@ -21,5 +21,7 @@ const day: TranslationStrings = {
   'day.confirmation': 'Potwierdzenie',
   'day.editAccommodation': 'Edytuj zakwaterowanie',
   'day.reservations': 'Rezerwacje',
+  'day.plan': 'Plan',
+  'day.noPlannedItems': 'Nic jeszcze nie zaplanowano na ten dzień',
 };
 export default day;

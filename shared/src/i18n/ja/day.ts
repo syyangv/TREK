@@ -21,5 +21,7 @@ const day: TranslationStrings = {
   'day.confirmation': '確認',
   'day.editAccommodation': '宿泊先を編集',
   'day.reservations': '予約',
+  'day.plan': '予定',
+  'day.noPlannedItems': 'この日の予定はまだありません',
 };
 export default day;

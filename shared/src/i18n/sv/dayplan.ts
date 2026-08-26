@@ -4,6 +4,7 @@ const dayplan: TranslationStrings = {
   'dayplan.icsTooltip': 'Exportera kalender (ICS)',
   'dayplan.emptyDay': 'Inga platser planerade för denna dag',
   'dayplan.cannotReorderTransport': 'Bokningar med fast tid kan inte omordnas',
+  'dayplan.timeSlot': 'Tidsintervall',
   'dayplan.confirmRemoveTimeTitle': 'Ta bort tid?',
   'dayplan.confirmRemoveTimeBody':
     'Denna plats har fasta tider ({time}). Om du flyttar den tas tidsangivelsen bort och du kan sortera fritt.',

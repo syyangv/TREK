@@ -4,6 +4,7 @@ const dayplan: TranslationStrings = {
   'dayplan.icsTooltip': 'Kalender exportieren (ICS)',
   'dayplan.emptyDay': 'Keine Orte für diesen Tag geplant',
   'dayplan.cannotReorderTransport': 'Buchungen mit fester Uhrzeit können nicht verschoben werden',
+  'dayplan.timeSlot': 'Zeitfenster',
   'dayplan.confirmRemoveTimeTitle': 'Uhrzeit entfernen?',
   'dayplan.confirmRemoveTimeBody':
     'Dieser Ort hat eine feste Uhrzeit ({time}). Durch das Verschieben wird die Uhrzeit entfernt und der Ort kann frei sortiert werden.',

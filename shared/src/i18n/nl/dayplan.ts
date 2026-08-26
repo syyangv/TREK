@@ -27,6 +27,7 @@ const dayplan: TranslationStrings = {
   'dayplan.pdfTooltip': 'Dagplan exporteren als PDF',
   'dayplan.pdfError': 'PDF-export mislukt',
   'dayplan.cannotReorderTransport': 'Boekingen met een vast tijdstip kunnen niet worden verplaatst',
+  'dayplan.timeSlot': 'Tijdvak',
   'dayplan.confirmRemoveTimeTitle': 'Tijd verwijderen?',
   'dayplan.confirmRemoveTimeBody':
     'Deze plek heeft een vast tijdstip ({time}). Verplaatsen verwijdert het tijdstip en maakt vrije sortering mogelijk.',

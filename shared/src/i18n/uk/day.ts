@@ -21,5 +21,7 @@ const day: TranslationStrings = {
   'day.confirmation': 'Підтвердження',
   'day.editAccommodation': 'Редагувати проживання',
   'day.reservations': 'Бронювання',
+  'day.plan': 'План',
+  'day.noPlannedItems': 'На цей день ще нічого не заплановано',
 };
 export default day;

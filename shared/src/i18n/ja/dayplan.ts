@@ -4,6 +4,7 @@ const dayplan: TranslationStrings = {
   'dayplan.icsTooltip': 'カレンダーを書き出し（ICS）',
   'dayplan.emptyDay': 'この日の予定はありません',
   'dayplan.cannotReorderTransport': '時刻が固定された予約は並び替えできません',
+  'dayplan.timeSlot': '時間帯',
   'dayplan.confirmRemoveTimeTitle': '時刻を削除しますか？',
   'dayplan.confirmRemoveTimeBody':
     'この場所には固定時刻（{time}）があります。移動すると時刻が削除され、自由に並び替えできます。',

@@ -21,5 +21,7 @@ const day: TranslationStrings = {
   'day.confirmation': '确认号',
   'day.editAccommodation': '编辑住宿',
   'day.reservations': '预订',
+  'day.plan': '计划',
+  'day.noPlannedItems': '这一天还没有安排任何行程',
 };
 export default day;

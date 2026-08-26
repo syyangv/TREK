@@ -1,6 +1,6 @@
-// FE-PLANNER-DAYDETAIL-001 to FE-PLANNER-DAYDETAIL-025
+// FE-PLANNER-DAYDETAIL-001 to FE-PLANNER-DAYDETAIL-076
 import React from 'react';
-import { render, screen, waitFor } from '../../../tests/helpers/render';
+import { render, screen, waitFor, within } from '../../../tests/helpers/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../../tests/helpers/msw/server';
@@ -9,7 +9,7 @@ import { useTripStore } from '../../store/tripStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePermissionsStore } from '../../store/permissionsStore';
 import { resetAllStores, seedStore } from '../../../tests/helpers/store';
-import { buildUser, buildAdmin, buildTrip, buildDay, buildPlace, buildReservation } from '../../../tests/helpers/factories';
+import { buildUser, buildAdmin, buildTrip, buildDay, buildPlace, buildReservation, buildAssignment } from '../../../tests/helpers/factories';
 import DayDetailPanel from './DayDetailPanel';
 
 const day = buildDay({ id: 1, trip_id: 1, date: '2025-06-15', title: 'Day in Paris' });
@@ -27,6 +27,14 @@ const defaultProps = {
   onClose: vi.fn(),
   onAccommodationChange: vi.fn(),
 };
+
+/** The planner page feeds the panel its Assignments straight from the trip store, so a
+ *  Time Slot written back to the store re-renders the row. Mirrors that wiring for the
+ *  tests that assert an edit shows without a reload. */
+function StoreBackedDayDetailPanel(props: any) {
+  const assignments = useTripStore(s => s.assignments);
+  return <DayDetailPanel {...props} assignments={assignments} />;
+}
 
 beforeEach(() => {
   resetAllStores();
@@ -1250,6 +1258,170 @@ describe('DayDetailPanel', () => {
       const timeEl = screen.queryByText(/AM|PM|\d{1,2}:\d{2}/i);
       expect(timeEl).toBeInTheDocument();
     });
+  });
+
+
+  // ── 计划 section: the day's Assignments (#41) ────────────────────────────────
+
+  it('FE-PLANNER-DAYDETAIL-067: 计划 section lists the day\'s Assignments', async () => {
+    const palace = buildPlace({ id: 1, name: 'Palace of Fine Arts' });
+    const bridge = buildPlace({ id: 2, name: 'Golden Gate Bridge' });
+    render(<DayDetailPanel {...defaultProps} assignments={{
+      '1': [
+        buildAssignment({ id: 11, day_id: 1, order_index: 0, place: palace }),
+        buildAssignment({ id: 12, day_id: 1, order_index: 1, place: bridge }),
+      ],
+    }} />);
+    await screen.findByText('Palace of Fine Arts');
+    expect(screen.getByText('Golden Gate Bridge')).toBeInTheDocument();
+  });
+
+  it('FE-PLANNER-DAYDETAIL-068: 计划 section is rendered before the 预订 section', async () => {
+    const palace = buildPlace({ id: 1, name: 'Palace of Fine Arts' });
+    render(<DayDetailPanel
+      {...defaultProps}
+      assignments={{ '1': [buildAssignment({ id: 11, day_id: 1, order_index: 0, place: palace })] }}
+      reservations={[buildReservation({ id: 1, title: "Morella's", assignment_id: 11, status: 'confirmed' })]}
+    />);
+    await screen.findByText("Morella's");
+    const plan = screen.getByText('Plan');
+    const bookings = screen.getByText('Reservations');
+    // Node.compareDocumentPosition: FOLLOWING (4) means 预订 comes after 计划.
+    expect(plan.compareDocumentPosition(bookings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('FE-PLANNER-DAYDETAIL-069: timed Assignments ascend by Time Slot start, untimed follow in manual order', async () => {
+    const afternoon = buildPlace({ id: 1, name: 'Palace of Fine Arts', place_time: '14:00', end_time: '16:00' });
+    const morning = buildPlace({ id: 2, name: 'Ferry Building', place_time: '09:00', end_time: '10:00' });
+    const untimedFirst = buildPlace({ id: 3, name: 'Lombard Street' });
+    const untimedSecond = buildPlace({ id: 4, name: 'Coit Tower' });
+    render(<DayDetailPanel {...defaultProps} assignments={{
+      '1': [
+        buildAssignment({ id: 11, day_id: 1, order_index: 0, place: afternoon }),
+        buildAssignment({ id: 12, day_id: 1, order_index: 1, place: untimedFirst }),
+        buildAssignment({ id: 13, day_id: 1, order_index: 2, place: morning }),
+        buildAssignment({ id: 14, day_id: 1, order_index: 3, place: untimedSecond }),
+      ],
+    }} />);
+    await screen.findByText('Ferry Building');
+    const names = screen.getAllByTestId('day-plan-item-name').map(el => el.textContent);
+    expect(names).toEqual(['Ferry Building', 'Palace of Fine Arts', 'Lombard Street', 'Coit Tower']);
+  });
+
+  it('FE-PLANNER-DAYDETAIL-070: a Time Slot renders as a range, and a start-only one has no dangling separator', async () => {
+    const ranged = buildPlace({ id: 1, name: 'Palace of Fine Arts', place_time: '14:00', end_time: '16:00' });
+    const startOnly = buildPlace({ id: 2, name: 'Ferry Building', place_time: '09:00', end_time: null });
+    render(<DayDetailPanel {...defaultProps} assignments={{
+      '1': [
+        buildAssignment({ id: 11, day_id: 1, order_index: 0, place: ranged }),
+        buildAssignment({ id: 12, day_id: 1, order_index: 1, place: startOnly }),
+      ],
+    }} />);
+    expect(await screen.findByText('14:00 – 16:00')).toBeInTheDocument();
+    // Exact match: the start-only Time Slot reads "09:00" and nothing else.
+    expect(screen.getByText('09:00')).toBeInTheDocument();
+  });
+
+  it('FE-PLANNER-DAYDETAIL-071: setting a Time Slot here writes the Assignment override and shows without a reload', async () => {
+    const user = userEvent.setup();
+    let body: any = null;
+    server.use(
+      http.put('/api/trips/1/assignments/11/time', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    const palace = buildPlace({ id: 1, name: 'Palace of Fine Arts' });
+    seedStore(useTripStore, {
+      trip: buildTrip({ id: 1 }),
+      assignments: { '1': [buildAssignment({ id: 11, day_id: 1, order_index: 0, place: palace })] },
+    });
+    render(<StoreBackedDayDetailPanel {...defaultProps} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Time slot' }));
+    const editor = screen.getByRole('dialog', { name: 'Time slot' });
+    const [start, end] = within(editor).getAllByRole('textbox');
+    await user.type(start, '14:00');
+    await user.type(end, '16:00');
+    await user.click(within(editor).getByRole('button', { name: 'Save' }));
+
+    // The Assignment override only — the Place's own default time is never written.
+    await waitFor(() => expect(body).toEqual({ place_time: '14:00', end_time: '16:00' }));
+    expect(await screen.findByText('14:00 – 16:00')).toBeInTheDocument();
+  });
+
+  it('FE-PLANNER-DAYDETAIL-072: clearing a Time Slot leaves the Assignment on its day, untimed', async () => {
+    const user = userEvent.setup();
+    let body: any = null;
+    server.use(
+      http.put('/api/trips/1/assignments/11/time', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ success: true });
+      }),
+    );
+    const palace = buildPlace({ id: 1, name: 'Palace of Fine Arts', place_time: '14:00', end_time: '16:00' });
+    seedStore(useTripStore, {
+      trip: buildTrip({ id: 1 }),
+      assignments: { '1': [buildAssignment({ id: 11, day_id: 1, order_index: 0, place: palace })] },
+    });
+    render(<StoreBackedDayDetailPanel {...defaultProps} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Time slot' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Time slot' })).getByRole('button', { name: 'Clear' }));
+
+    await waitFor(() => expect(body).toEqual({ place_time: null, end_time: null }));
+    await waitFor(() => expect(screen.queryByText('14:00 – 16:00')).not.toBeInTheDocument());
+    expect(screen.getByText('Palace of Fine Arts')).toBeInTheDocument();
+  });
+
+  it('FE-PLANNER-DAYDETAIL-073: a day with no Assignments says so instead of rendering an empty region', async () => {
+    render(<DayDetailPanel {...defaultProps} assignments={{}} />);
+    expect(await screen.findByText('Nothing planned for this day yet')).toBeInTheDocument();
+  });
+
+  it('FE-PLANNER-DAYDETAIL-074: without day-edit permission the Time Slot stays visible but its affordance is gone', async () => {
+    seedStore(useAuthStore, { user: buildUser({ id: 999, role: 'user' }), isAuthenticated: true });
+    seedStore(usePermissionsStore, { permissions: { day_edit: 'admin' } });
+    const palace = buildPlace({ id: 1, name: 'Palace of Fine Arts', place_time: '14:00', end_time: '16:00' });
+    render(<DayDetailPanel {...defaultProps} assignments={{
+      '1': [buildAssignment({ id: 11, day_id: 1, order_index: 0, place: palace })],
+    }} />);
+    expect(await screen.findByText('14:00 – 16:00')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Time slot' })).not.toBeInTheDocument();
+  });
+
+  it('FE-PLANNER-DAYDETAIL-075: a Time Slot renders in the viewer\'s locale time format', async () => {
+    seedStore(useSettingsStore, {
+      settings: { time_format: '12h', temperature_unit: 'celsius', blur_booking_codes: false },
+    });
+    const palace = buildPlace({ id: 1, name: 'Palace of Fine Arts', place_time: '14:00', end_time: '16:00' });
+    render(<DayDetailPanel {...defaultProps} assignments={{
+      '1': [buildAssignment({ id: 11, day_id: 1, order_index: 0, place: palace })],
+    }} />);
+    expect(await screen.findByText('2:00 PM – 4:00 PM')).toBeInTheDocument();
+  });
+
+  it('FE-PLANNER-DAYDETAIL-076: the 预订 and 住宿 sections still render alongside the new 计划 section', async () => {
+    server.use(
+      http.get('/api/trips/1/accommodations', () =>
+        HttpResponse.json({
+          accommodations: [{
+            id: 1, place_id: 5, place_name: 'Grand Hotel', place_address: 'Paris',
+            start_day_id: 1, end_day_id: 3, check_in: '14:00', check_out: '11:00', confirmation: 'HOTEL99',
+          }],
+        })
+      ),
+    );
+    const palace = buildPlace({ id: 1, name: 'Palace of Fine Arts' });
+    render(<DayDetailPanel
+      {...defaultProps}
+      assignments={{ '1': [buildAssignment({ id: 11, day_id: 1, order_index: 0, place: palace })] }}
+      reservations={[buildReservation({ id: 1, title: "Morella's", assignment_id: 11, status: 'confirmed' })]}
+    />);
+    await screen.findByText('Grand Hotel');
+    expect(screen.getByText("Morella's")).toBeInTheDocument();
+    expect(screen.getByText('HOTEL99')).toBeInTheDocument();
+    expect(screen.getByText('Palace of Fine Arts')).toBeInTheDocument();
   });
 
 });

@@ -4,6 +4,7 @@ const dayplan: TranslationStrings = {
   'dayplan.icsTooltip': 'Εξαγωγή ημερολογίου (ICS)',
   'dayplan.emptyDay': 'Δεν υπάρχουν προγραμματισμένα μέρη για αυτή την ημέρα',
   'dayplan.cannotReorderTransport': 'Οι κρατήσεις με σταθερή ώρα δεν μπορούν να αναδιαταχθούν',
+  'dayplan.timeSlot': 'Χρονικό διάστημα',
   'dayplan.confirmRemoveTimeTitle': 'Αφαίρεση ώρας;',
   'dayplan.confirmRemoveTimeBody':
     'Αυτό το μέρος έχει σταθερή ώρα ({time}). Η μετακίνησή του θα αφαιρέσει την ώρα και θα επιτρέψει ελεύθερη ταξινόμηση.',

@@ -27,6 +27,7 @@ const dayplan: TranslationStrings = {
   'dayplan.pdfTooltip': 'Exportar plano do dia em PDF',
   'dayplan.pdfError': 'Falha ao exportar PDF',
   'dayplan.cannotReorderTransport': 'Reservas com horário fixo não podem ser reordenadas',
+  'dayplan.timeSlot': 'Horário',
   'dayplan.confirmRemoveTimeTitle': 'Remover horário?',
   'dayplan.confirmRemoveTimeBody':
     'Este lugar tem um horário fixo ({time}). Movê-lo removerá o horário e permitirá ordenação livre.',

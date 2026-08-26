@@ -4,6 +4,7 @@ const dayplan: TranslationStrings = {
   'dayplan.icsTooltip': 'Xuất lịch (ICS)',
   'dayplan.emptyDay': 'Không có địa điểm nào được lên kế hoạch cho ngày này',
   'dayplan.cannotReorderTransport': 'Đặt chỗ với thời gian cố định không thể được sắp xếp lại',
+  'dayplan.timeSlot': 'Khung giờ',
   'dayplan.confirmRemoveTimeTitle': 'Xóa thời gian?',
   'dayplan.confirmRemoveTimeBody':
     'Nơi này có thời gian cố định ({time}). Di chuyển nó sẽ loại bỏ thời gian và cho phép sắp xếp miễn phí.',

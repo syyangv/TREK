@@ -27,6 +27,7 @@ const dayplan: TranslationStrings = {
   'dayplan.pdfTooltip': 'Napi terv exportálása PDF-be',
   'dayplan.pdfError': 'Nem sikerült a PDF exportálás',
   'dayplan.cannotReorderTransport': 'A rögzített időpontú foglalások nem rendezhetők át',
+  'dayplan.timeSlot': 'Idősáv',
   'dayplan.confirmRemoveTimeTitle': 'Időpont eltávolítása?',
   'dayplan.confirmRemoveTimeBody':
     'Ennek a helynek rögzített időpontja van ({time}). Az áthelyezéssel az időpont eltávolítódik és szabad rendezés válik lehetővé.',

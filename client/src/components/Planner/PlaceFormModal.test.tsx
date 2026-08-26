@@ -437,6 +437,15 @@ describe('PlaceFormModal', () => {
     expect(submitBtn).toBeDisabled();
   });
 
+  it('FE-PLANNER-PLACEFORM-027b: end-before-start warning renders in the place editor', () => {
+    // The warning now comes from the shared Time Slot editor the row editor also uses;
+    // it must keep appearing here so the two cannot drift apart.
+    const place = buildPlace({ name: 'Test', place_time: '14:00', end_time: '13:00' });
+    const assignment = buildAssignment({ id: 11, day_id: 5, place });
+    render(<PlaceFormModal {...defaultProps} place={place} assignmentId={11} dayAssignments={[assignment]} />);
+    expect(screen.getByText('End time is before start time')).toBeInTheDocument();
+  });
+
   it('FE-PLANNER-PLACEFORM-028: time collision warning appears when assignments overlap', () => {
     // Create an assignment for the "current" place being edited
     const currentPlace = buildPlace({ name: 'My Event', place_time: '12:30', end_time: '13:30' });
@@ -562,5 +571,22 @@ describe('PlaceFormModal', () => {
 
     expect(screen.getByDisplayValue('48.8566')).toBeInTheDocument();
     expect(screen.getByDisplayValue('2.3522')).toBeInTheDocument();
+  });
+  // ── Time Slot fields on the mobile path (#42) ─────────────────────────────
+
+  it('FE-PLANNER-PLACEFORM-037: Time Slot fields render on the mobile path when a day is in context', () => {
+    // The mobile day-context edit path must carry the Assignment identity the Time
+    // Slot editor is gated on, or the fields are hidden by construction (#42).
+    const place = buildPlace({ name: 'Palace of Fine Arts', place_time: '14:00', end_time: '16:00' });
+    const assignment = buildAssignment({ id: 10, day_id: 5, place });
+    render(<PlaceFormModal {...defaultProps} place={place} assignmentId={10} dayAssignments={[assignment]} isMobile />);
+    expect(screen.getByDisplayValue('14:00')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('16:00')).toBeInTheDocument();
+  });
+
+  it('FE-PLANNER-PLACEFORM-038: Time Slot fields stay hidden on the mobile path for a pool place with no day context', () => {
+    const place = buildPlace({ name: 'Palace of Fine Arts' });
+    render(<PlaceFormModal {...defaultProps} place={place} assignmentId={null} isMobile />);
+    expect(screen.queryByTestId('time-picker')).not.toBeInTheDocument();
   });
 });
