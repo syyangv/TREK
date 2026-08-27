@@ -324,6 +324,18 @@ describe('MPackingListTab', () => {
     expect(screen.getByText('packing.personalEmptyHint')).toBeInTheDocument()
   })
 
+  it('FE-MOB-PACKTAB-020a: a solo trip hides sharing views and shows the complete list', async () => {
+    await setup({ planner: { tripMembers: [ANNA] } as Partial<TripPlanner> })
+
+    expect(screen.queryByRole('button', { name: 'packing.viewCommon' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'packing.viewPersonal' })).toBeNull()
+    expect(screen.getByText('Passport')).toBeInTheDocument()
+    expect(screen.getByText('Diary')).toBeInTheDocument()
+
+    enterEditMode()
+    expect(screen.queryByRole('button', { name: 'packing.assignMembers' })).toBeNull()
+  })
+
   it('FE-MOB-PACKTAB-021: the open/done filters narrow the categories', async () => {
     await setup()
 
@@ -559,7 +571,7 @@ describe('MPackingListTab', () => {
 
   it('FE-MOB-PACKTAB-038: a failing assignee update surfaces the save error', async () => {
     vi.spyOn(packingApi, 'setCategoryAssignees').mockRejectedValue(new Error('x'))
-    const { planner } = await setup({ planner: { tripMembers: [ANNA] } as Partial<TripPlanner> })
+    const { planner } = await setup({ planner: { tripMembers: [ANNA, BEN] } as Partial<TripPlanner> })
     enterEditMode()
 
     fireEvent.click(within(card('Documents')).getByRole('button', { name: 'packing.assignMembers' }))
@@ -732,7 +744,7 @@ describe('MPackingListTab', () => {
       contributors: [{ user_id: 12, username: 'ben', status: 'pledged' }],
     })]
     const member = { ...ANNA, avatar_url: 'https://cdn.example/anna.png' } as unknown as TripMember
-    await setup({ items, planner: { tripMembers: [member] } as Partial<TripPlanner> })
+    await setup({ items, planner: { tripMembers: [member, BEN] } as Partial<TripPlanner> })
 
     expect(within(itemRow('Tent')).getByAltText('anna')).toHaveAttribute('src', 'https://cdn.example/anna.png')
     expect(within(itemRow('Tent')).getByText('+1')).toBeInTheDocument()

@@ -19,7 +19,7 @@ import { katColor } from '../../../../components/Packing/packingListPanel.helper
 import { BAG_COLORS, PACKING_PLACEHOLDER_NAME } from '../../../../components/Packing/packingListPanel.constants'
 import {
   formatWeight, groupPackingItems, isLastCustomItemInCategory, isPackingPlaceholder,
-  packingCategoryOrder, packingProgress, packingViewItems,
+  packingCategoryOrder, packingHasCompanions, packingProgress, packingViewItems,
   type PackingCategoryGroup, type PackingStatusFilter, type PackingView,
 } from './listsModel'
 import MBagsSheet from './MBagsSheet'
@@ -45,6 +45,7 @@ export default function MPackingListTab({ planner }: { planner: TripPlanner }) {
   // Bag-tracking is a global addon flag, NOT part of planner.enabledAddons (§6.4).
   const bagTrackingEnabled = useAddonStore(s => s.bagTracking)
   const tripMembers = planner.tripMembers
+  const hasCompanions = packingHasCompanions(tripMembers)
 
   const [view, setView] = useState<PackingView>('common')
   const [statusFilter, setStatusFilter] = useState<PackingStatusFilter>('all')
@@ -79,7 +80,13 @@ export default function MPackingListTab({ planner }: { planner: TripPlanner }) {
   }, [tripId])
 
   const defaultCategory = t('packing.defaultCategory')
-  const viewItems = useMemo(() => packingViewItems(items, view), [items, view])
+  // Only one resolved member proves this is a solo trip. During the initial
+  // empty-roster window, keep the existing shared UI until membership hydrates.
+  const activeView: PackingView = hasCompanions ? view : 'personal'
+  const viewItems = useMemo(
+    () => hasCompanions ? packingViewItems(items, activeView) : items,
+    [items, activeView, hasCompanions],
+  )
   const categoryOrder = useMemo(() => packingCategoryOrder(viewItems, defaultCategory), [viewItems, defaultCategory])
   const groups = useMemo(() => groupPackingItems(viewItems, statusFilter, defaultCategory), [viewItems, statusFilter, defaultCategory])
   const progress = packingProgress(viewItems)
@@ -95,7 +102,7 @@ export default function MPackingListTab({ planner }: { planner: TripPlanner }) {
       } else {
         await tripActions.addPackingItem(
           tripId,
-          { name, category, visibility: view === 'personal' ? 'personal' : 'common' } as Parameters<typeof tripActions.addPackingItem>[1],
+          { name, category, visibility: activeView === 'personal' ? 'personal' : 'common' } as Parameters<typeof tripActions.addPackingItem>[1],
         )
       }
     } catch {
@@ -158,7 +165,7 @@ export default function MPackingListTab({ planner }: { planner: TripPlanner }) {
     try {
       await tripActions.addPackingItem(
         tripId,
-        { name: PACKING_PLACEHOLDER_NAME, category: catName, visibility: view === 'personal' ? 'personal' : 'common' } as Parameters<typeof tripActions.addPackingItem>[1],
+        { name: PACKING_PLACEHOLDER_NAME, category: catName, visibility: activeView === 'personal' ? 'personal' : 'common' } as Parameters<typeof tripActions.addPackingItem>[1],
       )
       setNewCategoryName('')
       setAddingCategory(false)
@@ -223,7 +230,7 @@ export default function MPackingListTab({ planner }: { planner: TripPlanner }) {
     try {
       // Land the items in the list the user is looking at — without the
       // visibility the API defaults to 'common' and they vanish from My list.
-      const data = await packingApi.applyTemplate(tripId, templateId, view)
+      const data = await packingApi.applyTemplate(tripId, templateId, activeView)
       useTripStore.setState(s => ({ packingItems: [...s.packingItems, ...(data.items || [])] }))
       toast.success(t('packing.templateApplied', { count: data.count }))
       setActionsOpen(false)
@@ -412,9 +419,9 @@ export default function MPackingListTab({ planner }: { planner: TripPlanner }) {
       {/* ── Filters (spec §4.3) ── */}
       {!trueEmpty && (
         <div className="mt-[10px] flex items-center gap-[6px]">
-          <button type="button" onClick={() => setView('common')} className={filterPillCls(view === 'common')}>{t('packing.viewCommon')}</button>
-          <button type="button" onClick={() => setView('personal')} className={filterPillCls(view === 'personal')}>{t('packing.viewPersonal')}</button>
-          <span className="h-4 w-px flex-none bg-[color:var(--m-rowbr)]" />
+          {hasCompanions && <button type="button" onClick={() => setView('common')} className={filterPillCls(view === 'common')}>{t('packing.viewCommon')}</button>}
+          {hasCompanions && <button type="button" onClick={() => setView('personal')} className={filterPillCls(view === 'personal')}>{t('packing.viewPersonal')}</button>}
+          {hasCompanions && <span className="h-4 w-px flex-none bg-[color:var(--m-rowbr)]" />}
           <button type="button" onClick={() => setStatusFilter('all')} className={filterPillCls(statusFilter === 'all')}>{t('packing.filterAll')}</button>
           <button type="button" onClick={() => setStatusFilter('open')} className={filterPillCls(statusFilter === 'open')}>{t('packing.filterOpen')}</button>
           <button type="button" onClick={() => setStatusFilter('done')} className={filterPillCls(statusFilter === 'done')}>{t('packing.filterDone')}</button>
@@ -449,6 +456,7 @@ export default function MPackingListTab({ planner }: { planner: TripPlanner }) {
             currentUserId={currentUserId}
             assignees={categoryAssignees[group.category] || []}
             tripMembers={tripMembers}
+            hasCompanions={hasCompanions}
             onSetAssignees={userIds => setCategoryAssigneesFor(group.category, userIds)}
             onRename={newName => renameCategory(group.category, newName)}
             onCheckAll={() => checkAllInCategory(group.items)}
@@ -546,7 +554,7 @@ function ActionRow({ icon: Icon, label, onClick, danger = false }: {
 
 function PackingCategoryCard({
   group, categoryOrder, open, onToggle, editMode, canEdit, planner, currentUserId, assignees, tripMembers,
-  onSetAssignees, onRename, onCheckAll, onUncheckAll, onDeleteCategory, onAddItem, onEditItem, onDeleteItem,
+  hasCompanions, onSetAssignees, onRename, onCheckAll, onUncheckAll, onDeleteCategory, onAddItem, onEditItem, onDeleteItem,
   bagTrackingEnabled, bags, onCreateBag,
 }: {
   group: PackingCategoryGroup
@@ -559,6 +567,7 @@ function PackingCategoryCard({
   currentUserId: number | null
   assignees: CategoryAssignee[]
   tripMembers: TripMember[]
+  hasCompanions: boolean
   onSetAssignees: (userIds: number[]) => void
   onRename: (newName: string) => void
   onCheckAll: () => void
@@ -628,7 +637,7 @@ function PackingCategoryCard({
         ) : (
           <span className="min-w-0 flex-1 truncate text-[0.875rem] font-bold text-m-ink">{group.category}</span>
         )}
-        {editMode && (
+        {editMode && hasCompanions && (
           <button
             type="button"
             onClick={e => { e.stopPropagation(); setAssignOpen(v => !v) }}
@@ -654,7 +663,7 @@ function PackingCategoryCard({
         {open ? <ChevronUp size={13} strokeWidth={2} className="flex-none text-m-faint" /> : <ChevronDown size={13} strokeWidth={2} className="flex-none text-m-faint" />}
       </div>
 
-      {assignOpen && editMode && (
+      {assignOpen && editMode && hasCompanions && (
         <div className="border-b border-[color:var(--m-rowbr)] bg-m-sheetop px-[13px] py-[10px]">
           <div className="mb-[6px] font-geist text-[0.625rem] font-bold uppercase tracking-[.06em] text-m-faint">{t('packing.assignMembers')}</div>
           {tripMembers.length === 0 ? (
@@ -706,6 +715,7 @@ function PackingCategoryCard({
               onCreateBag={onCreateBag}
               onEdit={() => onEditItem(item.id)}
               onDelete={() => onDeleteItem(item)}
+              hasCompanions={hasCompanions}
             />
           ))}
 
@@ -753,7 +763,7 @@ function PackingCategoryCard({
 
 // ── Item row ────────────────────────────────────────────────────────────
 
-function PackingItemRow({ item, planner, currentUserId, editMode, canEdit, bagTrackingEnabled, bags, onCreateBag, onEdit, onDelete }: {
+function PackingItemRow({ item, planner, currentUserId, editMode, canEdit, bagTrackingEnabled, bags, onCreateBag, onEdit, onDelete, hasCompanions }: {
   item: PackingItem
   planner: TripPlanner
   currentUserId: number | null
@@ -764,6 +774,7 @@ function PackingItemRow({ item, planner, currentUserId, editMode, canEdit, bagTr
   onCreateBag: (name: string) => Promise<PackingBag | undefined>
   onEdit: () => void
   onDelete: () => void
+  hasCompanions: boolean
 }) {
   const { t, tripId, tripActions } = planner
   const [bagPickerOpen, setBagPickerOpen] = useState(false)
@@ -825,7 +836,7 @@ function PackingItemRow({ item, planner, currentUserId, editMode, canEdit, bagTr
         {/* Sharing state is an icon, not a sentence (#1525): "Taken care of by
             Alexander" spelled out took a third of the row away from the item
             name. The full wording lives on the pill as its label. */}
-        {badgeSharedToMe && (
+        {hasCompanions && badgeSharedToMe && (
           <span
             className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-[color:var(--m-ic)] text-m-muted"
             title={t('packing.takenCareOf', { name: item.owner_username || '' })}
@@ -834,7 +845,7 @@ function PackingItemRow({ item, planner, currentUserId, editMode, canEdit, bagTr
             <HandHelping size={11} strokeWidth={2.2} />
           </span>
         )}
-        {!badgeSharedToMe && badgeSharedByMe && (
+        {hasCompanions && !badgeSharedToMe && badgeSharedByMe && (
           <span
             className="flex flex-none items-center gap-[2px] rounded-full bg-[color:var(--m-ic)] px-[5px] py-[3px] font-geist text-[0.59375rem] font-bold text-m-muted"
             title={t('packing.sharedWithCount', { count: recipients.length })}
@@ -844,7 +855,7 @@ function PackingItemRow({ item, planner, currentUserId, editMode, canEdit, bagTr
             {recipients.length}
           </span>
         )}
-        {!badgeSharedToMe && !badgeSharedByMe && badgeBroughtBy && (
+        {hasCompanions && !badgeSharedToMe && !badgeSharedByMe && badgeBroughtBy && (
           <span className="flex flex-none items-center gap-[3px]" title={item.owner_username || undefined}>
             {ownerAvatarUrl
               ? <img src={ownerAvatarUrl} alt={item.owner_username || ''} className="h-5 w-5 flex-none rounded-full object-cover" />
