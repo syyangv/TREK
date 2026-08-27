@@ -642,7 +642,8 @@
   .trek-dash .hello { font-size: 40px; }
 
   /* Hero — immersive cover, title only (the pass is its own card below) */
-  .trek-dash .hero-trip { height: 340px; margin-bottom: 16px; border-radius: var(--r-xl); }
+  /* Keep the spotlight card no taller than the boarding pass beneath it. */
+  .trek-dash .hero-trip { height: 200px; margin-bottom: 16px; border-radius: var(--r-xl); }
   /* No hover on touch — the lift/zoom just sticks after a tap and looks broken. */
   .trek-dash .hero-trip:hover { transform: none; box-shadow: var(--sh-lg); }
   .trek-dash .hero-trip:hover img.bg { transform: none; }
@@ -650,6 +651,10 @@
   /* the page already opens with the notification/profile strip, trim its top gap */
   .trek-dash .page { padding-top: 4px; }
   .trek-dash .hero-title { font-size: 48px; }
+
+  /* Keep planned-trip covers compact on mobile too; list view below has its own
+     slimmer row treatment. */
+  .trek-dash .trips:not(.list-view) .trip-cover { height: 200px; aspect-ratio: unset; }
 
   /* Boarding pass — separate 2×2 glass card under the hero (mockup) */
   .trek-dash .pass-card {
