@@ -1,16 +1,18 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router'
 import { useAuthStore } from '../../store/authStore'
 import { useSettingsStore, hasStoredLanguage } from '../../store/settingsStore'
 import { useTranslation, detectBrowserLanguage } from '../../i18n'
 import { startAuthentication } from '@simplewebauthn/browser'
 import { authApi, configApi } from '../../api/client'
 import { getApiErrorMessage } from '../../types'
+import { START_DESTINATION_ROUTE } from '../../utils/startDestination'
 
 interface AppConfig {
   has_users: boolean
   allow_registration: boolean
   setup_complete: boolean
+  managed?: boolean
   demo_mode: boolean
   oidc_configured: boolean
   oidc_display_name?: string
@@ -61,7 +63,7 @@ export function useLogin() {
   const [confirmPassword, setConfirmPassword] = useState('')
 
   const { login, register, demoLogin, completeMfaLogin, loadUser } = useAuthStore()
-  const { setLanguageLocal, setLanguageTransient } = useSettingsStore()
+  const { setLanguageLocal, setLanguageTransient, loadSettings } = useSettingsStore()
   const navigate = useNavigate()
   const location = useLocation()
   const noRedirect = !!(location.state as { noRedirect?: boolean } | null)?.noRedirect
@@ -73,14 +75,28 @@ export function useLogin() {
     if (redirect && redirect.startsWith('/') && !redirect.startsWith('//') && !redirect.startsWith('/\\')) {
       return redirect
     }
-    return '/dashboard'
+    // No page to return to: hand the choice to RootRedirect, which is the one
+    // place that knows whether this user starts on the dashboard or in a trip.
+    return START_DESTINATION_ROUTE
   }, [])
 
   useEffect(() => {
-    if (redirectTarget !== '/dashboard') {
+    if (redirectTarget !== START_DESTINATION_ROUTE) {
       sessionStorage.setItem('oidc_redirect', redirectTarget)
     }
   }, [redirectTarget])
+
+  /**
+   * Start the takeoff animation, and spend those 2.6 seconds fetching the
+   * settings instead of letting them sit idle. Whoever we hand over to then
+   * already has them — which matters for the startup destination, decided the
+   * moment we navigate, and otherwise racing this exact request.
+   */
+  const takeOff = (): void => {
+    setShowTakeoff(true)
+    loadSettings()
+    setTimeout(() => navigate(redirectTarget), 2600)
+  }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -110,7 +126,7 @@ export function useLogin() {
           window.history.replaceState({}, '', '/login')
           if (data.token) {
             await loadUser()
-            const savedRedirect = sessionStorage.getItem('oidc_redirect') || '/dashboard'
+            const savedRedirect = sessionStorage.getItem('oidc_redirect') || START_DESTINATION_ROUTE
             sessionStorage.removeItem('oidc_redirect')
             navigate(savedRedirect, { replace: true })
           } else {
@@ -194,8 +210,7 @@ export function useLogin() {
     setIsLoading(true)
     try {
       await demoLogin()
-      setShowTakeoff(true)
-      setTimeout(() => navigate(redirectTarget), 2600)
+      takeOff()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('login.demoFailed'))
     } finally {
@@ -211,8 +226,7 @@ export function useLogin() {
       const assertion = await startAuthentication({ optionsJSON: options })
       await authApi.passkey.loginVerify(assertion)
       await loadUser({ silent: true })
-      setShowTakeoff(true)
-      setTimeout(() => navigate(redirectTarget), 2600)
+      takeOff()
     } catch (err: unknown) {
       // The user dismissing the native prompt isn't an error worth surfacing.
       const name = (err as { name?: string })?.name
@@ -237,8 +251,7 @@ export function useLogin() {
         if (newPassword !== confirmPassword) { setError(t('settings.passwordMismatch')); setIsLoading(false); return }
         await authApi.changePassword({ current_password: savedLoginPassword, new_password: newPassword })
         await loadUser({ silent: true })
-        setShowTakeoff(true)
-        setTimeout(() => navigate(redirectTarget), 2600)
+        takeOff()
         return
       }
       if (mode === 'login' && mfaStep) {
@@ -254,8 +267,7 @@ export function useLogin() {
           setIsLoading(false)
           return
         }
-        setShowTakeoff(true)
-        setTimeout(() => navigate(redirectTarget), 2600)
+        takeOff()
         return
       }
       if (mode === 'register') {
@@ -285,8 +297,7 @@ export function useLogin() {
           return
         }
       }
-      setShowTakeoff(true)
-      setTimeout(() => navigate(redirectTarget), 2600)
+      takeOff()
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, t('login.error')))
       setIsLoading(false)

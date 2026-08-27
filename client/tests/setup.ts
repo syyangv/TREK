@@ -1,8 +1,14 @@
 import '@testing-library/jest-dom/vitest';
 import 'fake-indexeddb/auto';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, vi } from 'vitest';
 import { server } from './helpers/msw/server';
+
+// waitFor/findBy* default to 1s, which is enough on a dev machine but not on a
+// 4-core CI runner running the whole suite in parallel forks — a multipart POST
+// through MSW plus an IndexedDB write can exceed it. Still well inside the 15s
+// testTimeout, so a genuinely broken assertion fails, it just takes longer.
+configure({ asyncUtilTimeout: 5000 });
 
 // Mock the websocket module so stores don't try to open real connections
 vi.mock('../src/api/websocket', () => ({
@@ -15,8 +21,16 @@ vi.mock('../src/api/websocket', () => ({
   removeListener: vi.fn(),
 }));
 
-// MSW lifecycle
-beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));
+// MSW lifecycle. A cross-origin request nobody mocked is the dangerous kind: 'warn'
+// lets it through, so the runner really talks to frankfurter or a tile server and settles
+// a promise after the test environment is gone (see handlers/external.ts). Those fail now.
+// An unhandled same-origin call stays a warning: that is a missing handler, not egress.
+beforeAll(() => server.listen({
+  onUnhandledRequest: (request, print) => {
+    if (new URL(request.url).origin === location.origin) print.warning();
+    else print.error();
+  },
+}));
 afterEach(() => {
   server.resetHandlers();
   cleanup();

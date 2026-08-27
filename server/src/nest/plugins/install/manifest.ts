@@ -1,7 +1,7 @@
 import semver from 'semver';
-import { isKnownPermission } from '../protocol/envelope';
+import { isKnownPermission, PLUGIN_API_VERSION } from '../protocol/envelope';
 import { isValidTrekRange, minTrekOf } from './host-compat';
-import type { NotifEventType } from '../../../services/notificationPreferencesService';
+import type { NotifEventType } from '../../notifications/notification-events';
 
 /**
  * Parse + validate a plugin's trek-plugin.json (#plugins, M4). Kept deliberately
@@ -62,10 +62,20 @@ export interface ManifestAction {
   danger?: boolean;
 }
 
+/** A routing profile a routeProvider plugin offers — one entry in the planner's
+ * route-profile picker (e.g. an EV profile with charging stops). */
+export interface RouteProfileCapability {
+  id: string;
+  label: string;
+  icon?: string;
+}
+
 export interface PluginCapabilities {
   widget?: WidgetCapability;
   tripPage?: TripPageCapability;
   notificationChannel?: NotificationChannelCapability;
+  /** Routing profiles offered via the routeProvider hook (max 3). */
+  routeProfiles?: RouteProfileCapability[];
   /** Function names this plugin exposes to its dependents via ctx.plugins.call. */
   provides?: string[];
   /** Event names this plugin publishes to its dependents via ctx.events.emit. */
@@ -138,7 +148,7 @@ export class ManifestError extends Error {}
 
 /** JSON.parse that tolerates a UTF-8 BOM (0xFEFF) — manifests written on Windows often carry one. */
 export function parseJsonText(text: string): unknown {
-  return JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
+  return JSON.parse(text.codePointAt(0) === 0xfeff ? text.slice(1) : text);
 }
 
 /**
@@ -210,11 +220,21 @@ export function parseManifest(raw: unknown, opts?: { requireTrek?: boolean }): P
         : 'missing "trek" version range — declare the TREK versions this plugin supports, e.g. ">=3.2.0 <4.0.0"',
     );
   }
+
+  const rawApi = m.apiVersion;
+  if (rawApi !== undefined && (typeof rawApi !== 'number' || !Number.isInteger(rawApi) || rawApi < 1)) {
+    throw new ManifestError('apiVersion must be a positive integer');
+  }
+  const apiVersion = (rawApi as number | undefined) ?? 1;
+  if (opts?.requireTrek && apiVersion > PLUGIN_API_VERSION) {
+    throw new ManifestError(`plugin requires plugin-API v${apiVersion}; this TREK supports v${PLUGIN_API_VERSION}`);
+  }
+
   return {
     id,
     name: str(m.name, 'name'),
     version,
-    apiVersion: typeof m.apiVersion === 'number' ? m.apiVersion : 1,
+    apiVersion,
     author: optStr(m.author),
     description: optStr(m.description),
     homepage: optStr(m.homepage),
@@ -333,6 +353,25 @@ function parseCapabilities(raw: unknown): PluginCapabilities {
       if (events.length) channel.events = events;
     }
     out.notificationChannel = channel;
+  }
+  if (c.routeProfiles !== undefined) {
+    if (!Array.isArray(c.routeProfiles)) throw new ManifestError('capabilities.routeProfiles must be an array');
+    if (c.routeProfiles.length > 3) throw new ManifestError('capabilities.routeProfiles: at most 3 profiles');
+    const profiles: RouteProfileCapability[] = [];
+    for (const v of c.routeProfiles) {
+      if (!v || typeof v !== 'object') throw new ManifestError('capabilities.routeProfiles entries must be objects');
+      const p = v as Record<string, unknown>;
+      const id = typeof p.id === 'string' ? p.id : '';
+      if (!/^[a-z][a-z0-9-]{0,23}$/.test(id)) {
+        throw new ManifestError('capabilities.routeProfiles: id must be lowercase [a-z][a-z0-9-], max 24 chars');
+      }
+      if (profiles.some((x) => x.id === id)) throw new ManifestError(`capabilities.routeProfiles: duplicate id "${id}"`);
+      const label = typeof p.label === 'string' ? p.label.trim() : '';
+      if (!label || label.length > 40) throw new ManifestError('capabilities.routeProfiles: label is required (max 40 chars)');
+      const icon = optStr(p.icon);
+      profiles.push({ id, label, ...(icon ? { icon: icon.slice(0, 40) } : {}) });
+    }
+    if (profiles.length) out.routeProfiles = profiles;
   }
   const provides = parseCapabilityNames(c.provides, 'provides');
   if (provides.length) out.provides = provides;

@@ -350,5 +350,5 @@ export const useJourneyStore = create<JourneyState>((set, get) => ({
     })
   },
 
-  clear: () => set({ journeys: [], current: null, loading: false }),
+  clear: () => set({ journeys: [], current: null, loading: false, notFound: false }),
 }))

@@ -13,7 +13,7 @@ export function parseTimeToMinutes(time?: string | null): number | null {
     return h * 60 + m
   }
   const parts = time.split(':').map(Number)
-  if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) return parts[0] * 60 + parts[1]
+  if (parts.length >= 2 && !Number.isNaN(parts[0]) && !Number.isNaN(parts[1])) return parts[0] * 60 + parts[1]
   return null
 }
 
@@ -27,6 +27,26 @@ export function getSpanPhase(
   if (dayId === startDayId) return 'start'
   if (dayId === endDayId) return 'end'
   return 'middle'
+}
+
+/**
+ * Booking types that carry no information on the days between their start and end and
+ * therefore drop out of the day timeline there. A parked car just stands in the garage:
+ * you only need to know when you hand it over and when you collect it, so the days in
+ * between show nothing at all, not even a badge in the day header (#1937).
+ *
+ * A car rental is deliberately NOT in this set: its middle days are not dropped but
+ * moved into the day header, which is what people expect from a vehicle they are
+ * driving around. Kept as a set so another such type can join without editing every
+ * render site again.
+ */
+const MIDDLE_DAY_HIDDEN_TYPES = new Set(['parking'])
+
+export function hidesOnMiddleDay(
+  r: { type?: string | null; day_id?: number | null; end_day_id?: number | null },
+  dayId: number
+): boolean {
+  return !!r.type && MIDDLE_DAY_HIDDEN_TYPES.has(r.type) && getSpanPhase(r, dayId) === 'middle'
 }
 
 /**

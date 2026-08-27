@@ -7,10 +7,12 @@ import { getApiErrorMessage } from '../types'
 import { tripSyncManager } from '../sync/tripSyncManager'
 import { reopenForUser, deleteCurrentUserDb } from '../db/offlineDb'
 import { setAuthed } from '../sync/authGate'
-import { unregisterSyncTriggers } from '../sync/syncTriggers'
+import { registerSyncTriggers, unregisterSyncTriggers } from '../sync/syncTriggers'
 import { isEffectivelyOffline } from '../sync/networkMode'
 import { useSystemNoticeStore } from './systemNoticeStore.js'
 import { clearAppearanceSnapshot } from '../theme/applyAppearance'
+import { clearAllPluginSessions } from './pluginStore'
+import { forgetStartDestination } from '../utils/startDestination'
 
 interface AuthResponse {
   user: User
@@ -32,7 +34,13 @@ interface AuthState {
    *  outage doesn't render as a blank, error-free page that looks like lost data.
    *  Transient, never persisted. #1283 */
   authCheckFailed: boolean
+  /** The user pressed "log out" — as opposed to a session that simply ended.
+   *  Read by ProtectedRoute: a deliberate sign-out should not leave a
+   *  ?redirect= pointing back at the page they just left. Transient. */
+  loggingOut: boolean
   error: string | null
+  /** The operator of this install owns its configuration, not the admin. */
+  managed: boolean
   demoMode: boolean
   devMode: boolean
   isPrerelease: boolean
@@ -45,6 +53,7 @@ interface AuthState {
   placesPhotosEnabled: boolean
   placesAutocompleteEnabled: boolean
   placesDetailsEnabled: boolean
+  placesEnrichEnabled: boolean
 
   login: (email: string, password: string, rememberMe?: boolean) => Promise<LoginResult>
   completeMfaLogin: (mfaToken: string, code: string, rememberMe?: boolean) => Promise<AuthResponse>
@@ -57,6 +66,7 @@ interface AuthState {
   updateProfile: (profileData: Partial<User>) => Promise<void>
   uploadAvatar: (file: File) => Promise<AvatarResponse>
   deleteAvatar: () => Promise<void>
+  setManaged: (val: boolean) => void
   setDemoMode: (val: boolean) => void
   setDevMode: (val: boolean) => void
   setIsPrerelease: (val: boolean) => void
@@ -68,6 +78,7 @@ interface AuthState {
   setPlacesPhotosEnabled: (val: boolean) => void
   setPlacesAutocompleteEnabled: (val: boolean) => void
   setPlacesDetailsEnabled: (val: boolean) => void
+  setPlacesEnrichEnabled: (val: boolean) => void
   demoLogin: () => Promise<AuthResponse>
 }
 
@@ -85,6 +96,10 @@ async function onAuthSuccess(userId: number): Promise<void> {
   } catch (err) {
     console.error('[auth] failed to open user-scoped offline DB', err)
   }
+  // logout() tears the triggers down, and App's mount effect never runs again in
+  // an SPA session, so a second login in the same tab would leave the mutation
+  // queue without a flush trigger. Re-registering is a no-op while they are up.
+  registerSyncTriggers()
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -94,7 +109,9 @@ export const useAuthStore = create<AuthState>()(
   isAuthenticated: false,
   isLoading: true,
   authCheckFailed: false,
+  loggingOut: false,
   error: null,
+  managed: false,
   demoMode: localStorage.getItem('demo_mode') === 'true',
   devMode: false,
   isPrerelease: false,
@@ -106,6 +123,7 @@ export const useAuthStore = create<AuthState>()(
   placesPhotosEnabled: true,
   placesAutocompleteEnabled: true,
   placesDetailsEnabled: true,
+  placesEnrichEnabled: true,
 
   login: async (email: string, password: string, rememberMe?: boolean) => {
     authSequence++
@@ -119,6 +137,7 @@ export const useAuthStore = create<AuthState>()(
       set({
         user: data.user,
         isAuthenticated: true,
+        loggingOut: false,
         isLoading: false,
         error: null,
       })
@@ -144,6 +163,7 @@ export const useAuthStore = create<AuthState>()(
       set({
         user: data.user,
         isAuthenticated: true,
+        loggingOut: false,
         isLoading: false,
         error: null,
       })
@@ -169,6 +189,7 @@ export const useAuthStore = create<AuthState>()(
       set({
         user: data.user,
         isAuthenticated: true,
+        loggingOut: false,
         isLoading: false,
         error: null,
       })
@@ -187,7 +208,11 @@ export const useAuthStore = create<AuthState>()(
   logout: async () => {
     // 1. Gate first so any in-flight flush/syncAll bails before we wipe the DB.
     setAuthed(false)
-    set({ isAuthenticated: false })
+    // Flagged in the same update that drops the session: clearing isAuthenticated
+    // re-renders ProtectedRoute for whatever page is still on screen, and without
+    // this it would stamp a ?redirect= back to it — which then beats the user's
+    // startup destination on the next login.
+    set({ isAuthenticated: false, loggingOut: true })
     // 2. Stop background sync triggers (30s interval, WS pre-reconnect hook, listeners).
     unregisterSyncTriggers()
     // 3. Tear down the live connection.
@@ -196,6 +221,12 @@ export const useAuthStore = create<AuthState>()(
     // Drop the per-device appearance snapshot so the next user on a shared
     // browser doesn't get a pre-paint flash of this user's theme.
     clearAppearanceSnapshot()
+    // Same reason for the brokered plugin session state: it is keyed by user id,
+    // but sessionStorage outlives a logout within the tab.
+    clearAllPluginSessions()
+    // And the startup-destination mirror, or the next account on this browser
+    // gets bounced into a trip it may not even be able to see.
+    forgetStartDestination()
     // 4. Tell server to clear the httpOnly cookie (best-effort).
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {})
     // 5. Clear service worker caches containing sensitive data.
@@ -226,6 +257,7 @@ export const useAuthStore = create<AuthState>()(
       set({
         user: data.user,
         isAuthenticated: true,
+        loggingOut: false,
         isLoading: false,
         authCheckFailed: false,
       })
@@ -247,9 +279,7 @@ export const useAuthStore = create<AuthState>()(
       } else if (status === undefined && typeof navigator !== 'undefined' && isEffectivelyOffline()) {
         // Genuinely or intentionally offline — keep the persisted session so the
         // PWA serves cached data without a scary error. The shared network-mode
-        // helper also covers Settings → Offline's force-offline switch; checking
-        // navigator.onLine directly here would incorrectly show the outage banner
-        // while that mode is active.
+        // helper also covers Settings → Offline's force-offline switch.
         set({ isLoading: false })
       } else {
         // Server erroring (5xx) or unreachable while we're online: keep the session
@@ -307,6 +337,12 @@ export const useAuthStore = create<AuthState>()(
     set((state) => ({ user: state.user ? { ...state.user, avatar_url: null } : null }))
   },
 
+  // Not persisted, unlike demoMode above: two installs can share a browser
+  // profile, and a stale 'this one is managed' would then take settings away
+  // from an admin on an install that never set the flag. Re-read on every boot
+  // from app-config, which is one request the app makes anyway.
+  setManaged: (val: boolean) => set({ managed: val }),
+
   setDemoMode: (val: boolean) => {
     if (val) localStorage.setItem('demo_mode', 'true')
     else localStorage.removeItem('demo_mode')
@@ -323,6 +359,7 @@ export const useAuthStore = create<AuthState>()(
   setPlacesPhotosEnabled: (val: boolean) => set({ placesPhotosEnabled: val }),
   setPlacesAutocompleteEnabled: (val: boolean) => set({ placesAutocompleteEnabled: val }),
   setPlacesDetailsEnabled: (val: boolean) => set({ placesDetailsEnabled: val }),
+  setPlacesEnrichEnabled: (val: boolean) => set({ placesEnrichEnabled: val }),
 
   demoLogin: async () => {
     authSequence++
@@ -332,6 +369,7 @@ export const useAuthStore = create<AuthState>()(
       set({
         user: data.user,
         isAuthenticated: true,
+        loggingOut: false,
         isLoading: false,
         demoMode: true,
         error: null,

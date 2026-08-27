@@ -60,7 +60,7 @@ import {
   getObsidianHolidayNotes,
   getObsidianPublicHolidayNote,
   loadObsidianPublicHolidaysForYear,
-} from '../../../src/services/obsidianYearlyGlanceService';
+} from '../../../src/nest/common/obsidianYearlyGlanceService';
 
 afterAll(() => require('node:fs').rmSync(vaultPath, { recursive: true, force: true }));
 
