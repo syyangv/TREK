@@ -12,6 +12,8 @@ export interface McpSession {
   /** true when authenticated via static trek_ token — triggers deprecation prompt */
   isStaticToken: boolean;
   lastActivity: number;
+  /** IP of the most recent authorized request — what mcp.tool_call audit rows record */
+  lastClientIp: string | null;
 }
 
 export const sessions = new Map<string, McpSession>();

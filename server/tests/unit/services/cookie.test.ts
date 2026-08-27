@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { cookieOptions } from '../../../src/services/cookie';
+import { cookieOptions, willDropSecureCookie } from '../../../src/nest/common/cookie';
 import { SESSION_DURATION_MS, SESSION_DURATION_REMEMBER_MS } from '../../../src/config';
 
 describe('cookieOptions', () => {
@@ -65,5 +65,25 @@ describe('cookieOptions', () => {
 
   it('omits maxAge (session cookie) when remember is false', () => {
     expect(cookieOptions(false, undefined, false)).not.toHaveProperty('maxAge');
+  });
+
+  it('detects a secure cookie that would be dropped on plain HTTP', () => {
+    vi.stubEnv('COOKIE_SECURE', 'true');
+    vi.stubEnv('NODE_ENV', 'production');
+    expect(willDropSecureCookie()).toBe(true);
+    expect(willDropSecureCookie({ secure: true } as unknown as Parameters<typeof willDropSecureCookie>[0])).toBe(false);
+  });
+
+  it('does not report a drop when secure cookies are explicitly disabled', () => {
+    vi.stubEnv('COOKIE_SECURE', 'false');
+    vi.stubEnv('NODE_ENV', 'production');
+    expect(willDropSecureCookie()).toBe(false);
+  });
+
+  it('returns false for a development request without FORCE_HTTPS', () => {
+    vi.stubEnv('COOKIE_SECURE', 'true');
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('FORCE_HTTPS', 'false');
+    expect(willDropSecureCookie()).toBe(false);
   });
 });

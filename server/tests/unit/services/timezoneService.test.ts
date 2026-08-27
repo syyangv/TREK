@@ -1,4 +1,4 @@
-import { localParts, resolveTimeZone } from '../../../src/services/timezoneService';
+import { localParts, resolveTimeZone } from '../../../src/nest/common/timezoneService';
 
 import { describe, expect, it } from 'vitest';
 
@@ -13,5 +13,6 @@ describe('timezoneService', () => {
     expect(localParts('2026-12-03T00:00:00Z', 'Asia/Tokyo')).toEqual({ date: '2026-12-03', time: '09:00' });
     expect(localParts('invalid', 'Asia/Tokyo')).toEqual({ date: null, time: null });
     expect(localParts(null, null)).toEqual({ date: null, time: null });
+    expect(localParts('2026-12-03T00:00:00Z', 'Not/AZone')).toEqual({ date: null, time: null });
   });
 });

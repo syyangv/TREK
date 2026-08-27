@@ -37,5 +37,6 @@ const todo: TranslationStrings = {
   'todo.detail.priority': 'Prioritat',
   'todo.detail.noPriority': 'Cap',
   'todo.sortByPrio': 'Prioritat',
+  'todo.emptyFiltered': 'Cap tasca coincideix amb aquest filtre',
 };
 export default todo;

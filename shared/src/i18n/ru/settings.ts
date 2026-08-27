@@ -23,7 +23,6 @@ const settings: TranslationStrings = {
   'settings.mapTemplate': 'Шаблон карты',
   'settings.mapTemplatePlaceholder.select': 'Выберите шаблон...',
   'settings.mapDefaultHint': 'Оставьте пустым для OpenStreetMap (по умолчанию)',
-  'settings.mapTemplatePlaceholder': 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   'settings.mapHint': 'URL-шаблон для тайлов карты',
   'settings.mapProvider': 'Провайдер карты',
   'settings.mapProviderHint': 'Применяется к Trip Planner и Journey. Atlas всегда использует Leaflet.',
@@ -34,6 +33,12 @@ const settings: TranslationStrings = {
   'settings.mapMapboxToken': 'Токен доступа Mapbox',
   'settings.mapMapboxTokenHint': 'Публичный токен (pk.*) с',
   'settings.mapMapboxTokenLink': 'mapbox.com → Токены доступа',
+  'settings.mapCartoKey': 'Ключ API CARTO',
+  'settings.mapCartoKeyHint':
+    'Без ключа на базовых картах CARTO появляется водяной знак. Бесплатно и без учётной записи, на',
+  'settings.mapCartoKeyLink': 'ключ API базовых карт carto.com',
+  'settings.mapCartoKeyMissing':
+    'Этот шаблон является базовой картой CARTO. Без ключа CARTO наносит "API KEY REQUIRED" на каждый тайл.',
   'settings.mapStyle': 'Стиль карты',
   'settings.mapStylePlaceholder': 'Выберите стиль Mapbox',
   'settings.mapStyleHint': 'Preset или собственный URL mapbox://styles/USER/ID',
@@ -77,6 +82,7 @@ const settings: TranslationStrings = {
   'settings.notifyTripReminder': 'Напоминания о поездке',
   'settings.notifyTodoDue': 'Задача к сроку',
   'settings.notifyVacayInvite': 'Приглашения слияния Vacay',
+  'settings.notifyVacayShare': 'Общий доступ к календарю Vacay',
   'settings.notifyPhotosShared': 'Общие фото (Immich)',
   'settings.notifyCollabMessage': 'Сообщения чата (Collab)',
   'settings.notifyPackingTagged': 'Список вещей: назначения',
@@ -180,6 +186,10 @@ const settings: TranslationStrings = {
   'settings.about.featureRequest': 'Предложить функцию',
   'settings.about.featureRequestHint': 'Предложите новую функцию',
   'settings.about.wikiHint': 'Документация и руководства',
+  'settings.about.descriptionManaged':
+    'TREK helps you organize your trips from the first idea to the last memory. Day planning, budget, packing lists, photos and much more — all in one place.',
+  'settings.about.sourceTitle': 'Source code',
+  'settings.about.sourceHint': 'TREK is open source, licensed AGPL-3.0',
   'settings.about.supporters.badge': 'Ежемесячные спонсоры',
   'settings.about.supporters.title': 'Спутники TREK',
   'settings.about.supporters.subtitle':
@@ -259,6 +269,7 @@ const settings: TranslationStrings = {
   'settings.avatarUploaded': 'Фото профиля обновлено',
   'settings.avatarRemoved': 'Фото профиля удалено',
   'settings.avatarError': 'Ошибка загрузки',
+  'settings.avatarRemoveError': 'Ошибка удаления',
   'settings.bookingLabels': 'Подписи маршрутов бронирований',
   'settings.bookingLabelsHint':
     'Отображает названия станций / аэропортов на карте. Если выключено, показывается только значок.',
@@ -298,8 +309,9 @@ const settings: TranslationStrings = {
   'settings.notificationPreferences.webhook': 'Webhook',
   'settings.notificationPreferences.email': 'Email',
   'settings.notificationPreferences.ntfy': 'Ntfy',
-  'settings.currency': 'Валюта',
-  'settings.currencyHint': 'Все расходы будут конвертированы и показаны в этой валюте.',
+  'settings.currency': 'Валюта отображения',
+  'settings.currencyHint':
+    'Суммы в разделе «Расходы» отображаются в этой валюте только для просмотра — исходные суммы не изменяются.',
   'settings.currencyTrip': 'Валюта поездки',
   'settings.passkey.title': 'Passkeys',
   'settings.passkey.description':
@@ -348,11 +360,13 @@ const settings: TranslationStrings = {
   'settings.airtrail.test.failed': 'Не удалось подключиться',
   'settings.aiParsing.title': 'Распознавание с помощью ИИ',
   'settings.aiParsing.hint':
-    'Используйте собственную модель ИИ для извлечения бронирований из загруженных файлов. Это работает только в том случае, если администратор не настроил модель для всего экземпляра.',
+    'Выберите модель ИИ для извлечения бронирований из загруженных файлов. Это работает только в том случае, если администратор не настроил модель для всего экземпляра.',
   'settings.aiParsing.provider': 'Провайдер',
   'settings.aiParsing.providerLocal': 'Локально (Ollama)',
   'settings.aiParsing.providerOpenai': 'OpenAI',
   'settings.aiParsing.providerAnthropic': 'Anthropic',
+  'settings.aiParsing.localAdminOnly':
+    'Локальная конечная точка (Ollama) настраивается один раз для всего экземпляра в настройках администратора. Свой ключ OpenAI или Anthropic вы по-прежнему можете использовать здесь.',
   'settings.aiParsing.model': 'Модель',
   'settings.aiParsing.baseUrl': 'Базовый URL',
   'settings.aiParsing.baseUrlHint':
@@ -429,8 +443,31 @@ const settings: TranslationStrings = {
   'settings.appearance.example.normal': 'Названия мест, описания',
   'settings.appearance.example.small': 'Адреса, подписи',
   'settings.appearance.experimental': 'Экспериментальные настройки',
+  'settings.appearance.mobileNav': 'Нижняя панель навигации',
+  'settings.appearance.mobileNav.hint':
+    'Выберите, какие элементы отображаются на панели, а какие — в меню «Ещё». Дашборд всегда остаётся первым.',
+  'settings.appearance.mobileNav.inBar': 'На панели',
+  'settings.appearance.mobileNav.underMore': 'В меню «Ещё»',
+  'settings.appearance.mobileNav.moreEmpty': 'Здесь пока пусто — всё умещается на панели.',
+  'settings.appearance.mobileNav.pinned': 'Закреплено',
+  'settings.appearance.mobileNav.toMore': 'Переместить в меню «Ещё»',
+  'settings.appearance.mobileNav.toBar': 'Переместить на панель',
+  'settings.appearance.dashOrder': 'Порядок панели',
+  'settings.appearance.dashOrder.hint':
+    'Измените порядок, в котором список поездок и виджеты располагаются на панели телефона. Избранная поездка всегда остаётся сверху.',
+  'settings.appearance.dashOrder.trips': 'Поездки',
+  'settings.appearance.dashOrder.hidden': 'Скрыто',
   'settings.general.languageRegion': 'Язык и регион',
   'settings.general.travelMap': 'Карта и путешествия',
+  'settings.general.startup': 'Запуск',
+  'settings.startPage': 'Стартовая страница',
+  'settings.startPageDashboard': 'Панель управления',
+  'settings.startPageActiveTrip': 'Активная поездка',
+  'settings.startPageHint':
+    'TREK сразу открывает поездку, которая идёт сейчас, иначе ближайшую предстоящую. Это та же поездка, которую выделяет панель управления.',
+  'settings.startTripTab': 'Стартовая вкладка',
+  'settings.startTripTabHint':
+    'Вкладка, с которой открывается поездка. Если она относится к отключённому дополнению, откроется план.',
 
   // ── Offline (#1135)
   'settings.offline.cache.title': 'Офлайн-кэш',

@@ -23,7 +23,6 @@ const settings: TranslationStrings = {
   'settings.mapTemplate': 'Kartmall',
   'settings.mapTemplatePlaceholder.select': 'Välj mall...',
   'settings.mapDefaultHint': 'Lämna fältet tomt för OpenStreetMap (standard)',
-  'settings.mapTemplatePlaceholder': 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   'settings.mapHint': 'URL-mall för kartrutor',
   'settings.mapProvider': 'Kartleverantör',
   'settings.mapProviderHint': 'Påverkar resplaneraren och resedagbokens kartor. Atlas använder alltid Leaflet.',
@@ -37,6 +36,11 @@ const settings: TranslationStrings = {
   'settings.mapMapboxToken': 'Mapbox-åtkomsttoken',
   'settings.mapMapboxTokenHint': 'Offentlig token (pk.*) från',
   'settings.mapMapboxTokenLink': 'mapbox.com → Åtkomsttoken',
+  'settings.mapCartoKey': 'CARTO API-nyckel',
+  'settings.mapCartoKeyHint': 'CARTO-bakgrundskartor visar en vattenstämpel utan nyckel. Gratis och utan konto, från',
+  'settings.mapCartoKeyLink': 'API-nyckel för bakgrundskartor på carto.com',
+  'settings.mapCartoKeyMissing':
+    'Den här mallen är en CARTO-bakgrundskarta. Utan nyckel stämplar CARTO "API KEY REQUIRED" på varje ruta.',
   'settings.mapStyle': 'Kartstil',
   'settings.mapStylePlaceholder': 'Välj en Mapbox-stil',
   'settings.mapStyleHint': 'Förinställda eller egna mapbox://styles/USER/ID länk',
@@ -85,6 +89,7 @@ const settings: TranslationStrings = {
   'settings.notifyTripReminder': 'Påminnelser inför resan',
   'settings.notifyTodoDue': 'Att göra ska göras snart',
   'settings.notifyVacayInvite': 'Vacay samanslagnings inbjudningar',
+  'settings.notifyVacayShare': 'Vacay kalender delningar',
   'settings.notifyPhotosShared': 'Delade foton (Immich)',
   'settings.notifyCollabMessage': 'Chatt meddelande (Samarbete)',
   'settings.notifyPackingTagged': 'Packningslista: uppgifter',
@@ -224,6 +229,10 @@ const settings: TranslationStrings = {
   'settings.about.featureRequest': 'Förslag på ny funktion',
   'settings.about.featureRequestHint': 'Föreslå en ny funktion',
   'settings.about.wikiHint': 'Dokumentation och handledningar',
+  'settings.about.descriptionManaged':
+    'TREK helps you organize your trips from the first idea to the last memory. Day planning, budget, packing lists, photos and much more — all in one place.',
+  'settings.about.sourceTitle': 'Source code',
+  'settings.about.sourceHint': 'TREK is open source, licensed AGPL-3.0',
   'settings.about.supporters.badge': 'Månatliga bidragsgivare',
   'settings.about.supporters.title': 'Resekompisar för TREK',
   'settings.about.supporters.subtitle':
@@ -275,6 +284,7 @@ const settings: TranslationStrings = {
   'settings.avatarUploaded': 'Profilbilden har uppdaterats',
   'settings.avatarRemoved': 'Profilbilden har tagits bort',
   'settings.avatarError': 'Uppladdning misslyckades',
+  'settings.avatarRemoveError': 'Borttagningen misslyckades',
   'settings.mfa.title': 'Tvåfaktorsautentisering (2FA)',
   'settings.mfa.description':
     'Lägger till ett extra steg när du loggar in med e-postadress och lösenord. Använd en autentiseringsapp (Google Authenticator, Authy m.fl.).',
@@ -302,8 +312,9 @@ const settings: TranslationStrings = {
   'settings.mfa.toastEnabled': 'Tvåfaktorsautentisering är aktiverad',
   'settings.mfa.toastDisabled': 'Tvåfaktorsautentisering är inaktiverad',
   'settings.mfa.demoBlocked': 'Finns inte i demoläge',
-  'settings.currency': 'Valuta',
-  'settings.currencyHint': 'Alla belopp under kostnader omräknas till och redovisas i denna valuta.',
+  'settings.currency': 'Visningsvaluta',
+  'settings.currencyHint':
+    'Belopp under Kostnader visas omräknade till denna valuta endast för visning – de ursprungliga beloppen ändras inte.',
   'settings.currencyTrip': 'Resans valuta',
   'settings.passkey.title': 'Inloggningsnycklar',
   'settings.passkey.description':
@@ -348,11 +359,13 @@ const settings: TranslationStrings = {
   'settings.airtrail.test.failed': 'Anslutning misslyckades',
   'settings.aiParsing.title': 'AI-analys',
   'settings.aiParsing.hint':
-    'Använd din egen AI-modell för att extrahera bokningar från uppladdade filer. Detta gäller endast när din administratör inte har konfigurerat en modell för hela instansen.',
+    'Välj den AI-modell som används för att extrahera bokningar från uppladdade filer. Detta gäller endast när din administratör inte har konfigurerat en modell för hela instansen.',
   'settings.aiParsing.provider': 'Leverantör',
   'settings.aiParsing.providerLocal': 'Lokal (Ollama)',
   'settings.aiParsing.providerOpenai': 'OpenAI',
   'settings.aiParsing.providerAnthropic': 'Anthropic',
+  'settings.aiParsing.localAdminOnly':
+    'En lokal slutpunkt (Ollama) ställs in en gång för hela instansen i administratörsinställningarna. Du kan fortfarande använda din egen OpenAI- eller Anthropic-nyckel här.',
   'settings.aiParsing.model': 'Modell',
   'settings.aiParsing.baseUrl': 'Bas-URL',
   'settings.aiParsing.baseUrlHint': 'Var modellen körs — en lokal Ollama-server eller en OpenAI-kompatibel slutpunkt.',
@@ -427,8 +440,31 @@ const settings: TranslationStrings = {
   'settings.appearance.example.normal': 'Place names, descriptions',
   'settings.appearance.example.small': 'Addresses, labels',
   'settings.appearance.experimental': 'Experimental',
+  'settings.appearance.mobileNav': 'Nedre navigeringsfält',
+  'settings.appearance.mobileNav.hint':
+    'Välj vilka objekt som ska visas i fältet och vilka som hamnar under ”Mer”. Dashboard ligger alltid först.',
+  'settings.appearance.mobileNav.inBar': 'I fältet',
+  'settings.appearance.mobileNav.underMore': 'Under ”Mer”',
+  'settings.appearance.mobileNav.moreEmpty': 'Inget här ännu — allt får plats i fältet.',
+  'settings.appearance.mobileNav.pinned': 'Fäst',
+  'settings.appearance.mobileNav.toMore': 'Flytta under ”Mer”',
+  'settings.appearance.mobileNav.toBar': 'Flytta till fältet',
+  'settings.appearance.dashOrder': 'Instrumentpanelens ordning',
+  'settings.appearance.dashOrder.hint':
+    'Ändra ordningen på hur reselistan och widgetarna staplas på telefonens instrumentpanel. Den utvalda resan ligger alltid överst.',
+  'settings.appearance.dashOrder.trips': 'Resor',
+  'settings.appearance.dashOrder.hidden': 'Dold',
   'settings.general.languageRegion': 'Language & region',
   'settings.general.travelMap': 'Travel & map',
+  'settings.general.startup': 'Start',
+  'settings.startPage': 'Startsida',
+  'settings.startPageDashboard': 'Översikt',
+  'settings.startPageActiveTrip': 'Aktiv resa',
+  'settings.startPageHint':
+    'TREK öppnar direkt i resan som pågår, annars i nästa som börjar. Det är samma resa som översikten lyfter fram.',
+  'settings.startTripTab': 'Startflik',
+  'settings.startTripTabHint':
+    'Fliken som resan öppnas med. Hör den till ett avstängt tillägg öppnas planvyn i stället.',
 
   // ── Offline (#1135)
   'settings.offline.cache.title': 'Offline-cache',

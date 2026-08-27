@@ -35,16 +35,14 @@ vi.mock('../../../src/config', () => ({
 const { broadcastMock } = vi.hoisted(() => ({ broadcastMock: vi.fn() }));
 vi.mock('../../../src/websocket', () => ({ broadcast: broadcastMock }));
 
-vi.mock('../../../src/services/adminService', () => ({
-  isAddonEnabled: vi.fn().mockReturnValue(true),
-  getCollabFeatures: vi.fn().mockReturnValue({ chat: true, notes: true, polls: true, whatsnext: true }),
-}));
 
 import { createTables } from '../../../src/db/schema';
 import { runMigrations } from '../../../src/db/migrations';
 import { resetTestDb } from '../../helpers/test-db';
-import { createUser } from '../../helpers/factories';
+import { createUser, createBucketListItem, createVisitedCountry } from '../../helpers/factories';
 import { createMcpHarness, parseToolResult, parseResourceResult, type McpHarness } from '../../helpers/mcp-harness';
+import { setAddonEnabled } from '../../helpers/test-db';
+import { ADDON_IDS } from '../../../src/addons';
 
 beforeAll(() => {
   createTables(testDb);
@@ -52,6 +50,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  setAddonEnabled(testDb, ADDON_IDS.ATLAS, true);
   resetTestDb(testDb);
   broadcastMock.mockClear();
   delete process.env.DEMO_MODE;
@@ -66,8 +65,11 @@ async function withHarness(userId: number, fn: (h: McpHarness) => Promise<void>)
   try { await fn(h); } finally { await h.cleanup(); }
 }
 
+// The atlas resources register via the nest-mcp registry inside registerTools
+// (AtlasMcp @Resource), so the harness must keep tools on for them to attach
+// (same shape as tools-vacay.test.ts's withResourceHarness).
 async function withResourceHarness(userId: number, fn: (h: McpHarness) => Promise<void>) {
-  const h = await createMcpHarness({ userId, withTools: false, withResources: true });
+  const h = await createMcpHarness({ userId, withResources: true });
   try { await fn(h); } finally { await h.cleanup(); }
 }
 
@@ -120,6 +122,28 @@ describe('Tool: list_visited_regions', () => {
 // ---------------------------------------------------------------------------
 
 describe('Tool: mark_region_visited', () => {
+  it('uppercases both codes like REST does (post-fold quirk fix)', async () => {
+    const { user } = createUser(testDb);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'mark_region_visited',
+        arguments: { regionCode: 'jp-13', regionName: 'Tokyo', countryCode: 'jp' },
+      });
+      const data = parseToolResult(result) as any;
+      // Legacy stored 'jp-13'/'jp' verbatim, creating rows REST's uppercased
+      // unmark could never hit; both codes now normalize.
+      expect(data.region.code).toBe('JP-13');
+      expect(data.region.country_code).toBe('JP');
+      const unmark = await h.client.callTool({
+        name: 'unmark_region_visited',
+        arguments: { regionCode: 'jp-13' },
+      });
+      expect(parseToolResult(unmark)).toEqual({ success: true });
+      const row = testDb.prepare('SELECT 1 FROM visited_regions WHERE user_id = ?').get(user.id);
+      expect(row).toBeUndefined();
+    });
+  });
+
   it('inserts region and returns region object', async () => {
     const { user } = createUser(testDb);
     await withHarness(user.id, async (h) => {
@@ -204,6 +228,22 @@ describe('Tool: get_country_atlas_places', () => {
       expect(Array.isArray(data.places)).toBe(true);
     });
   });
+
+  it('uppercases the country code like REST does (post-fold quirk fix)', async () => {
+    const { user } = createUser(testDb);
+    testDb.prepare('INSERT INTO visited_countries (user_id, country_code) VALUES (?, ?)').run(user.id, 'JP');
+    // A trip so countryPlaces reaches the visited_countries lookup pre-quirk-fix too.
+    testDb.prepare('INSERT INTO trips (user_id, title) VALUES (?, ?)').run(user.id, 'Japan');
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'get_country_atlas_places',
+        arguments: { countryCode: 'jp' },
+      });
+      const data = parseToolResult(result) as any;
+      // Legacy passed 'jp' through verbatim and the lookup matched nothing.
+      expect(data.manually_marked).toBe(true);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -252,6 +292,22 @@ describe('Tool: update_bucket_list_item', () => {
         arguments: { itemId: 99999, notes: 'Will not work' },
       });
       expect(result.isError).toBe(true);
+    });
+  });
+
+  it('returns isError when the edit would land on another wish (#1898)', async () => {
+    const { user } = createUser(testDb);
+    const insert = testDb.prepare('INSERT INTO bucket_list (user_id, name, target_date) VALUES (?, ?, ?)');
+    insert.run(user.id, 'Japan', '2027-05');
+    const itemId = insert.run(user.id, 'Japan', '2028-09').lastInsertRowid as number;
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'update_bucket_list_item',
+        arguments: { itemId, target_date: '2027-05' },
+      });
+      expect(result.isError).toBe(true);
+      const row = testDb.prepare('SELECT target_date FROM bucket_list WHERE id = ?').get(itemId) as { target_date: string };
+      expect(row.target_date).toBe('2028-09');
     });
   });
 
@@ -311,6 +367,71 @@ describe('Resource: trek://atlas/regions', () => {
       const data = parseResourceResult(result) as any;
       expect(data).toHaveLength(1);
       expect(data[0].region_code).toBe('ES-CT');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Resource: trek://bucket-list (moved from resources.test.ts with the fold —
+// that suite's withTools:false harness never attaches registry resources)
+// ---------------------------------------------------------------------------
+
+describe('Resource: trek://bucket-list', () => {
+  it('returns only the current user\'s bucket list items', async () => {
+    const { user } = createUser(testDb);
+    const { user: other } = createUser(testDb);
+    createBucketListItem(testDb, user.id, { name: 'Tokyo' });
+    createBucketListItem(testDb, other.id, { name: 'Rome' });
+
+    await withResourceHarness(user.id, async (h) => {
+      const result = await h.client.readResource({ uri: 'trek://bucket-list' });
+      const items = parseResourceResult(result) as any[];
+      expect(items).toHaveLength(1);
+      expect(items[0].name).toBe('Tokyo');
+    });
+  });
+
+  it('returns empty array for user with no items', async () => {
+    const { user } = createUser(testDb);
+
+    await withResourceHarness(user.id, async (h) => {
+      const result = await h.client.readResource({ uri: 'trek://bucket-list' });
+      const items = parseResourceResult(result) as any[];
+      expect(items).toEqual([]);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Resource: trek://visited-countries (moved from resources.test.ts, same reason)
+// ---------------------------------------------------------------------------
+
+describe('Resource: trek://visited-countries', () => {
+  it('returns only the current user\'s visited countries', async () => {
+    const { user } = createUser(testDb);
+    const { user: other } = createUser(testDb);
+    createVisitedCountry(testDb, user.id, 'FR');
+    createVisitedCountry(testDb, user.id, 'JP');
+    createVisitedCountry(testDb, other.id, 'DE');
+
+    await withResourceHarness(user.id, async (h) => {
+      const result = await h.client.readResource({ uri: 'trek://visited-countries' });
+      const countries = parseResourceResult(result) as any[];
+      expect(countries).toHaveLength(2);
+      const codes = countries.map((c) => c.country_code);
+      expect(codes).toContain('FR');
+      expect(codes).toContain('JP');
+      expect(codes).not.toContain('DE');
+    });
+  });
+
+  it('returns empty array for user with no visited countries', async () => {
+    const { user } = createUser(testDb);
+
+    await withResourceHarness(user.id, async (h) => {
+      const result = await h.client.readResource({ uri: 'trek://visited-countries' });
+      const countries = parseResourceResult(result) as any[];
+      expect(countries).toEqual([]);
     });
   });
 });

@@ -49,4 +49,16 @@ describe('ZodValidationPipe', () => {
     expect(body.error).toContain('b: ');
     expect(body.error).toContain('; ');
   });
+
+  it('uses the generic envelope when a schema throws a non-Zod error', () => {
+    const throwingSchema = { parse: () => { throw new Error('schema exploded'); } };
+    const genericPipe = new ZodValidationPipe(throwingSchema as never);
+
+    expect(() => genericPipe.transform({}, meta)).toThrowError(HttpException);
+    try {
+      genericPipe.transform({}, meta);
+    } catch (error) {
+      expect((error as HttpException).getResponse()).toEqual({ error: 'Validation failed' });
+    }
+  });
 });
