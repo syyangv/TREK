@@ -30,6 +30,7 @@ const { db } = vi.hoisted(() => {
     checked INTEGER NOT NULL DEFAULT 0,
     category TEXT,
     sort_order INTEGER NOT NULL DEFAULT 0,
+    start_date TEXT,
     due_date TEXT,
     description TEXT,
     assigned_user_id INTEGER,
