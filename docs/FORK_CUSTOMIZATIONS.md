@@ -8,6 +8,9 @@ This file is the preservation checklist for `syyangv/TREK`. Review every item
 when syncing from upstream. A clean merge is not sufficient evidence that these
 behaviors survived.
 
+For the v4 component-by-component replacement decisions, see
+[v4 upstream compatibility and replacement review](V4_UPSTREAM_COMPATIBILITY_REVIEW.md).
+
 ## Deployment and release isolation
 
 - Workflows must remain scoped to `syyangv/TREK`, not `liketrek/TREK` or another
@@ -42,6 +45,14 @@ See [CI/CD deployment](ci-cd-phase-3-4-deployment.md) and
   must not overwrite a base entitlement that the user configured for that year.
 - Verify imported entries, company holidays, user entitlements, and existing
   persisted data after an upstream sync.
+
+## Simplified Chinese terminology
+
+- Keep the personal packing view label as `个人清单` and the clone action as
+  `复制到个人清单` (`packing.viewPersonal` and `packing.cloneToMine`). Do not
+  accept an upstream wording change to `我的清单`; the distinction between a
+  personal list and the shared list is intentional and covered by
+  `shared/src/i18n/i18n-zh-packing-custom.spec.ts`.
 
 ## Solo trip UI gating & companion visibility
 
@@ -79,7 +90,7 @@ See [PWA implementation handoff](pwa-template-handoff.md).
 - [ ] Existing database records and uploads remain present.
 - [ ] Vacay opens on the current year and existing entries remain visible.
 - [ ] `请假计划.md` future PTO and holiday rows import by `Type`, while
-  unrelated Yearly Glance events such as flights do not become PTO.
+      unrelated Yearly Glance events such as flights do not become PTO.
 - [ ] Obsidian/Yearly Glance data imports without destructive writes.
 - [ ] PWA installs and an update produces the reload banner.
 - [ ] Offline map cache is retained across a PWA update.

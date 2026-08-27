@@ -226,18 +226,6 @@ interface VacayState {
   loadAll: () => Promise<void>
 }
 
-/**
- * Compatibility helper for callers that only know calendar years. The store's
- * normal path uses `defaultPeriodYear` so fiscal and anniversary plans still
- * select the active period correctly.
- */
-export function defaultVacayYear(years: number[], currentYear = new Date().getFullYear()): number {
-  if (years.includes(currentYear)) return currentYear
-  const sorted = [...years].sort((a, b) => a - b)
-  const pastYears = sorted.filter(year => year < currentYear)
-  return pastYears[pastYears.length - 1] ?? sorted[0] ?? currentYear
-}
-
 export const useVacayStore = create<VacayState>((set, get) => ({
   plan: null,
   users: [],

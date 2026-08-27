@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   deriveApp,
   deriveHttp,
+  deriveMaps,
   deriveSession,
   deriveDemo,
   deriveOidc,
@@ -89,6 +90,20 @@ describe('deriveHttp', () => {
     expect(deriveHttp({ TREK_API_DOCS_ENABLED: '1' }).apiDocsEnabled).toBe(true);
     expect(deriveHttp({ TREK_API_DOCS_ENABLED: 'false' }).apiDocsEnabled).toBe(false);
     expect(deriveHttp({}).apiDocsEnabled).toBe(false);
+  });
+});
+
+describe('deriveMaps', () => {
+  it('PLACES_API_KEY is the canonical operator credential', () => {
+    expect(deriveMaps({ PLACES_API_KEY: 'operator-key' }).placesApiKey).toBe('operator-key');
+  });
+
+  it('does not treat the removed GOOGLE_MAPS_API_KEY name as a credential', () => {
+    expect(deriveMaps({ GOOGLE_MAPS_API_KEY: 'legacy-key' }).placesApiKey).toBeUndefined();
+  });
+
+  it('leaves the operator credential unset when PLACES_API_KEY is absent', () => {
+    expect(deriveMaps({}).placesApiKey).toBeUndefined();
   });
 });
 
