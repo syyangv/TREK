@@ -605,7 +605,9 @@ describe('AdminStoragePanel', () => {
     await screen.findByText('Storage configuration saved');
     // files is default-sourced (uploads-local) in baseState() — stripping restores "no override".
     expect((putBody as StorageConfig).categories.files).toBeUndefined();
-    expect(migrationBody).toEqual({ category: 'files', to: 'off-box' });
+    // The save toast acknowledges the PUT; the queued migration POST starts
+    // in the following effect, so synchronize on the request we are asserting.
+    await waitFor(() => expect(migrationBody).toEqual({ category: 'files', to: 'off-box' }));
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
@@ -676,7 +678,7 @@ describe('AdminStoragePanel', () => {
     await screen.findByText('Storage configuration saved');
     // The POST carries the mirror's raw wire name, not 'backups-local' —
     // posting the bare primary would silently drop replication.
-    expect(migrationBody).toEqual({ category: 'files', to: 'mirror' });
+    await waitFor(() => expect(migrationBody).toEqual({ category: 'files', to: 'mirror' }));
   });
 
   it('FE-ADMIN-STOR-037: a queued migration waits out a running backfill (the server 409s on either while the other runs)', async () => {
