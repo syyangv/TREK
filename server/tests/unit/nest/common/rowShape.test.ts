@@ -93,6 +93,12 @@ describe('formatAssignmentWithPlace', () => {
     expect(result.place.tags).toEqual(sampleTags);
     expect(result.participants).toEqual(sampleParticipants);
   });
+
+  it('falls back to empty arrays when optional tags or participants are absent', () => {
+    const result = formatAssignmentWithPlace(makeRow(), undefined as never, undefined as never);
+    expect(result.place.tags).toEqual([]);
+    expect(result.participants).toEqual([]);
+  });
 });
 
 describe('ratingAggregate', () => {

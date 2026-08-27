@@ -62,6 +62,16 @@ describe('RateLimitService', () => {
     expect(s.check('login', '1.2.3.4', 5, WINDOW, now + WINDOW)).toBe(true);
   });
 
+  it('keeps a newer record while sweeping an older record in the same bucket', () => {
+    const s = new RateLimitService();
+    const now = Date.now();
+    s.check('login', 'old', 5, WINDOW, now);
+    s.check('login', 'newer', 5, WINDOW, now + 1);
+    s.check('login', 'latest', 5, WINDOW, now + WINDOW);
+
+    expect(bucketSize(s, 'login')).toBe(2);
+  });
+
   it('reset clears a single bucket, or all of them', () => {
     const s = new RateLimitService();
     const now = Date.now();

@@ -12,7 +12,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Controller, Get, Post } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
-import { ManagedForbidden } from '../../../src/nest/common/managed';
+import { MANAGED_FORBIDDEN, ManagedForbidden } from '../../../src/nest/common/managed';
 import {
   collectManagedRoutes,
   validateManagedRoutes,
@@ -44,7 +44,13 @@ class MarkedController {
   untouched() {
     return {};
   }
+
+  helper() {
+    return null;
+  }
 }
+
+Object.defineProperty(MarkedController.prototype, 'helperValue', { value: 1 });
 
 @Controller('managed-gate/blank')
 class BlankReasonController {
@@ -116,6 +122,27 @@ describe('collectManagedRoutes', () => {
     expect(entries.map((e) => e.id)).toEqual(['WholeController.a', 'WholeController.b']);
     expect(entries.every((e) => e.reason === 'this entire surface belongs to the operator')).toBe(true);
   });
+  it('MANAGED-BOOT-010: ignores malformed controller wrappers and helper properties', () => {
+    const fakeApp = {
+      get: () => new Map([[{}, { controllers: new Map([[{}, { metatype: undefined }]]) }]]),
+    };
+    expect(collectManagedRoutes(fakeApp as never)).toEqual([]);
+  });
+
+  it('MANAGED-BOOT-011: preserves an absent marker reason as an empty string', () => {
+    const handler = MarkedController.prototype.key;
+    const previous = Reflect.getMetadata(MANAGED_FORBIDDEN, handler);
+    Reflect.defineMetadata(MANAGED_FORBIDDEN, {}, handler);
+    try {
+      expect(collectManagedRoutes(markedApp).find((entry) => entry.id === 'MarkedController.key')).toEqual({
+        id: 'MarkedController.key',
+        reason: '',
+        enforcedInHandler: false,
+      });
+    } finally {
+      Reflect.defineMetadata(MANAGED_FORBIDDEN, previous, handler);
+    }
+  });
 });
 
 describe('validateManagedRoutes (fail-closed boot gate)', () => {
@@ -165,5 +192,9 @@ describe('validateManagedRoutes (fail-closed boot gate)', () => {
     // The message is the only thing a reviewer sees at 2am, so it says what the
     // list means rather than just which line is wrong.
     expect(() => validateManagedRoutes(markedApp, [])).toThrow(/withholds from its own admin/);
+  });
+
+  it('MANAGED-BOOT-012: default allow-list remains fail-closed for an unregistered test route', () => {
+    expect(() => validateManagedRoutes(markedApp)).toThrow();
   });
 });

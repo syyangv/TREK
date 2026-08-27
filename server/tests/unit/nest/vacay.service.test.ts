@@ -26,6 +26,18 @@ vi.mock('../../../src/config', () => ({
   OBSIDIAN_DAILY_NOTES_FORMAT: '',
   updateJwtSecret: () => {},
 }));
+
+const obsidianState = vi.hoisted(() => ({
+  available: false,
+  notes: ['Obsidian PTO', 'Obsidian 病假', 'Obsidian 公共假期'],
+  holidays: [] as { date: string; note: string }[],
+}));
+
+vi.mock('../../../src/nest/common/obsidianYearlyGlanceService', () => ({
+  getObsidianHolidayNotes: () => obsidianState.notes,
+  isObsidianPublicHolidaySourceAvailable: () => obsidianState.available,
+  loadObsidianPublicHolidaysForYear: () => obsidianState.holidays,
+}));
 // Mock websocket so notifyPlanUsers doesn't throw
 vi.mock('../../../src/websocket', () => ({ broadcastToUser: vi.fn() }));
 // shareCalendar fires a notification after inserting — keep that out of unit scope
@@ -57,6 +69,9 @@ beforeAll(async () => {
 
 beforeEach(() => {
   resetTestDb(testDb);
+  obsidianState.available = false;
+  obsidianState.notes = ['Obsidian PTO', 'Obsidian 病假', 'Obsidian 公共假期'];
+  obsidianState.holidays = [];
   // Stub fetch with empty holiday list by default so updatePlan / applyHolidayCalendars
   // never makes real network calls.
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -500,6 +515,28 @@ describe('getEntries', () => {
 
     expect(result.entries).toEqual([]);
     expect(result.companyHolidays).toEqual([]);
+  });
+
+  it('mirrors read-only Obsidian public holidays and clears overlapping entries', () => {
+    const { user, plan } = setupUserWithPlan();
+    const date = '2026-05-01';
+    const note = 'Obsidian 公共假期';
+    obsidianState.available = true;
+    obsidianState.holidays = [{ date, note }];
+    svc.toggleEntry(user.id, plan.id, date, 1, 'vacation');
+
+    const result = svc.getEntries(plan.id, '2026', user.id);
+    expect(result.entries).toEqual([]);
+    expect(result.companyHolidays).toEqual(expect.arrayContaining([
+      expect.objectContaining({ date, note }),
+    ]));
+  });
+
+  it('does not build a holiday query when the Obsidian note set is empty', () => {
+    const { plan } = setupUserWithPlan();
+    obsidianState.available = true;
+    obsidianState.notes = [];
+    expect(() => svc.getEntries(plan.id, new Date().getFullYear().toString())).not.toThrow();
   });
 });
 

@@ -48,9 +48,13 @@ describe('apiKeyCrypto', () => {
       expect(decrypt_api_key(null)).toBeNull();
     });
 
-    it('returns null for empty string', () => {
-      expect(decrypt_api_key('')).toBeNull();
-    });
+  it('returns null for empty string', () => {
+    expect(decrypt_api_key('')).toBeNull();
+  });
+
+  it('returns null for non-string values', () => {
+    expect(decrypt_api_key(42)).toBeNull();
+  });
 
     it('returns plaintext as-is if not prefixed (legacy)', () => {
       expect(decrypt_api_key('plain-legacy-key')).toBe('plain-legacy-key');

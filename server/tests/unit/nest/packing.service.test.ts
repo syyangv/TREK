@@ -101,6 +101,7 @@ describe('saveAsTemplate', () => {
     const result = svc.saveAsTemplate(trip.id, user.id, 'My Template');
 
     expect(result).not.toBeNull();
+    if (!result || 'conflict' in result) throw new Error('expected a saved template');
     expect(result!.name).toBe('My Template');
     expect(result!.categoryCount).toBe(2);
     expect(result!.itemCount).toBe(3);

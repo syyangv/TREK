@@ -63,11 +63,6 @@ function normalizeVaultPath(): string | null {
   }
 }
 
-function yearlyGlanceConfig(vaultPath: string): Record<string, unknown> | null {
-  const data = asRecord(readJson(path.join(vaultPath, YEARLY_GLANCE_DATA_PATH)));
-  return asRecord(data?.config);
-}
-
 function yearlyGlanceDailyNoteSettings(config: Record<string, unknown> | null): DailyNoteSettings | null {
   if (!config) return null;
 
@@ -82,7 +77,7 @@ function yearlyGlanceDailyNoteSettings(config: Record<string, unknown> | null): 
     : null;
 }
 
-function dailyNotesSettings(vaultPath: string, source: string, config: Record<string, unknown> | null): DailyNoteSettings | null {
+function dailyNotesSettings(vaultPath: string, source: string, config: Record<string, unknown> | null): DailyNoteSettings {
   if (OBSIDIAN_DAILY_NOTES_FORMAT || OBSIDIAN_DAILY_NOTES_FOLDER) {
     return {
       format: OBSIDIAN_DAILY_NOTES_FORMAT || 'YYYY-MM-DD',
@@ -303,7 +298,6 @@ export function loadObsidianPublicHolidaysForYear(year: number): ObsidianHoliday
   const config = asRecord(asRecord(yearlyGlanceData)?.config);
   const source = getString(config, 'dailyNoteSource') ?? 'daily-notes';
   const settings = dailyNotesSettings(vaultPath, source, config);
-  if (!settings) return [];
 
   const holidays = [
     ...yearlyGlanceUiHolidays(yearlyGlanceData, year),
