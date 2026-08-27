@@ -193,7 +193,7 @@ const packing: TranslationStrings = {
   'packing.makePublic': '共享',
   'packing.privateHint': '私密 — 仅你可见',
   'packing.viewCommon': '共享',
-  'packing.viewPersonal': '我的清单',
+  'packing.viewPersonal': '个人清单',
   'packing.share': '共享',
   'packing.tierCommonHint': '在小组共享池中，所有人可见',
   'packing.tierPersonal': '个人',
@@ -205,7 +205,7 @@ const packing: TranslationStrings = {
   'packing.broughtBy': '由 {name} 带',
   'packing.alsoBring': '我也可以带',
   'packing.alsoBringingStop': '我不带了',
-  'packing.cloneToMine': '复制到我的清单',
+  'packing.cloneToMine': '复制到个人清单',
   'packing.bagLimit': '重量限制',
   'packing.setBagLimit': '设置限制',
 };
