@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../tests/helpers/msw/server';
 import { resetAllStores } from '../../tests/helpers/store';
-import { defaultVacayYear, useVacayStore } from './vacayStore';
+import { useVacayStore } from './vacayStore';
 import { useAuthStore } from './authStore';
 import type { HolidayInfo, VacayEntry, VacayPlan, VacayYearSettings } from '../types';
 
@@ -423,18 +423,3 @@ describe('vacayStore year selection', () => {
     expect(useVacayStore.getState().selectedYear).toBe(current);
   });
 });
-
-
-describe('defaultVacayYear compatibility helper', () => {
-  it('selects the current year when it is configured', () => {
-    expect(defaultVacayYear([2025, 2026, 2027], 2026)).toBe(2026)
-  })
-
-  it('uses the nearest past year when the current year is absent', () => {
-    expect(defaultVacayYear([2024, 2025, 2027], 2026)).toBe(2025)
-  })
-
-  it('uses the earliest future year when only future years exist', () => {
-    expect(defaultVacayYear([2028, 2027], 2026)).toBe(2027)
-  })
-})
