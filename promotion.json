@@ -5,12 +5,12 @@
     "docker-compose.yml": "88aeb5f5a2619613185117815dfe4a9834172b22c73a8c136915a03c90f72fc1"
   },
   "environment": "production",
-  "image": "thvysy44/trek-fork@sha256:c7503c676ed7a194fe3183dca674d9b0526d90199ea12ee90fa8707d74eff7f1",
-  "previous_image": "thvysy44/trek-fork@sha256:6fdd938adb9f624fd4b78e958ba55a97a4d0f5a2bdb9295ef52d9ba1080ddda7",
-  "promoted_at": "2026-08-27T19:36:31.989114Z",
-  "release_sha": "2d0e64b6373f3f0617b6840782cb8523f1fe48f5",
+  "image": "thvysy44/trek-fork@sha256:2e8d9df7342c0c607420bcce1994a2e64b0a8a5c4d19cf303f4cb93f6ba79252",
+  "previous_image": "thvysy44/trek-fork@sha256:c7503c676ed7a194fe3183dca674d9b0526d90199ea12ee90fa8707d74eff7f1",
+  "promoted_at": "2026-08-27T20:32:49.654496Z",
+  "release_sha": "35b854281d2b6b8ac6d82ad73f06ce483b9693e0",
   "schema": 1,
-  "source_ref": "v3.5.22",
-  "source_sha": "77b29092e9b7b57d6abe84e70900eb600a545367",
-  "version": "3.5.22"
+  "source_ref": "v4.0.0",
+  "source_sha": "62b6dda2d3cde2431ba05413da55f1b6e873f638",
+  "version": "4.0.0"
 }
