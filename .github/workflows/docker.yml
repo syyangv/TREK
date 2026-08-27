@@ -210,7 +210,12 @@ jobs:
           echo "$STABLE → $NEW_VERSION ($BUMP)"
 
           # Update all workspace + root package.json files and the root lockfile in one shot
-          npm version "$NEW_VERSION" --workspaces --include-workspace-root --no-git-tag-version
+          CURRENT_PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$CURRENT_PACKAGE_VERSION" = "$NEW_VERSION" ]; then
+            echo "Package metadata already at $NEW_VERSION; no version mutation needed."
+          else
+            npm version "$NEW_VERSION" --workspaces --include-workspace-root --no-git-tag-version
+          fi
           sed -i "s/^version: .*/version: $NEW_VERSION/" charts/trek/Chart.yaml
           sed -i "s/^appVersion: .*/appVersion: \"$NEW_VERSION\"/" charts/trek/Chart.yaml
 
