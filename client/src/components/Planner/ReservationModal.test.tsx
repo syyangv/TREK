@@ -1447,4 +1447,89 @@ describe('ReservationModal', () => {
     expect(times[0].value).toBe('16:00');
     expect(times[2].value).toBe('10:30');
   });
+  // Fork addition (docs/FORK_CUSTOMIZATIONS.md): linking a place on a booking used
+  // to leave that place filed as unplanned, because planned state derives only
+  // from day stops. These pin the inline offer that closes the gap.
+  describe('also-add-to-day offer', () => {
+    const tennis = buildPlace({ id: 24, name: 'Tennis Courts' });
+    const day7 = buildDay({ id: 7, trip_id: 1, date: '2026-08-28', day_number: 7 });
+
+    const openWithPlacePicked = async (props = {}) => {
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      render(
+        <ReservationModal
+          {...defaultProps}
+          onSave={onSave}
+          days={[day7]}
+          places={[tennis]}
+          {...props}
+        />,
+      );
+      await userEvent.type(screen.getByPlaceholderText(/e\.g\. Lufthansa/i), 'Tennis');
+      fireEvent.change(screen.getAllByTestId('date-picker')[0], { target: { value: '2026-08-28' } });
+      await userEvent.click(screen.getAllByText('\u2014')[0]);
+      await userEvent.click(screen.getByRole('button', { name: 'Tennis Courts' }));
+      return onSave;
+    };
+
+    it('FE-PLANNER-RESMODAL-089: a place linked on a dated booking offers the day stop, checked, and asks for it on save', async () => {
+      const onSave = await openWithPlacePicked();
+
+      const box = await screen.findByLabelText(/Also add this place to Day 7/i);
+      expect(box).toBeChecked();
+
+      await userEvent.click(screen.getByRole('button', { name: /^Add$/i }));
+      await waitFor(() => expect(onSave).toHaveBeenCalled());
+      expect(onSave.mock.calls[0][0].create_assignment).toBe(true);
+      expect(onSave.mock.calls[0][0].place_id).toBe(24);
+    });
+
+    it('FE-PLANNER-RESMODAL-090: unchecking the offer keeps the booking place-linked only', async () => {
+      const onSave = await openWithPlacePicked();
+
+      await userEvent.click(await screen.findByLabelText(/Also add this place to Day 7/i));
+      await userEvent.click(screen.getByRole('button', { name: /^Add$/i }));
+
+      await waitFor(() => expect(onSave).toHaveBeenCalled());
+      expect(onSave.mock.calls[0][0].create_assignment).toBe(false);
+      expect(onSave.mock.calls[0][0].place_id).toBe(24);
+    });
+
+    it('FE-PLANNER-RESMODAL-091: no offer when the place is already a stop on that day', async () => {
+      await openWithPlacePicked({
+        assignments: { '7': [buildAssignment({ id: 301, day_id: 7, order_index: 0, place: tennis })] },
+      });
+
+      expect(screen.queryByLabelText(/Also add this place to/i)).not.toBeInTheDocument();
+    });
+
+    it('FE-PLANNER-RESMODAL-092: no offer when the booking date matches no trip day', async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      render(<ReservationModal {...defaultProps} onSave={onSave} days={[day7]} places={[tennis]} />);
+
+      await userEvent.type(screen.getByPlaceholderText(/e\.g\. Lufthansa/i), 'Tennis');
+      fireEvent.change(screen.getAllByTestId('date-picker')[0], { target: { value: '2026-09-30' } });
+      await userEvent.click(screen.getAllByText('\u2014')[0]);
+      await userEvent.click(screen.getByRole('button', { name: 'Tennis Courts' }));
+
+      expect(screen.queryByLabelText(/Also add this place to/i)).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: /^Add$/i }));
+      await waitFor(() => expect(onSave).toHaveBeenCalled());
+      expect(onSave.mock.calls[0][0].create_assignment).toBe(false);
+    });
+
+    it('FE-PLANNER-RESMODAL-093: no offer when editing an existing booking', async () => {
+      render(
+        <ReservationModal
+          {...defaultProps}
+          days={[day7]}
+          places={[tennis]}
+          reservation={buildReservation({ id: 10, place_id: 24, day_id: 7, reservation_time: '2026-08-28T16:30' })}
+        />,
+      );
+
+      expect(screen.queryByLabelText(/Also add this place to/i)).not.toBeInTheDocument();
+    });
+  });
 });

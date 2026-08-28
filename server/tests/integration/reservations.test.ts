@@ -186,6 +186,109 @@ describe('List reservations', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Fork addition: create_assignment (docs/FORK_CUSTOMIZATIONS.md)
+//
+// A booking may link a trip place without any day stop, which leaves that place
+// filed as unplanned because planned state derives solely from day_assignments.
+// The booking dialog offers to create the stop; these pin the server half.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Create reservation with create_assignment', () => {
+  it('RESV-015 — create_assignment adds the day stop and binds the booking to it', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day = createDay(testDb, trip.id, { date: '2026-08-28' });
+    const place = createPlace(testDb, trip.id, { name: 'J. P. Murphy Tennis Courts' });
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        title: 'Tennis', type: 'event', place_id: place.id,
+        reservation_time: '2026-08-28T16:30', create_assignment: true,
+      });
+
+    expect(res.status).toBe(201);
+    const stop = testDb.prepare('SELECT * FROM day_assignments WHERE place_id = ?').get(place.id) as any;
+    expect(stop).toBeTruthy();
+    expect(stop.day_id).toBe(day.id);
+    expect(res.body.reservation.assignment_id).toBe(stop.id);
+  });
+
+  it('RESV-015b — without the flag the booking links the place but creates no stop', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    createDay(testDb, trip.id, { date: '2026-08-28' });
+    const place = createPlace(testDb, trip.id, { name: 'J. P. Murphy Tennis Courts' });
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({ title: 'Tennis', type: 'event', place_id: place.id, reservation_time: '2026-08-28T16:30' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.reservation.place_id).toBe(place.id);
+    expect(res.body.reservation.assignment_id).toBeFalsy();
+    expect(testDb.prepare('SELECT COUNT(*) c FROM day_assignments WHERE place_id = ?').get(place.id)).toEqual({ c: 0 });
+  });
+
+  it('RESV-015c — an explicit assignment_id wins; the flag does not add a second stop', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day = createDay(testDb, trip.id, { date: '2026-08-28' });
+    const place = createPlace(testDb, trip.id, { name: 'Tennis Courts' });
+    const existing = testDb.prepare('INSERT INTO day_assignments (day_id, place_id, order_index) VALUES (?, ?, 0)').run(day.id, place.id);
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        title: 'Tennis', type: 'event', place_id: place.id, assignment_id: existing.lastInsertRowid,
+        reservation_time: '2026-08-28T16:30', create_assignment: true,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.reservation.assignment_id).toBe(Number(existing.lastInsertRowid));
+    expect(testDb.prepare('SELECT COUNT(*) c FROM day_assignments WHERE place_id = ?').get(place.id)).toEqual({ c: 1 });
+  });
+
+  it('RESV-015d — the new stop lands after the day\'s existing stops', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day = createDay(testDb, trip.id, { date: '2026-08-28' });
+    const first = createPlace(testDb, trip.id, { name: 'Breakfast' });
+    const place = createPlace(testDb, trip.id, { name: 'Tennis Courts' });
+    testDb.prepare('INSERT INTO day_assignments (day_id, place_id, order_index) VALUES (?, ?, 0)').run(day.id, first.id);
+
+    await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        title: 'Tennis', type: 'event', place_id: place.id,
+        reservation_time: '2026-08-28T16:30', create_assignment: true,
+      });
+
+    const stop = testDb.prepare('SELECT * FROM day_assignments WHERE place_id = ?').get(place.id) as any;
+    expect(stop.order_index).toBe(1);
+  });
+
+  it('RESV-015e — no place means no stop, whatever the flag says', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    createDay(testDb, trip.id, { date: '2026-08-28' });
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({ title: 'Tennis', type: 'event', reservation_time: '2026-08-28T16:30', create_assignment: true });
+
+    expect(res.status).toBe(201);
+    expect(res.body.reservation.assignment_id).toBeFalsy();
+    expect(testDb.prepare('SELECT COUNT(*) c FROM day_assignments').get()).toEqual({ c: 0 });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Update reservation
 // ─────────────────────────────────────────────────────────────────────────────
 

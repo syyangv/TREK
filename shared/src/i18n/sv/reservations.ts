@@ -46,6 +46,8 @@ const reservations: TranslationStrings = {
   'reservations.meta.noAccommodation': 'Inget',
   'reservations.meta.hotelPlace': 'Boende',
   'reservations.meta.linkPlace': 'Plats / Aktivitet',
+  'reservations.alsoAddToDay': 'Lägg även till platsen i {day}',
+  'reservations.alsoAddToDayHint': 'Utan ett stopp den dagen står platsen kvar som oplanerad.',
   'reservations.meta.pickPlace': 'Välj plats / aktivitet',
   'reservations.meta.pickHotel': 'Välj boende',
   'reservations.meta.fromDay': 'Från',

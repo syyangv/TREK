@@ -45,6 +45,8 @@ const reservations: TranslationStrings = {
   'reservations.meta.noAccommodation': 'لا يوجد',
   'reservations.meta.hotelPlace': 'الإقامة',
   'reservations.meta.linkPlace': 'مكان / نشاط',
+  'reservations.alsoAddToDay': 'أضف هذا المكان أيضًا إلى {day}',
+  'reservations.alsoAddToDayHint': 'بدون محطة في ذلك اليوم، يظل المكان مدرجًا كغير مخطط له.',
   'reservations.meta.pickPlace': 'اختر مكانًا / نشاطًا',
   'reservations.meta.pickHotel': 'اختر الإقامة',
   'reservations.meta.fromDay': 'من',

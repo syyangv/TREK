@@ -145,6 +145,8 @@ const reservations: TranslationStrings = {
   'reservations.urlLabel': 'Enllaç',
   'reservations.urlPlaceholder': 'https://...',
   'reservations.meta.linkPlace': 'Lloc / Activitat',
+  'reservations.alsoAddToDay': 'Afegeix també aquest lloc a {day}',
+  'reservations.alsoAddToDayHint': 'Sense una parada aquell dia, el lloc continua com a no planificat.',
   'reservations.meta.pickPlace': 'Seleccionar lloc / activitat',
   'reservations.import.needsReview': 'Revisió',
   'reservations.import.tryAi': "Provar l'anàlisi per IA",

@@ -46,6 +46,8 @@ const reservations: TranslationStrings = {
   'reservations.meta.noAccommodation': 'Geen',
   'reservations.meta.hotelPlace': 'Accommodatie',
   'reservations.meta.linkPlace': 'Plaats / Activiteit',
+  'reservations.alsoAddToDay': 'Voeg deze plek ook toe aan {day}',
+  'reservations.alsoAddToDayHint': 'Zonder stop op die dag blijft de plek als ongepland vermeld.',
   'reservations.meta.pickPlace': 'Kies plaats / activiteit',
   'reservations.meta.pickHotel': 'Selecteer accommodatie',
   'reservations.meta.fromDay': 'Van',

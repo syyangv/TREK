@@ -45,6 +45,8 @@ const reservations: TranslationStrings = {
   'reservations.meta.noAccommodation': '없음',
   'reservations.meta.hotelPlace': '숙박',
   'reservations.meta.linkPlace': '장소 / 활동',
+  'reservations.alsoAddToDay': '이 장소를 {day}에도 추가',
+  'reservations.alsoAddToDayHint': '해당 날짜에 방문지가 없으면 장소는 계획되지 않음으로 표시됩니다.',
   'reservations.meta.pickPlace': '장소 / 활동 선택',
   'reservations.meta.pickHotel': '숙박 선택',
   'reservations.meta.fromDay': '부터',

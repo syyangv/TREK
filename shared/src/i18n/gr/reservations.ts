@@ -47,6 +47,8 @@ const reservations: TranslationStrings = {
   'reservations.meta.noAccommodation': 'Κανένα',
   'reservations.meta.hotelPlace': 'Κατάλυμα',
   'reservations.meta.linkPlace': 'Τοποθεσία / Δραστηριότητα',
+  'reservations.alsoAddToDay': 'Προσθήκη αυτής της τοποθεσίας και στην {day}',
+  'reservations.alsoAddToDayHint': 'Χωρίς στάση εκείνη την ημέρα, η τοποθεσία παραμένει ως μη προγραμματισμένη.',
   'reservations.meta.pickPlace': 'Επιλογή τοποθεσίας / δραστηριότητας',
   'reservations.meta.pickHotel': 'Επιλογή καταλύματος',
   'reservations.meta.fromDay': 'Από',

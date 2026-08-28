@@ -47,6 +47,8 @@ const reservations: TranslationStrings = {
   'reservations.meta.noAccommodation': 'Nincs',
   'reservations.meta.hotelPlace': 'Szálloda',
   'reservations.meta.linkPlace': 'Hely / Tevékenység',
+  'reservations.alsoAddToDay': 'Add hozzá ezt a helyet ehhez is: {day}',
+  'reservations.alsoAddToDayHint': 'Ha aznap nincs megálló, a hely tervezetlenként marad a listában.',
   'reservations.meta.pickPlace': 'Hely / tevékenység kiválasztása',
   'reservations.meta.pickHotel': 'Szálloda kiválasztása',
   'reservations.meta.fromDay': 'Ettől',

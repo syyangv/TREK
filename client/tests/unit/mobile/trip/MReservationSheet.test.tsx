@@ -205,6 +205,7 @@ describe('MReservationSheet', () => {
       reservation_time: null, reservation_end_time: null,
       location: '', confirmation_number: '', notes: '', url: '',
       assignment_id: null, accommodation_id: null, place_id: null,
+      create_assignment: false,
       metadata: null, endpoints: [], needs_review: false,
     })
   })
@@ -746,5 +747,58 @@ describe('MReservationSheet', () => {
     pick(screen.getByLabelText('reservations.meta.pickHotel') as HTMLSelectElement, 102)
     expect(titleField()).toHaveValue('Cafe Central')
     expect(screen.getByPlaceholderText('reservations.locationPlaceholder')).toHaveValue('Manual 3')
+  })
+
+  // ── Also-add-to-day offer (fork; docs/FORK_CUSTOMIZATIONS.md) ──────────────
+
+  const offerBtn = () => screen.queryByRole('button', { name: /^reservations\.alsoAddToDay:/ })
+
+  it('FE-MOB-RESSH-054: offers the day stop for a linked place and sends the flag', async () => {
+    const { planner } = setup()
+    type(titleField(), 'Tennis')
+    type(dates()[0], '2026-05-02')
+    pick(screen.getByLabelText('reservations.meta.pickPlace') as HTMLSelectElement, 102)
+
+    const offer = offerBtn()
+    expect(offer).toBeInTheDocument()
+    expect(offer).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(submitBtn())
+    await waitFor(() => expect(planner.handleSaveReservation).toHaveBeenCalled())
+    expect(savedPayload(planner)).toMatchObject({ place_id: 102, create_assignment: true })
+  })
+
+  it('FE-MOB-RESSH-055: declining the offer sends the flag off', async () => {
+    const { planner } = setup()
+    type(titleField(), 'Tennis')
+    type(dates()[0], '2026-05-02')
+    pick(screen.getByLabelText('reservations.meta.pickPlace') as HTMLSelectElement, 102)
+    fireEvent.click(offerBtn()!)
+    expect(offerBtn()).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.click(submitBtn())
+    await waitFor(() => expect(planner.handleSaveReservation).toHaveBeenCalled())
+    expect(savedPayload(planner)).toMatchObject({ create_assignment: false })
+  })
+
+  it('FE-MOB-RESSH-056: no offer when the place is already a stop on that day', () => {
+    setup(makePlanner({ assignments: { 12: [{ id: 900, order_index: 0, place: { id: 102, name: 'Cafe Central' } }] } }))
+    type(titleField(), 'Tennis')
+    type(dates()[0], '2026-05-02')
+    pick(screen.getByLabelText('reservations.meta.pickPlace') as HTMLSelectElement, 102)
+    expect(offerBtn()).not.toBeInTheDocument()
+  })
+
+  it('FE-MOB-RESSH-057: no offer when the booking date matches no trip day', () => {
+    setup()
+    type(titleField(), 'Tennis')
+    type(dates()[0], '2026-06-20')
+    pick(screen.getByLabelText('reservations.meta.pickPlace') as HTMLSelectElement, 102)
+    expect(offerBtn()).not.toBeInTheDocument()
+  })
+
+  it('FE-MOB-RESSH-058: no offer when editing an existing booking', () => {
+    setup(makePlanner({ editingReservation: DINNER }))
+    expect(offerBtn()).not.toBeInTheDocument()
   })
 })

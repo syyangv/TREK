@@ -45,6 +45,8 @@ const reservations: TranslationStrings = {
   'reservations.meta.noAccommodation': 'Ні',
   'reservations.meta.hotelPlace': 'Житло',
   'reservations.meta.linkPlace': 'Місце / Активність',
+  'reservations.alsoAddToDay': 'Також додати це місце до {day}',
+  'reservations.alsoAddToDayHint': 'Без зупинки цього дня місце залишиться незапланованим.',
   'reservations.meta.pickPlace': 'Вибрати місце / активність',
   'reservations.meta.pickHotel': 'Оберіть житло',
   'reservations.meta.fromDay': 'З',

@@ -45,6 +45,8 @@ const reservations: TranslationStrings = {
   'reservations.meta.noAccommodation': 'Нет',
   'reservations.meta.hotelPlace': 'Жильё',
   'reservations.meta.linkPlace': 'Место / Активность',
+  'reservations.alsoAddToDay': 'Также добавить это место в {day}',
+  'reservations.alsoAddToDayHint': 'Без остановки в этот день место останется в списке как незапланированное.',
   'reservations.meta.pickPlace': 'Выбрать место / активность',
   'reservations.meta.pickHotel': 'Выбрать жильё',
   'reservations.meta.fromDay': 'С',

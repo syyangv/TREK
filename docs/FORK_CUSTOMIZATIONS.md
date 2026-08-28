@@ -61,6 +61,46 @@ See [CI/CD deployment](ci-cd-phase-3-4-deployment.md) and
   - **Collaboration Tab**: The communication/collaboration tab (`id: 'collab'`) in `TRIP_TABS` is conditionally hidden when `tripMembers.length <= 1`, even if the collab addon is enabled.
   - **Session Tab Invalidation**: If a user previously navigated to `'collab'`, the active tab evicts to `'plan'` once the member roster resolves as a solo trip. Roster hydration waits for `membersLoaded` before evicting so trips with companions retain their active tab on refresh.
 
+## Booking place link also schedules the day stop
+
+Repairs an upstream gap recorded in [UPSTREAM_ISSUES.md](UPSTREAM_ISSUES.md):
+linking a place on a booking wrote metadata only, so the place kept reading as
+unplanned in Places with nothing in the UI saying a further step was needed.
+
+- The booking dialog shows an "Also add this place to {day}" checkbox, checked
+  by default, directly under the place picker. It appears only when the dialog
+  is creating a booking, the type is not `hotel`, a place is picked, no
+  assignment is linked, and the booking's date matches a trip day exactly on
+  which that place is not already a stop.
+- **Both surfaces carry it**: the desktop `ReservationModal` and the phone
+  `MReservationSheet` (the mobile shell takes over below 768px, so a
+  desktop-only fix would leave the bug intact on phones). The mobile version
+  renders as a tappable toggle row with a check, matching that file's idiom.
+- The rule for when the offer applies lives once, in
+  `resolvePendingStopDay` (`client/src/utils/bookingDayStop.ts`), and is
+  imported by both surfaces. Do not re-inline the condition in either one — the
+  two surfaces must not be able to drift apart.
+- Only an exact date match qualifies. The server's nearest-day clamp is
+  deliberately not mirrored, so the offer never guesses a day.
+- The checkbox sends `create_assignment: true`. The server creates the day stop
+  inside the existing create transaction and binds the booking's
+  `assignment_id` to it, so the booking and the place agree or neither changes.
+- `create_assignment` is a boolean, never a day or place reference. The server
+  uses the day it already derived from the booking's own date and the already
+  trip-validated `place_id`, so the flag adds no reference a caller could aim
+  at another trip.
+- An explicit `assignment_id` always wins; the flag never creates a second stop.
+- The default is on. The linked place is nearly always meant to be part of that
+  day, and leaving it off is precisely what silently files it as unplanned.
+
+Preserve the locale keys `reservations.alsoAddToDay` and
+`reservations.alsoAddToDayHint` in every locale.
+
+Tests: `FE-UTIL-BOOKDAY-001` to `011` (shared helper),
+`FE-PLANNER-RESMODAL-089` to `093` (desktop modal),
+`FE-MOB-RESSH-054` to `058` (mobile sheet), and `RESV-015` to `015e`
+(server integration).
+
 ## PWA and offline behavior
 
 - Workbox uses `registerType: 'prompt'` and a user-controlled update banner.
@@ -94,6 +134,8 @@ See [PWA implementation handoff](pwa-template-handoff.md).
 - [ ] Obsidian/Yearly Glance data imports without destructive writes.
 - [ ] PWA installs and an update produces the reload banner.
 - [ ] Offline map cache is retained across a PWA update.
+- [ ] A booking created with a place picked still offers the day-stop
+      checkbox, and accepting it makes the place read as planned.
 - [ ] Main CI, strict i18n parity, Docker smoke, Helm, and security gates pass.
 - [ ] Released image matches the intended main commit and immutable digest.
 - [ ] Private production `/api/health` returns `{"status":"ok"}`.

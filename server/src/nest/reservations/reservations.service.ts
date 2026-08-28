@@ -8,6 +8,7 @@ import type { Reservation, User } from '../../types';
 import { BudgetService } from '../budget/budget.service';
 import { typeToCostCategory } from '@trek/shared';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AssignmentsService } from '../assignments/assignments.service';
 
 type Trip = TripAccess;
 type BudgetEntry = { total_price?: number; category?: string } | undefined;
@@ -80,6 +81,14 @@ export interface CreateReservationData {
   accommodation_id?: number;
   metadata?: unknown;
   create_accommodation?: CreateAccommodation;
+  /**
+   * Fork addition. When true, a non-hotel booking that links a trip place but
+   * no day stop also gets the stop: the day is the one already derived from the
+   * booking's own date and the place is the validated `place_id`, so this adds
+   * no new reference the caller could point elsewhere. See
+   * docs/UPSTREAM_ISSUES.md for the behavior this repairs.
+   */
+  create_assignment?: boolean;
   endpoints?: EndpointInput[];
   needs_review?: boolean;
 }
@@ -137,6 +146,7 @@ export class ReservationsService {
     private readonly realtime: RealtimeService,
     private readonly notifications: NotificationsService,
     private readonly reads: ReservationsReadRepository,
+    private readonly assignments: AssignmentsService,
   ) {}
 
   verifyTripAccess(tripId: string | number, userId: number) {
@@ -494,7 +504,7 @@ export class ReservationsService {
       title, reservation_time, reservation_end_time, location,
       confirmation_number, notes, url, day_id, end_day_id, place_id, assignment_id,
       status, type, accommodation_id, metadata, create_accommodation,
-      endpoints, needs_review
+      create_assignment, endpoints, needs_review
     } = data;
 
     let accommodationCreated = false;
@@ -526,6 +536,18 @@ export class ReservationsService {
       resolvedEndDayId = this.resolveDayIdFromTime(tripId, reservation_end_time);
     }
 
+    // Fork addition. A booking may link a trip place (`place_id`) without any day
+    // stop, in which case the place stays filed as unplanned, because planned state
+    // derives solely from day_assignments. When the dialog asked to schedule it,
+    // create the stop here and bind the booking to it so the two links agree.
+    // Both inputs are already trip-scoped: the day was derived above from the
+    // booking's own date, and place_id was validated against this trip.
+    let resolvedAssignmentId: number | null = assignment_id ?? null;
+    if (resolvedAssignmentId == null && create_assignment && resolvedType !== 'hotel' && resolvedDayId && place_id) {
+      const created = this.assignments.createAssignment(resolvedDayId, place_id);
+      resolvedAssignmentId = created?.id ?? null;
+    }
+
     const result = this.db.run(`
     INSERT INTO reservations (trip_id, day_id, end_day_id, place_id, assignment_id, title, reservation_time, reservation_end_time, location, confirmation_number, notes, url, status, type, accommodation_id, metadata, needs_review)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -534,7 +556,7 @@ export class ReservationsService {
       resolvedDayId,
       resolvedEndDayId,
       place_id || null,
-      assignment_id || null,
+      resolvedAssignmentId,
       title,
       reservation_time || null,
       reservation_end_time || null,
