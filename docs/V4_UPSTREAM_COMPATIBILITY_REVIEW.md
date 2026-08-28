@@ -63,6 +63,8 @@ v4 resolves the operator key through `server/src/app-config/env.schema.ts` and
 `server/src/app-config/derive.ts`. `server/.env.example` now documents
 `PLACES_API_KEY`, and the derive tests cover canonical mapping, absence of a
 key, and rejection of the legacy name. There is deliberately no fallback.
+`docker-compose.yml` also passes the variable into the app container; keeping
+it only in the Compose project `.env` is not sufficient without that mapping.
 Never commit an actual credential value.
 
 ### Vacay active-year selection
@@ -89,12 +91,18 @@ non-transactional delete/reinsert reconciliation. Move this work to an explicit
 background or cached adapter, make `getEntries()` database-read-only, and wrap
 reconciliation writes in a transaction.
 
-### P0 — Runtime Maps secret migration
+### Resolved — Runtime Maps credential and Compose wiring
 
-A deployment supplying only `GOOGLE_MAPS_API_KEY` will silently lose its
-operator Places credential. Rename it to `PLACES_API_KEY` before release. The
-repository root `.env` contained neither name during this review and was not
-edited or printed.
+Production now stores `PLACES_API_KEY` in the Compose project `.env`, passes it
+through `docker-compose.yml`, and runs a Google Cloud key restricted to
+`places.googleapis.com` and the production server's public egress IP. The key
+value is never committed or printed. A post-release Google Places probe
+returned HTTP 200, and production `/api/health` remained healthy on v4.0.4.
+
+The public egress IP may change. If Google returns an IP-address restriction
+error, update the key restriction before treating the OpenStreetMap fallback as
+normal behavior. Browser-referrer restrictions are incompatible with the
+server-side Places request path.
 
 ### P1 — Integration hotspots
 
