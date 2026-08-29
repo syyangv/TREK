@@ -38,7 +38,7 @@ const settings: TranslationStrings = {
     'A CARTO alaptérképek kulcs nélkül vízjelet jelenítenek meg. Ingyenes, fiók nélkül, innen:',
   'settings.mapCartoKeyLink': 'carto.com alaptérkép API-kulcs',
   'settings.mapCartoKeyMissing':
-    'Ez a sablon CARTO alaptérkép. Kulcs nélkül a CARTO minden csempére ráírja: "API KEY REQUIRED".',
+    'Ez a sablon CARTO alaptérkép. Kulcs nélkül a CARTO minden csempére ráírja: "API KEY REQUIRED". Amíg nincs kulcs megadva, a TREK az alapértelmezett alaptérképet mutatja.',
   'settings.mapStyle': 'Térkép stílus',
   'settings.mapStylePlaceholder': 'Válassz Mapbox stílust',
   'settings.mapStyleHint': 'Preset vagy saját mapbox://styles/USER/ID URL',
@@ -534,6 +534,32 @@ const settings: TranslationStrings = {
   'settings.alwaysShowRoutes': 'Mindig jelenjenek meg a foglalási útvonalak',
   'settings.alwaysShowRoutesHint':
     'Automatikusan megjeleníti minden repülőjárat, vonat és egyéb foglalás útvonalát a térképen, nincs szükség egyenkénti bekapcsolásra.',
+
+  // Public API keys (Settings -> Integrations)
+  'settings.apiKeys.title': 'API-kulcsok',
+  'settings.apiKeys.description':
+    'Kulcsok a nyilvános API-hoz, hogy más szoftverek olvashassák az utazásaidat. Csak olvasható: a kulcs semmit nem módosít és nem töröl.',
+  'settings.apiKeys.create': 'Kulcs létrehozása',
+  'settings.apiKeys.empty': 'Még nincs kulcs. Hozz létre egyet más szoftver csatlakoztatásához.',
+  'settings.apiKeys.createdAt': 'létrehozva',
+  'settings.apiKeys.usedAt': 'utoljára használva',
+  'settings.apiKeys.deleteTitle': 'Kulcs törlése',
+  'settings.apiKeys.deleteMessage': 'Minden, ami ezt a kulcsot használja, azonnal leáll. A művelet nem vonható vissza.',
+  'settings.apiKeys.deleted': 'Kulcs törölve',
+  'settings.apiKeys.deleteFailed': 'A kulcsot nem sikerült törölni',
+  'settings.apiKeys.createFailed': 'A kulcsot nem sikerült létrehozni',
+  'settings.apiKeys.copy': 'Másolás',
+  'settings.apiKeys.docsHint':
+    'Küldd a kulcsot "Authorization: Bearer ..." vagy "X-API-Key: ..." fejlécként a /api/v1 címre.',
+  'settings.apiKeys.modal.createTitle': 'API-kulcs létrehozása',
+  'settings.apiKeys.modal.name': 'Név',
+  'settings.apiKeys.modal.namePlaceholder': 'pl. Dawarich',
+  'settings.apiKeys.modal.nameHint': 'Csak neked, hogy később felismerd a kulcsot.',
+  'settings.apiKeys.modal.creating': 'Létrehozás folyamatban...',
+  'settings.apiKeys.modal.create': 'Létrehozás',
+  'settings.apiKeys.modal.createdTitle': 'API-kulcs létrehozva',
+  'settings.apiKeys.modal.createdWarning': 'Másold ki a kulcsot most. Csak egyszer jelenik meg, később nem kérhető le.',
+  'settings.apiKeys.modal.done': 'Kész',
 };
 
 export default settings;

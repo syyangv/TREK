@@ -65,19 +65,21 @@ describe('registry integrity', () => {
     }
   });
 
-  it('the 4.0.0 release notice is confined to the 4.0.x line', () => {
+  it('the 4.0.0 release notice covers the whole 4.x line', () => {
     const release = SYSTEM_NOTICES.find(n => n.id === 'release-4-0-0');
     expect(release).toBeDefined();
-    // Its copy is about this release, so it must not greet somebody who skipped
-    // straight past it, and it must not run alongside the next release's notice.
+    // It must not greet somebody still on 3.x...
     expect(isNoticeVersionActive(release!, '3.4.1')).toBe(false);
     expect(isNoticeVersionActive(release!, '4.0.0')).toBe(true);
     expect(isNoticeVersionActive(release!, '4.0.7')).toBe(true);
-    // The upper bound is exclusive, so every 4.0.x patch still gets it.
-    expect(isNoticeVersionActive(release!, '4.0.9')).toBe(true);
     expect(isNoticeVersionActive(release!, '4.0.12')).toBe(true);
-    expect(isNoticeVersionActive(release!, '4.1.0')).toBe(false);
-    expect(isNoticeVersionActive(release!, '4.2.0')).toBe(false);
+    // ...and it stays up across the minors, so no 4.x install is left without a
+    // notice the way 4.1.0 was under the old per-release window.
+    expect(isNoticeVersionActive(release!, '4.1.0')).toBe(true);
+    expect(isNoticeVersionActive(release!, '4.2.0')).toBe(true);
+    expect(isNoticeVersionActive(release!, '4.9.9')).toBe(true);
+    // The upper bound is exclusive: 5.0.0 gets its own notice.
+    expect(isNoticeVersionActive(release!, '5.0.0')).toBe(false);
   });
 
   it('the thank-you notice hands over to the release modal at 4.0.0', () => {

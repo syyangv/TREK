@@ -336,6 +336,12 @@ const admin: TranslationStrings = {
     'Időbejegyzések hozzáadása a napi tervhez (töltőmegállók, biztonsági ráhagyások)',
   'admin.plugins.perm.hook:day-tint-provider':
     'A napok színezése a napi tervben (például hogy az út melyik szakaszához tartozik egy nap)',
+  'admin.plugins.cap.mcpTools': 'MI-eszközöket tesz közzé',
+  'admin.plugins.mcpToolsTitle': 'Közzétett MI-eszközök',
+  'admin.plugins.mcpToolsHint':
+    'Egy asszisztens futtathatja őket a felhasználó nevében. Mindegyik a fent megadott jogosultságokkal működik.',
+  'admin.plugins.perm.mcp:tools':
+    'Olyan eszközök közzététele, amelyeket egy MI-asszisztens futtathat a nevedben (a bővítménynek itt adott jogosultságokkal működik, nem a sajátjával)',
   'admin.plugins.perm.geolocation:read':
     'Az élő tartózkodási helyed lekérdezése, amíg valamelyik nézete nyitva van (a TREK az oldal helymeghatározási engedélyével olvassa ki, nem a bővítmény saját engedélyével)',
   'admin.plugins.perm.hook:pdf-section-provider': 'Szöveges szakaszok hozzáfűzése az utazás PDF-exportjához',

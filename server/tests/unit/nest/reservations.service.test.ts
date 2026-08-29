@@ -336,6 +336,94 @@ describe('ReservationsService (DI-native, real SQL)', () => {
       const rows = svc.listUpcoming(user.id) as { title: string }[];
       expect(rows.map(r => r.title)).toEqual(['Untyped']);
     });
+
+    // The column holds two shapes: the booking form writes 'YYYY-MM-DDTHH:MM',
+    // day-anchored rows hold a bare 'HH:MM'. Compared as strings against an ISO
+    // timestamp, ':' sorts above '2', so a bare time was an arbitrary filter:
+    // everything from 20:00 on passed and everything before it vanished (#1934).
+    it('RESV-SVC-017e: a bare clock time falls back to its day instead of being read as a date', () => {
+      const { user, trip } = ownerTrip();
+      const day = createDay(testDb, trip.id, { date: '2999-06-01' });
+      const morning = createReservation(testDb, trip.id, { title: 'Ferry', day_id: day.id });
+      testDb.prepare('UPDATE reservations SET reservation_time = ? WHERE id = ?').run('08:30', morning.id);
+      const evening = createReservation(testDb, trip.id, { title: 'Show', day_id: day.id });
+      testDb.prepare('UPDATE reservations SET reservation_time = ? WHERE id = ?').run('20:00', evening.id);
+
+      const rows = svc.listUpcoming(user.id) as { title: string }[];
+      expect(rows.map(r => r.title)).toEqual(['Ferry', 'Show']);
+    });
+
+    it('RESV-SVC-017f: orders by the day and the clock, not by the raw column', () => {
+      const { user, trip } = ownerTrip();
+      const early = createDay(testDb, trip.id, { date: '2999-06-01' });
+      const late = createDay(testDb, trip.id, { date: '2999-06-02' });
+      const bare = createReservation(testDb, trip.id, { title: 'Bare morning', day_id: early.id });
+      testDb.prepare('UPDATE reservations SET reservation_time = ? WHERE id = ?').run('08:30', bare.id);
+      const dated = createReservation(testDb, trip.id, { title: 'Dated day two' });
+      testDb.prepare('UPDATE reservations SET reservation_time = ? WHERE id = ?').run('2999-06-02T09:00', dated.id);
+      const later = createReservation(testDb, trip.id, { title: 'Bare evening', day_id: early.id });
+      testDb.prepare('UPDATE reservations SET reservation_time = ? WHERE id = ?').run('20:00', later.id);
+      const dayOnly = createReservation(testDb, trip.id, { title: 'No time', day_id: late.id });
+      testDb.prepare('UPDATE reservations SET reservation_time = NULL WHERE id = ?').run(dayOnly.id);
+
+      const rows = svc.listUpcoming(user.id) as { title: string }[];
+      expect(rows.map(r => r.title)).toEqual(['Bare morning', 'Bare evening', 'No time', 'Dated day two']);
+    });
+
+    // The stay stays out, but arriving and leaving are moments, and they are the
+    // two the traveller needs reminding of.
+    it('RESV-SVC-017g: a stay contributes a check-in and a check-out named after its place', () => {
+      const { user, trip } = ownerTrip();
+      const start = createDay(testDb, trip.id, { date: '2999-06-01' });
+      const end = createDay(testDb, trip.id, { date: '2999-06-05' });
+      const place = createPlace(testDb, trip.id, { name: 'The Plaza' });
+      createDayAccommodation(testDb, trip.id, place.id, start.id, end.id, { check_in: '15:00', check_out: '11:00' });
+
+      const rows = svc.listUpcoming(user.id) as { title: string; type: string; day_date: string }[];
+      expect(rows).toEqual([
+        expect.objectContaining({ title: 'The Plaza', type: 'checkin', day_date: '2999-06-01' }),
+        expect.objectContaining({ title: 'The Plaza', type: 'checkout', day_date: '2999-06-05' }),
+      ]);
+    });
+
+    it('RESV-SVC-017h: the two moments sort among the bookings rather than after them', () => {
+      const { user, trip } = ownerTrip();
+      const start = createDay(testDb, trip.id, { date: '2999-06-01' });
+      const end = createDay(testDb, trip.id, { date: '2999-06-03' });
+      const place = createPlace(testDb, trip.id, { name: 'Hostel' });
+      createDayAccommodation(testDb, trip.id, place.id, start.id, end.id, { check_in: '15:00', check_out: '10:00' });
+      const dinner = createReservation(testDb, trip.id, { title: 'Dinner' });
+      testDb.prepare('UPDATE reservations SET reservation_time = ? WHERE id = ?').run('2999-06-01T19:00', dinner.id);
+      const museum = createReservation(testDb, trip.id, { title: 'Museum' });
+      testDb.prepare('UPDATE reservations SET reservation_time = ? WHERE id = ?').run('2999-06-02T09:00', museum.id);
+
+      const rows = svc.listUpcoming(user.id) as { title: string }[];
+      expect(rows.map(r => r.title)).toEqual(['Hostel', 'Dinner', 'Museum', 'Hostel']);
+    });
+
+    it('RESV-SVC-017i: a stay that is already over contributes nothing', () => {
+      const { user, trip } = ownerTrip();
+      const start = createDay(testDb, trip.id, { date: '2000-06-01' });
+      const end = createDay(testDb, trip.id, { date: '2000-06-05' });
+      const place = createPlace(testDb, trip.id, { name: 'Old Inn' });
+      createDayAccommodation(testDb, trip.id, place.id, start.id, end.id, { check_in: '15:00', check_out: '11:00' });
+
+      expect(svc.listUpcoming(user.id)).toEqual([]);
+    });
+
+    it('RESV-SVC-017j: a nameless stay falls back to its linked booking', () => {
+      const { user, trip } = ownerTrip();
+      const start = createDay(testDb, trip.id, { date: '2999-06-01' });
+      const end = createDay(testDb, trip.id, { date: '2999-06-02' });
+      const acc = testDb.prepare(
+        'INSERT INTO day_accommodations (trip_id, place_id, start_day_id, end_day_id, check_in, check_out) VALUES (?, NULL, ?, ?, ?, ?)'
+      ).run(trip.id, start.id, end.id, '15:00', '11:00');
+      const booking = createReservation(testDb, trip.id, { title: 'Hotel Ibis', type: 'hotel' });
+      testDb.prepare('UPDATE reservations SET accommodation_id = ? WHERE id = ?').run(String(acc.lastInsertRowid), booking.id);
+
+      const rows = svc.listUpcoming(user.id) as { title: string; type: string }[];
+      expect(rows.map(r => r.type + ':' + r.title)).toEqual(['checkin:Hotel Ibis', 'checkout:Hotel Ibis']);
+    });
   });
 
   describe('resyncReservationDays', () => {
@@ -790,6 +878,18 @@ describe('ReservationsService — legacy branch parity (coverage of the folded c
     // explicit clear with no linked item deletes nothing
     svc.syncBudgetOnUpdate(String(trip.id), '999999', 'X', 'flight', 'X', 'flight', { total_price: 0 }, undefined);
     expect(budget.deleteBudgetItem).not.toHaveBeenCalled();
+  });
+
+  it('RESV-SVC-031: list returns staged bookings, the staging inbox has to see its own rows', () => {
+    const { trip } = ownerTrip();
+    createReservation(testDb, trip.id, { title: 'Live One' });
+    const staged = createReservation(testDb, trip.id, { title: 'Parked One' });
+    testDb.prepare("UPDATE reservations SET ingest_state = 'staged' WHERE id = ?").run(staged.id);
+
+    // The visibility predicate belongs to the anonymous exports (ICS feed,
+    // shared trip) and must never be pulled into the authenticated list, or
+    // nobody can confirm what the ingest parked.
+    expect(svc.list(String(trip.id)).map((r: any) => r.title).sort()).toEqual(['Live One', 'Parked One']);
   });
 });
 

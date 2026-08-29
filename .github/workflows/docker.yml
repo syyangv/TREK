@@ -322,7 +322,8 @@ jobs:
         with:
           path: /tmp/digests
           pattern: digests-*
-          merge-multiple: true
+          # Deliberately NOT merged: the per-platform folder names are what lets
+          # the manifest below be assembled in a fixed order.
 
       - uses: docker/setup-buildx-action@v3
 
@@ -338,7 +339,17 @@ jobs:
           set -euo pipefail
           VERSION="${{ needs.version-bump.outputs.version }}"
           CANDIDATE="thvysy44/trek-fork:release-${GITHUB_RUN_ID}-${VERSION}"
-          mapfile -t digests < <(printf 'thvysy44/trek-fork@sha256:%s\n' *)
+          # Keep amd64 first. Clients that read the first manifest entry instead
+          # of matching their platform can otherwise report a false PWA update.
+          digests=()
+          for platform in linux-amd64 linux-arm64; do
+            dir="digests-$platform"
+            [ -d "$dir" ] || { echo "::error::missing digest artifact for $platform"; exit 1; }
+            for f in "$dir"/*; do
+              [ -e "$f" ] || { echo "::error::no digest file in $dir"; exit 1; }
+              digests+=("thvysy44/trek-fork@sha256:$(basename "$f")")
+            done
+          done
           docker buildx imagetools create -t "$CANDIDATE" "${digests[@]}"
           echo "tag=$CANDIDATE" >> "$GITHUB_OUTPUT"
 

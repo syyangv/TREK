@@ -4238,6 +4238,45 @@ function runMigrations(db: Database.Database): void {
       }
     },
 
+    // Reservations an automated ingest parked for review are 'staged' and stay
+    // out of the two anonymous exports (ICS feed, shared trip) until a person
+    // confirms them. Nothing writes 'staged' yet; this is the gate the mail
+    // ingest writes through.
+    //
+    // 'live' as the default is what keeps this from being a breaking change:
+    // SQLite fills every existing row on the ALTER, and no current writer names
+    // the column, so every booking that is visible today stays visible.
+    // Appended LAST, the array is index-addressed against schema_version.
+    () => {
+      const hasColumn = db
+        .prepare("SELECT 1 FROM pragma_table_info('reservations') WHERE name = 'ingest_state'")
+        .get();
+      if (!hasColumn) {
+        db.exec("ALTER TABLE reservations ADD COLUMN ingest_state TEXT NOT NULL DEFAULT 'live'");
+      }
+    },
+
+    /*
+     * Separate an integration key from an MCP token (#2089).
+     *
+     * Both live in mcp_tokens and until now both opened everything a token can
+     * open. That was fine while /mcp was the only consumer; with a public REST
+     * surface it means a key somebody minted for a chat client also reads their
+     * trips over HTTP, and a key minted for an integration can drive every MCP
+     * tool. One credential, two very different blast radii.
+     *
+     * `kind` splits them, and every existing row becomes 'mcp' — that is what
+     * they were issued for, and silently widening a key that is already in
+     * somebody's config would be the opposite of what this migration is for.
+     *
+     * Appended LAST: the array is index-addressed against schema_version.
+     */
+    () => {
+      const cols = db.prepare("SELECT name FROM pragma_table_info('mcp_tokens')").all() as Array<{ name: string }>;
+      if (!cols.some(c => c.name === 'kind')) {
+        db.exec("ALTER TABLE mcp_tokens ADD COLUMN kind TEXT NOT NULL DEFAULT 'mcp'");
+      }
+    },
   ];
 
   if (currentVersion < migrations.length) {

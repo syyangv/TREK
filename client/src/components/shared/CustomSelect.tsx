@@ -171,6 +171,11 @@ export default function CustomSelect({
           <div style={{
             maxHeight: Math.min(220, Math.max(96, (anchored?.maxHeight ?? 220) - (searchable ? 38 : 0))),
             overflowY: 'auto',
+            // The panel is portaled to document.body and positioned fixed, so its
+            // scroll chain runs to the viewport rather than to the sheet it looks
+            // like it belongs to. On a phone that meant a flick past either end of
+            // the list moved the page instead (#2078).
+            overscrollBehavior: 'contain',
             padding: '4px',
           }}>
             {filtered.length === 0 ? (

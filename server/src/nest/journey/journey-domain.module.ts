@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { TrekPhotosModule } from '../photos/trek-photos.module';
 import { JourneyDomainService } from './journey-domain.service';
-import { JournalRpc } from './journal.rpc';
 import { PluginGuardsModule } from '../plugins/host/plugin-guards.module';
 import { JourneyShareService } from './journey-share.service';
 import { SettingsModule } from '../settings/settings.module';
@@ -15,6 +14,10 @@ import { SettingsModule } from '../settings/settings.module';
  * (and with it both photo providers) into their graphs. This carries the two
  * services and nothing else - same shape as TrekPhotosModule.
  *
+ * JournalRpc moved out to JournalRpcModule when it started writing photo bytes:
+ * that needs StorageService and MemoriesModule, and pulling those in here would
+ * undo the whole point of this module.
+ *
  * RealtimeModule is imported explicitly even though it is @Global, so a
  * single-domain e2e TestingModule can still resolve the broadcast.
  *
@@ -25,7 +28,7 @@ import { SettingsModule } from '../settings/settings.module';
  */
 @Module({
   imports: [RealtimeModule, TrekPhotosModule, PluginGuardsModule, SettingsModule],
-  providers: [JourneyDomainService, JourneyShareService, JournalRpc],
+  providers: [JourneyDomainService, JourneyShareService],
   exports: [JourneyDomainService, JourneyShareService],
 })
 export class JourneyDomainModule {}

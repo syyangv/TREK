@@ -9,7 +9,7 @@ import { Map, Ticket, PackageCheck, Wallet, FolderOpen, Users, Train } from 'luc
 import { resolvePluginIcon } from '../../components/shared/PluginIcon'
 import { useTranslation, translateApiError } from '../../i18n'
 import { addonsApi, accommodationsApi, authApi, tripsApi, assignmentsApi, healthApi, airtrailApi, mapsApi, placesApi } from '../../api/client'
-import { parsedItemToDraft, isTransportItem, type BookingReviewDraft } from '../../components/Planner/parsedItemToDraft'
+import { parsedItemToDraft, isTransportItem, isUnplaceableItem, type BookingReviewDraft } from '../../components/Planner/parsedItemToDraft'
 import type { BookingImportPreviewItem } from '@trek/shared'
 import { accommodationRepo } from '../../repo/accommodationRepo'
 import { offlineDb, getImportFiles, deleteImportFiles } from '../../db/offlineDb'
@@ -25,7 +25,7 @@ import { useAirtrailConnection } from '../../hooks/useAirtrailConnection'
 import { useIsTouch } from '../../hooks/useIsTouch'
 import { usePluginStore } from '../../store/pluginStore'
 import type { Accommodation, TripMember, Day, Place, Reservation } from '../../types'
-import { CARTO_LIGHT, DEFAULT_MAP_LAT, DEFAULT_MAP_LNG, DEFAULT_MAP_ZOOM } from '../../constants/mapDefaults'
+import { OFM_POSITRON, DEFAULT_MAP_LAT, DEFAULT_MAP_LNG, DEFAULT_MAP_ZOOM } from '../../constants/mapDefaults'
 import { useTileUrl } from '../../hooks/useTileUrl'
 import { resolvePoolAssignmentId } from './tripPlannerModel'
 import { isDeepLinkableTripTab, TRIP_TAB_LABEL_KEYS } from '../../constants/tripTabs'
@@ -35,6 +35,7 @@ import {
   toggleConnectionId, toggleAllConnections as flipAllConnectionsMode,
   type StoredConnections,
 } from '../../utils/connectionsVisibility'
+import { plannedPlaceIds, plannedPlaceIdsForDay } from '../../utils/plannedPlaces'
 
 /**
  * Trip planner page logic — the big one. Owns the trip store wiring, addon
@@ -235,6 +236,8 @@ export function useTripPlanner() {
   const [showReservationModal, setShowReservationModal] = useState<boolean>(false)
   const [editingReservation, setEditingReservation] = useState<Reservation | null>(null)
   const [showBookingImport, setShowBookingImport] = useState<boolean>(false)
+  // Which tab opened the importer. Only ever a tie-breaker — see openImportItem.
+  const [bookingImportKind, setBookingImportKind] = useState<'transports' | 'bookings'>('bookings')
   const [bookingImportAvailable, setBookingImportAvailable] = useState<boolean>(false)
   const { available: airTrailAvailable } = useAirtrailConnection()
   const [showAirTrailImport, setShowAirTrailImport] = useState<boolean>(false)
@@ -279,6 +282,11 @@ export function useTripPlanner() {
   const importQueueRef = useRef<BookingImportPreviewItem[]>([])
   // The files this import was parsed from, so each reviewed booking can attach its source doc.
   const importSourceFilesRef = useRef<File[]>([])
+  // The tab the items under review came from. A ref, not the bookingImportKind
+  // state: the parse outlives navigation and reload, and the review is triggered
+  // by the global widget, so by then the state has remounted back to its default.
+  // The value comes off the persisted job (#2076).
+  const importKindRef = useRef<'transports' | 'bookings'>('bookings')
   // Manual route planning: off by default, toggled from the day-plan footer. Mode
   // is per-session and selects which travel time the connectors show — either a
   // built-in OSRM profile or a plugin route profile ('plugin:<id>/<profile>').
@@ -459,10 +467,9 @@ export function useTripPlanner() {
     // the whole plan (#2024). 'unplanned' always uses the whole-trip set — a place
     // assigned to any day is not unplanned.
     const plannedIds = placesFilter === 'unplanned' || placesFilter === 'planned'
-      ? new Set((placesFilter === 'planned' && selectedDayId
-        ? (assignments[String(selectedDayId)] || [])
-        : Object.values(assignments).flat()
-      ).map(a => a.place?.id).filter(Boolean))
+      ? (placesFilter === 'planned' && selectedDayId
+        ? plannedPlaceIdsForDay(selectedDayId, days, { assignments, accommodations: tripAccommodations, reservations })
+        : plannedPlaceIds({ assignments, accommodations: tripAccommodations, reservations }))
       : null
 
     return places.filter(p => {
@@ -481,7 +488,7 @@ export function useTripPlanner() {
       if (placesFilter === 'planned' && plannedIds && !plannedIds.has(p.id)) return false
       return true
     })
-  }, [places, placesCategoryFilter, placesFilter, assignments, expandedDayIds, selectedDayId])
+  }, [places, placesCategoryFilter, placesFilter, assignments, expandedDayIds, selectedDayId, days, tripAccommodations, reservations])
 
   const { route, routeSegments, routeVias, routeInfo, setRoute, setRouteInfo, updateRouteForDay } = useRouteCalculation({ assignments } as any, selectedDayId, routeShown, routeProfile, tripAccommodations)
 
@@ -942,13 +949,19 @@ export function useTripPlanner() {
   }
 
   // Open the right edit modal for a parsed item, pre-filled, in create mode.
+  //
+  // A type neither form can express belongs to whichever tab the user started from.
+  // Handing an unreadable transport document to the booking form is what left them
+  // with six chips, none of them a transport, and 'other' as the only honest pick
+  // (#2076). A type either form DOES know always wins over the tab — one PDF
+  // routinely holds a flight and a hotel.
   const openImportItem = (item: BookingImportPreviewItem) => {
     const draft = parsedItemToDraft(item)
     // Attach the file this item was parsed from so it lands in the booking's Files on save.
     const srcName = item.source?.fileName
     const srcFile = srcName ? importSourceFilesRef.current.find(f => f.name === srcName) : undefined
     if (srcFile) draft._sourceFiles = [srcFile]
-    if (isTransportItem(item)) {
+    if (isTransportItem(item) || (isUnplaceableItem(item) && importKindRef.current === 'transports')) {
       setShowReservationModal(false); setEditingReservation(null); setReservationPrefill(null)
       setEditingTransport(null); setTransportModalDayId(null)
       setTransportPrefill(draft); setShowTransportModal(true)
@@ -959,9 +972,14 @@ export function useTripPlanner() {
     }
   }
 
-  const startImportReview = (items: BookingImportPreviewItem[], sourceFiles: File[] = []) => {
+  const startImportReview = (
+    items: BookingImportPreviewItem[],
+    sourceFiles: File[] = [],
+    kind: 'transports' | 'bookings' = 'bookings',
+  ) => {
     if (!items.length) return
     importSourceFilesRef.current = sourceFiles
+    importKindRef.current = kind
     importQueueRef.current = items.slice(1)
     setImportReviewActive(true)
     openImportItem(items[0])
@@ -982,12 +1000,13 @@ export function useTripPlanner() {
       const items = task.items
       const jobId = task.id
       const inMemory = task.sourceFiles
+      const kind = task.kind ?? 'bookings'
       dismissBgTask(jobId)
       // Prefer the in-memory files (immediate path); after a reload they live in IndexedDB.
       void (async () => {
         const files = inMemory && inMemory.length ? inMemory : await getImportFiles(jobId)
         deleteImportFiles(jobId)
-        startImportReview(items, files)
+        startImportReview(items, files, kind)
       })()
     }
   }, [bgTasks, tripId, startImportReview, dismissBgTask])
@@ -1035,7 +1054,7 @@ export function useTripPlanner() {
     return da.map(a => a.place).filter(p => p?.lat && p?.lng)
   }, [selectedDayId, assignments])
 
-  const mapTileUrl = useTileUrl(CARTO_LIGHT)
+  const mapTileUrl = useTileUrl(OFM_POSITRON)
 
   const fontStyle = { fontFamily: "var(--font-system)" }
 
@@ -1064,7 +1083,7 @@ export function useTripPlanner() {
     placeFormDayId, setPlaceFormDayId, reservationModalDayId, setReservationModalDayId,
     showTripForm, setShowTripForm, showMembersModal, setShowMembersModal,
     showReservationModal, setShowReservationModal, editingReservation, setEditingReservation,
-    showBookingImport, setShowBookingImport, bookingImportAvailable,
+    showBookingImport, setShowBookingImport, bookingImportKind, setBookingImportKind, bookingImportAvailable,
     airTrailAvailable, showAirTrailImport, setShowAirTrailImport,
     bookingForAssignmentId, setBookingForAssignmentId,
     showTransportModal, setShowTransportModal, editingTransport, setEditingTransport,

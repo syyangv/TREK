@@ -531,6 +531,18 @@ describe('TransportModal', () => {
     { id: 2, reservation_id: 1, role: 'to', sequence: 1, name: 'New York (JFK)', code: 'JFK', lat: 40.64, lng: -73.78, timezone: 'America/New_York', local_date: toDate, local_time: '13:00' },
   ]);
 
+  // #2076 — an import whose type could not be read used to arrive here as a flight.
+  // A wrong flight looks right enough to be saved without a second look; an
+  // explicit "other" asks to be corrected.
+  it('FE-PLANNER-TRANSMODAL-062: an unrecognised prefill type lands on transport_other, not flight', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const prefill = { title: 'Airport transfer', type: 'shuttle-voucher', status: 'pending' } as any;
+    render(<TransportModal {...defaultProps} prefill={prefill} onSave={onSave} />);
+    await userEvent.click(screen.getByRole('button', { name: /^Add$/i }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].type).toBe('transport_other');
+  });
+
   it('FE-PLANNER-TRANSMODAL-030: an import prefill resolves each waypoint day from its endpoint local_date (#1684)', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     // A parsed import carries local_date per endpoint but no day_id at all.

@@ -8,7 +8,8 @@ import { useAddonStore } from '../../store/addonStore'
 import PhotoProvidersSection from './PhotoProvidersSection'
 import AirTrailConnectionSection from './AirTrailConnectionSection'
 import LlmConnectionSection from './LlmConnectionSection'
-import { ALL_SCOPES } from '../../api/oauthScopes'
+import ApiKeysSection from './ApiKeysSection'
+import { PRESET_SCOPES_DEFAULT, PRESET_SCOPES_READONLY } from '../../api/oauthScopes'
 import ScopeGroupPicker from '../OAuth/ScopeGroupPicker'
 import { useAuthStore } from '../../store/authStore'
 
@@ -26,42 +27,42 @@ const OAUTH_PRESETS: OAuthPreset[] = [
     label: 'Claude.ai',
     name: 'Claude.ai',
     uris: 'https://claude.ai/api/mcp/auth_callback',
-    scopes: ALL_SCOPES.filter(s => !s.includes(':delete')),
+    scopes: PRESET_SCOPES_DEFAULT,
   },
   {
     id: 'claude-desktop',
     label: 'Claude Desktop',
     name: 'Claude Desktop',
     uris: 'http://localhost',
-    scopes: ALL_SCOPES.filter(s => !s.includes(':delete')),
+    scopes: PRESET_SCOPES_DEFAULT,
   },
   {
     id: 'cursor',
     label: 'Cursor',
     name: 'Cursor',
     uris: 'http://localhost',
-    scopes: ALL_SCOPES.filter(s => !s.includes(':delete')),
+    scopes: PRESET_SCOPES_DEFAULT,
   },
   {
     id: 'vscode',
     label: 'VS Code',
     name: 'VS Code / Copilot',
     uris: 'http://localhost',
-    scopes: ALL_SCOPES.filter(s => s.endsWith(':read')),
+    scopes: PRESET_SCOPES_READONLY,
   },
   {
     id: 'windsurf',
     label: 'Windsurf',
     name: 'Windsurf',
     uris: 'http://localhost',
-    scopes: ALL_SCOPES.filter(s => !s.includes(':delete')),
+    scopes: PRESET_SCOPES_DEFAULT,
   },
   {
     id: 'zed',
     label: 'Zed',
     name: 'Zed',
     uris: 'http://localhost',
-    scopes: ALL_SCOPES.filter(s => !s.includes(':delete')),
+    scopes: PRESET_SCOPES_DEFAULT,
   },
 ]
 
@@ -109,6 +110,9 @@ export default function IntegrationsTab(): React.ReactElement {
        a managed install. The per-user fallback exists for people who supply their
        own key, and there nobody does. */}
       {S.llmEnabled && !managed && <LlmConnectionSection />}
+      {/* Above MCP on purpose: an API key needs no addon, and someone looking for
+          one should not have to read past a section about AI assistants. */}
+      <ApiKeysSection />
       {S.mcpEnabled && <IntegrationsMcpSection {...S} />}
       <McpTokenModals {...S} />
       <OAuthClientModals {...S} />

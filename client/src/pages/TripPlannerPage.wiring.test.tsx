@@ -194,6 +194,8 @@ function baseState(): HookState {
     setEditingReservation: vi.fn(),
     showBookingImport: false,
     setShowBookingImport: vi.fn(),
+    bookingImportKind: 'bookings' as const,
+    setBookingImportKind: vi.fn(),
     bookingImportAvailable: true,
     airTrailAvailable: true,
     showAirTrailImport: false,

@@ -1656,6 +1656,72 @@ describe('useTripPlanner — booking import review', () => {
     expect(result.current.reservationPrefill?._sourceFiles).toEqual([file])
   })
 
+  // #2076 — an item whose type neither form can express used to land in the booking
+  // form, which offers six chips and not one transport among them, so the only
+  // honest pick left was 'other'. The tab the import started from breaks the tie.
+  it('FE-TP-HOOK-112: an unreadable item opens the transport form when the import began there', async () => {
+    seedTrip()
+    const { result } = await renderPlanner()
+    const odd = { type: 'shuttle-voucher', title: 'Airport transfer' }
+
+    // The tab now travels with the review rather than living in component state:
+    // the parse outlives navigation and reload, and the review is triggered by the
+    // global widget, so by then the state has remounted back to its default.
+    act(() => { result.current.startImportReview([odd] as never, [], 'transports') })
+
+    expect(result.current.showTransportModal).toBe(true)
+    expect(result.current.showReservationModal).toBe(false)
+  })
+
+  it('FE-TP-HOOK-113: the same item opens the booking form when the import began there', async () => {
+    seedTrip()
+    const { result } = await renderPlanner()
+    const odd = { type: 'shuttle-voucher', title: 'Airport transfer' }
+
+    act(() => { result.current.startImportReview([odd] as never, [], 'bookings') })
+
+    expect(result.current.showReservationModal).toBe(true)
+    expect(result.current.showTransportModal).toBe(false)
+  })
+
+  // The case that actually occurs. The server only ever emits its eight known
+  // types, so 'shuttle-voucher' above never reaches a real import: a document the
+  // model could not classify arrived as a placeholder 'hotel', which IS a booking
+  // type, so the tie-breaker never ran and the tab lost every time (#2076).
+  it('FE-TP-HOOK-112b: a guessed hotel opens the transport form when the import began there', async () => {
+    seedTrip()
+    const { result } = await renderPlanner()
+    const guessed = { type: 'hotel', title: 'Airport transfer', type_guessed: true }
+
+    act(() => { result.current.startImportReview([guessed] as never, [], 'transports') })
+
+    expect(result.current.showTransportModal).toBe(true)
+    expect(result.current.showReservationModal).toBe(false)
+  })
+
+  it('FE-TP-HOOK-112c: a real hotel from the same tab still opens the booking form', async () => {
+    seedTrip()
+    const { result } = await renderPlanner()
+    const real = { type: 'hotel', title: 'Ryokan' }
+
+    act(() => { result.current.startImportReview([real] as never, [], 'transports') })
+
+    expect(result.current.showReservationModal).toBe(true)
+    expect(result.current.showTransportModal).toBe(false)
+  })
+
+  // A recognised type always wins over the tab: one PDF routinely holds both.
+  it('FE-TP-HOOK-114: a hotel imported from the transports tab still opens the booking form', async () => {
+    seedTrip()
+    const { result } = await renderPlanner()
+
+    act(() => { result.current.setBookingImportKind('transports') })
+    act(() => { result.current.startImportReview([hotelItem] as never) })
+
+    expect(result.current.showReservationModal).toBe(true)
+    expect(result.current.showTransportModal).toBe(false)
+  })
+
   it('FE-TP-HOOK-090: advancing moves on to the transport item and then finishes the session', async () => {
     seedTrip()
     vi.mocked(accommodationsApi.list).mockResolvedValue({ accommodations: [{ id: 2 }] })
@@ -1734,11 +1800,11 @@ describe('useTripPlanner — booking import review', () => {
 })
 
 describe('useTripPlanner — misc state', () => {
-  it('FE-TP-HOOK-095: the map tile url falls back to the Carto basemap', async () => {
+  it('FE-TP-HOOK-095: the map tile url falls back to the default basemap', async () => {
     seedTrip()
 
     const { result } = await renderPlanner()
-    expect(result.current.mapTileUrl).toContain('basemaps.cartocdn.com')
+    expect(result.current.mapTileUrl).toContain('openfreemap.org')
 
     act(() => { setSettings({ map_tile_url: 'https://tiles/{z}/{x}/{y}.png' }) })
     expect(result.current.mapTileUrl).toBe('https://tiles/{z}/{x}/{y}.png')

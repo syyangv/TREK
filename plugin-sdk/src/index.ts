@@ -237,6 +237,15 @@ export interface PluginContext {
     deleteJourney(journeyId: number): Promise<{ deleted: boolean }>;
     /** Update an entry (owner/contributor-gated). Needs `db:write:journal`. */
     updateEntry(entryId: number, input: Record<string, unknown>): Promise<unknown>;
+    /**
+     * Attach a photo to an entry, bytes included. Needs `db:write:journal`.
+     *
+     * For an importer that holds an export archive: it has bytes, not a gallery
+     * photo to point at and not a provider asset. `name` supplies the extension
+     * only, the stored filename is the host's. Images only, no SVG, 10MB decoded,
+     * and the operator's allowed-file-types setting applies.
+     */
+    addEntryPhoto(entryId: number, input: { name: string; content_base64: string; caption?: string }): Promise<unknown>;
     /** Delete an entry (owner/contributor-gated). Needs `db:write:journal`. */
     deleteEntry(entryId: number): Promise<{ deleted: boolean }>;
   };
@@ -764,6 +773,25 @@ export interface PluginSubscription {
   handler(payload: unknown, ctx: PluginContext): Promise<void> | void;
 }
 
+/**
+ * Publishes MCP tools on TREK's own MCP server, so an assistant can call into
+ * the plugin as the requesting user. Requires the `mcp:tools` permission.
+ *
+ * `tools` lists which of the tools declared in `capabilities.mcpTools` this
+ * build actually implements. The host advertises the intersection of the two:
+ * the manifest is signed and re-consented, this list is not, so a tool the
+ * manifest never declared is ignored rather than trusted.
+ *
+ * `callTool` receives the plugin-local name, without the `plugin_<id>_` prefix
+ * the tool is advertised under. Return anything JSON-serialisable; the host
+ * wraps it into an MCP result envelope, and a throw becomes a tool error the
+ * assistant can read and recover from.
+ */
+export interface McpToolProvider {
+  tools: string[];
+  callTool(call: { name: string; args: unknown }, ctx: PluginContext): Promise<unknown> | unknown;
+}
+
 export interface PluginDefinition {
   onLoad?(ctx: PluginContext): Promise<void> | void;
   onUnload?(ctx: PluginContext): Promise<void> | void;
@@ -806,6 +834,7 @@ export interface PluginDefinition {
     journalEntryProvider?: JournalEntryProvider;
     tripCardProvider?: TripCardProvider;
     notificationChannel?: NotificationChannel;
+    mcpToolProvider?: McpToolProvider;
   };
   /** Functions exposed to dependents (names must match manifest `capabilities.provides`). */
   exports?: Record<string, PluginExport>;

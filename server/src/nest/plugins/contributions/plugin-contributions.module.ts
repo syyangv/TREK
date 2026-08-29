@@ -4,6 +4,8 @@ import { AddonsModule } from '../../addons/addons.module';
 import { JourneyDomainModule } from '../../journey/journey-domain.module';
 import { PlaceDetailsController } from './place-details.controller';
 import { TripWarningsController } from './trip-warnings.controller';
+import { TripWarningsMcp } from './trip-warnings.mcp';
+import { PluginMcpToolsService } from './plugin-mcp-tools.service';
 import { ViewContributionsController } from './view-contributions.controller';
 import { TripCardContributionsController } from './trip-card-contributions.controller';
 import { PluginPhotosController } from './plugin-photos.controller';
@@ -46,5 +48,13 @@ import { JournalEntryRowsController } from './journal-entry-rows.controller';
     AtlasLayersController,
     JournalEntryRowsController,
   ],
+  // The contributions with an MCP counterpart. TripWarningsMcp belongs to this
+  // module rather than to the trip read model because the plugin runtime and the
+  // trip aggregate already import each other's modules; see trip-warnings.mcp.ts.
+  //
+  // PluginMcpToolsService owns the process-level tool source. It lives here, and
+  // not on PluginRuntimeService beside the other sinks, because it needs
+  // PluginHooks and PluginHooks injects PluginRuntimeService.
+  providers: [TripWarningsMcp, PluginMcpToolsService],
 })
 export class PluginContributionsModule {}

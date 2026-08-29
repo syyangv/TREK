@@ -417,7 +417,7 @@ export default function MTripShell({
               }}
             />
             {planner.bookingImportAvailable && (
-              <MIconBtn ariaLabel={t('reservations.import.title')} onClick={() => planner.setShowBookingImport(true)} size={40} className="text-m-muted backdrop-blur-[24px] backdrop-saturate-[1.7]">
+              <MIconBtn ariaLabel={t('reservations.import.title')} onClick={() => { planner.setBookingImportKind('transports'); planner.setShowBookingImport(true) }} size={40} className="text-m-muted backdrop-blur-[24px] backdrop-saturate-[1.7]">
                 <Download size={15} strokeWidth={2} />
               </MIconBtn>
             )}
@@ -437,7 +437,7 @@ export default function MTripShell({
               onClick={() => { planner.setEditingReservation(null); planner.setShowReservationModal(true) }}
             />
             {planner.bookingImportAvailable && (
-              <MIconBtn ariaLabel={t('reservations.import.title')} onClick={() => planner.setShowBookingImport(true)} size={40} className="text-m-muted backdrop-blur-[24px] backdrop-saturate-[1.7]">
+              <MIconBtn ariaLabel={t('reservations.import.title')} onClick={() => { planner.setBookingImportKind('bookings'); planner.setShowBookingImport(true) }} size={40} className="text-m-muted backdrop-blur-[24px] backdrop-saturate-[1.7]">
                 <Download size={15} strokeWidth={2} />
               </MIconBtn>
             )}

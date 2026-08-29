@@ -225,9 +225,12 @@ export function TransportModal({ isOpen, onClose, onSave, reservation, days, sel
       const eps = src.endpoints || []
       const from = eps.find(e => e.role === 'from')
       const to = eps.find(e => e.role === 'to')
+      // 'transport_other', not 'flight': an import whose type could not be read has
+      // to arrive as something the user corrects, and a wrong flight looks right
+      // enough to be saved unnoticed (#2076).
       const type = (TRANSPORT_TYPES as readonly string[]).includes(src.type)
         ? src.type as TransportType
-        : 'flight'
+        : 'transport_other'
       setForm({
         title: src.title || '',
         type,
