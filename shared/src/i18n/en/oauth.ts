@@ -94,6 +94,11 @@ const oauth: TranslationStrings = {
   'oauth.authorize.alwaysIncluded': 'Always included',
   'oauth.authorize.alwaysTool.listTrips': 'List your trips so the AI can discover trip IDs',
   'oauth.authorize.alwaysTool.getTripSummary': 'Read a trip overview needed to use any other tool',
+  // Photo-library metadata is explicitly opt-in for OAuth clients.
+  'oauth.scope.group.memories': 'Photo libraries', // en-fallback
+  'oauth.scope.memories:read.label': 'Browse photo libraries', // en-fallback
+  'oauth.scope.memories:read.description':
+    'Search connected photo libraries and read capture metadata to attach photos to journeys', // en-fallback
   'oauth.scope.group.files': 'Files',
   'oauth.scope.group.settings': 'Settings',
   'oauth.scope.files:read.label': 'View trip files',

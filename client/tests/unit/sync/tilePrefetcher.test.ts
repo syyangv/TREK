@@ -4,31 +4,35 @@
  * Covers: bbox computation, tile math, URL building, size guard,
  * offline/no-SW guard, syncMeta update.
  */
+import 'fake-indexeddb/auto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import 'fake-indexeddb/auto';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearAll, offlineDb, upsertSyncMeta } from '../../../src/db/offlineDb';
+import { setAuthed } from '../../../src/sync/authGate';
 import {
-  computeBbox,
-  lngToTileX,
-  latToTileY,
   buildTileUrl,
+  clearTileCache,
+  computeBbox,
   countTiles,
+  latToTileY,
+  lngToTileX,
+  MAX_TILES,
   prefetchTiles,
   prefetchTilesForTrip,
-  clearTileCache,
-  MAX_TILES,
   TILE_CONCURRENCY,
   type TileBbox,
 } from '../../../src/sync/tilePrefetcher';
-import { offlineDb, clearAll, upsertSyncMeta } from '../../../src/db/offlineDb';
-import { setAuthed } from '../../../src/sync/authGate';
 import { buildPlace } from '../../helpers/factories';
 
 beforeEach(async () => {
   await clearAll();
   setAuthed(true);
   Object.defineProperty(navigator, 'onLine', { value: true, writable: true, configurable: true });
+  vi.stubGlobal('caches', {
+    open: vi.fn().mockResolvedValue({ match: vi.fn().mockResolvedValue(undefined) }),
+    delete: vi.fn().mockResolvedValue(true),
+  });
   // Stub fetch + serviceWorker so prefetch path is exercised
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
   Object.defineProperty(navigator, 'serviceWorker', {
@@ -61,8 +65,8 @@ describe('computeBbox', () => {
 
   it('computes multi-point bbox with padding', () => {
     const places = [
-      buildPlace({ lat: 48.8566, lng: 2.3522 }),  // Paris
-      buildPlace({ lat: 51.5074, lng: -0.1278 }),  // London
+      buildPlace({ lat: 48.8566, lng: 2.3522 }), // Paris
+      buildPlace({ lat: 51.5074, lng: -0.1278 }), // London
     ];
     const bbox = computeBbox(places, 0.1)!;
     // Padded bbox should extend beyond raw points
@@ -139,9 +143,7 @@ describe('buildTileUrl', () => {
 
   it('spreads neighbouring tiles across subdomains', () => {
     const tmpl = 'https://{s}.tiles.example.com/{z}/{x}/{y}.png';
-    const hosts = new Set(
-      [0, 1, 2].map(dy => buildTileUrl(tmpl, 10, 479, 329 + dy).slice(8, 9)),
-    );
+    const hosts = new Set([0, 1, 2].map((dy) => buildTileUrl(tmpl, 10, 479, 329 + dy).slice(8, 9)));
     expect(hosts.size).toBe(3);
   });
 
@@ -151,11 +153,15 @@ describe('buildTileUrl', () => {
     // tile under a host the map never asks for.
     const tmpl = 'https://{s}.tiles.example.com/{z}/{x}/{y}.png';
     const leaflet = 'abc';
-    for (const [x, y] of [[479, 329], [480, 330], [12, 7], [0, 0], [5, 4]]) {
+    for (const [x, y] of [
+      [479, 329],
+      [480, 330],
+      [12, 7],
+      [0, 0],
+      [5, 4],
+    ]) {
       const expected = leaflet[Math.abs(x + y) % leaflet.length];
-      expect(buildTileUrl(tmpl, 10, x, y)).toBe(
-        `https://${expected}.tiles.example.com/10/${x}/${y}.png`,
-      );
+      expect(buildTileUrl(tmpl, 10, x, y)).toBe(`https://${expected}.tiles.example.com/10/${x}/${y}.png`);
     }
   });
 
@@ -211,6 +217,35 @@ describe('prefetchTiles — offline guard', () => {
     const count = await prefetchTiles(bbox, 'https://{s}.example.com/{z}/{x}/{y}.png', 10, 10);
     expect(count).toBe(0);
   });
+
+  it('returns 0 when Cache Storage is unavailable', async () => {
+    vi.stubGlobal('caches', {
+      open: vi.fn().mockRejectedValue(new Error('storage unavailable')),
+    });
+    const bbox: TileBbox = { minLat: 48.8, maxLat: 48.9, minLng: 2.3, maxLng: 2.4 };
+
+    const count = await prefetchTiles(bbox, 'https://{s}.example.com/{z}/{x}/{y}.png', 10, 10);
+
+    expect(count).toBe(0);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it('does not record tilesBbox when there is no service worker controller', async () => {
+    await upsertSyncMeta({ tripId: 1, lastSyncedAt: Date.now(), status: 'idle', tilesBbox: null, filesCachedCount: 0 });
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: { controller: null },
+      configurable: true,
+    });
+
+    await prefetchTilesForTrip(
+      1,
+      [buildPlace({ trip_id: 1, lat: 48.8566, lng: 2.3522 })],
+      'https://{s}.example.com/{z}/{x}/{y}.png'
+    );
+
+    expect((await offlineDb.syncMeta.get(1))!.tilesBbox).toBeNull();
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
 });
 
 describe('prefetchTiles — normal operation', () => {
@@ -236,15 +271,20 @@ describe('prefetchTiles — throttling', () => {
   /** fetch stub that resolves on the next macrotask and tracks concurrency. */
   function trackingFetch() {
     const state = { inFlight: 0, peak: 0, calls: 0 };
-    vi.stubGlobal('fetch', vi.fn(() => {
-      state.calls++;
-      state.inFlight++;
-      state.peak = Math.max(state.peak, state.inFlight);
-      return new Promise(resolve => setTimeout(() => {
-        state.inFlight--;
-        resolve({ ok: true });
-      }, 0));
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => {
+        state.calls++;
+        state.inFlight++;
+        state.peak = Math.max(state.peak, state.inFlight);
+        return new Promise((resolve) =>
+          setTimeout(() => {
+            state.inFlight--;
+            resolve({ ok: true });
+          }, 0)
+        );
+      })
+    );
     return state;
   }
 
@@ -270,10 +310,13 @@ describe('prefetchTiles — throttling', () => {
 
   it('stops fetching when the user logs out mid-run', async () => {
     let calls = 0;
-    vi.stubGlobal('fetch', vi.fn(() => {
-      if (++calls === TILE_CONCURRENCY) setAuthed(false);
-      return Promise.resolve({ ok: true });
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => {
+        if (++calls === TILE_CONCURRENCY) setAuthed(false);
+        return Promise.resolve({ ok: true });
+      })
+    );
     const bbox: TileBbox = { minLat: 48.0, maxLat: 49.0, minLng: 2.0, maxLng: 3.0 };
 
     await prefetchTiles(bbox, 'https://{s}.example.com/{z}/{x}/{y}.png', 10, 12);
@@ -285,12 +328,15 @@ describe('prefetchTiles — throttling', () => {
 
   it('goes quiet when the connection drops mid-run', async () => {
     let calls = 0;
-    vi.stubGlobal('fetch', vi.fn(() => {
-      if (++calls === TILE_CONCURRENCY) {
-        Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
-      }
-      return Promise.resolve({ ok: true });
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => {
+        if (++calls === TILE_CONCURRENCY) {
+          Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+        }
+        return Promise.resolve({ ok: true });
+      })
+    );
     const bbox: TileBbox = { minLat: 48.0, maxLat: 49.0, minLng: 2.0, maxLng: 3.0 };
 
     await prefetchTiles(bbox, 'https://{s}.example.com/{z}/{x}/{y}.png', 10, 12);
@@ -338,9 +384,7 @@ describe('prefetchTilesForTrip', () => {
   it('updates syncMeta tilesBbox after prefetch', async () => {
     await upsertSyncMeta({ tripId: 1, lastSyncedAt: Date.now(), status: 'idle', tilesBbox: null, filesCachedCount: 0 });
 
-    const places = [
-      buildPlace({ trip_id: 1, lat: 48.8566, lng: 2.3522 }),
-    ];
+    const places = [buildPlace({ trip_id: 1, lat: 48.8566, lng: 2.3522 })];
     await prefetchTilesForTrip(1, places, 'https://{s}.example.com/{z}/{x}/{y}.png');
 
     const meta = await offlineDb.syncMeta.get(1);
@@ -353,10 +397,7 @@ describe('prefetchTilesForTrip', () => {
 
     // ~4° road-trip span: low zooms fit the budget, high zooms (z14+) blow past
     // it. The old guard skipped the whole trip; now we keep what fits.
-    const places = [
-      buildPlace({ trip_id: 1, lat: 45.0, lng: 0.0 }),
-      buildPlace({ trip_id: 1, lat: 49.0, lng: 4.0 }),
-    ];
+    const places = [buildPlace({ trip_id: 1, lat: 45.0, lng: 0.0 }), buildPlace({ trip_id: 1, lat: 49.0, lng: 4.0 })];
     await prefetchTilesForTrip(1, places, 'https://{s}.example.com/{z}/{x}/{y}.png');
 
     // Previously this skipped entirely; now it prefetches a clamped subset.
@@ -368,10 +409,7 @@ describe('prefetchTilesForTrip', () => {
   it('prefetches a region-sized (0.5°) trip that the old all-or-nothing guard would have skipped', async () => {
     await upsertSyncMeta({ tripId: 1, lastSyncedAt: Date.now(), status: 'idle', tilesBbox: null, filesCachedCount: 0 });
 
-    const places = [
-      buildPlace({ trip_id: 1, lat: 48.6, lng: 2.1 }),
-      buildPlace({ trip_id: 1, lat: 49.1, lng: 2.6 }),
-    ];
+    const places = [buildPlace({ trip_id: 1, lat: 48.6, lng: 2.1 }), buildPlace({ trip_id: 1, lat: 49.1, lng: 2.6 })];
     await prefetchTilesForTrip(1, places, 'https://{s}.example.com/{z}/{x}/{y}.png');
 
     const calls = vi.mocked(fetch).mock.calls.length;
@@ -429,6 +467,10 @@ describe('prefetchTilesForTrip — repeat runs', () => {
     expect((await offlineDb.syncMeta.get(1))!.tilesBbox).toBeNull();
 
     vi.unstubAllGlobals();
+    vi.stubGlobal('caches', {
+      open: vi.fn().mockResolvedValue({ match: vi.fn().mockResolvedValue(undefined) }),
+      delete: vi.fn().mockResolvedValue(true),
+    });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
     await prefetchTilesForTrip(1, places, tmpl);
 
@@ -483,11 +525,11 @@ describe('the GL style document is not served stale (#1924)', () => {
 
   // Read the rules in file order and exercise them the way Workbox does: the
   // first route whose pattern matches wins, so order is behaviour here, not style.
-  const rules = [...config.matchAll(/urlPattern:\s*(\/[^\n]*?\/i),\s*\n\s*handler:\s*'([A-Za-z]+)'/g)].map(m => ({
+  const rules = [...config.matchAll(/urlPattern:\s*(\/[^\n]*?\/i),\s*\n\s*handler:\s*'([A-Za-z]+)'/g)].map((m) => ({
     pattern: new RegExp(m[1].slice(1, m[1].lastIndexOf('/')), 'i'),
     handler: m[2],
   }));
-  const firstMatch = (url: string) => rules.find(r => r.pattern.test(url));
+  const firstMatch = (url: string) => rules.find((r) => r.pattern.test(url));
 
   const MAPBOX_STYLE = 'https://api.mapbox.com/styles/v1/acme/ckabc123?sdk=js-3.25.0&access_token=pk.test';
   const OPENFREEMAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';

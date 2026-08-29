@@ -127,8 +127,8 @@ export default defineConfig(({ mode }) => ({
             // handled by the rule above). Best-effort offline only:
             // opportunistically caches what the user has already
             // viewed online. Full pre-download offline maps require the Leaflet
-            // renderer (raster prefetch in tilePrefetcher.ts) — the GL vector
-            // pipeline is not prefetched. StaleWhileRevalidate keeps the basemap
+            // renderer (raster prefetch in tilePrefetcher.ts and vector prefetch in
+            // glPrefetcher.ts). StaleWhileRevalidate keeps the basemap
             // fresh online while still serving from cache when offline. Mapbox
             // sends CORS, so responses are non-opaque (real 200s, no quota pad).
             urlPattern: /^https:\/\/(api\.mapbox\.com|[a-d]\.tiles\.mapbox\.com)\/.*/i,

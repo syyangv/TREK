@@ -100,6 +100,11 @@ const oauth: TranslationStrings = {
   'oauth.authorize.alwaysTool.listTrips': 'Lista dina resor så att AI:n kan identifiera resenummer',
   'oauth.authorize.alwaysTool.getTripSummary':
     'Läs en översikt över resan som krävs för att kunna använda något annat verktyg',
+  // Photo-library metadata is explicitly opt-in for OAuth clients.
+  'oauth.scope.group.memories': 'Photo libraries', // en-fallback
+  'oauth.scope.memories:read.label': 'Browse photo libraries', // en-fallback
+  'oauth.scope.memories:read.description':
+    'Search connected photo libraries and read capture metadata to attach photos to journeys', // en-fallback
   'oauth.scope.group.files': 'Filer',
   'oauth.scope.group.settings': 'Inställningar',
   'oauth.scope.files:read.label': 'Visa resans filer',

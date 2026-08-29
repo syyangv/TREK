@@ -1,11 +1,16 @@
 import {
-  McpController, Tool, TOOL_ANNOTATIONS_OPEN_WORLD_READONLY,
-  errorResult, ok, type McpContext,
+  McpController,
+  Tool,
+  TOOL_ANNOTATIONS_OPEN_WORLD_READONLY,
+  errorResult,
+  ok,
+  type McpContext,
 } from '../../nest-mcp';
-import { z } from 'zod';
 import { DatabaseService } from '../database/database.service';
 import { ImmichService } from './immich.service';
 import { SynologyService } from './synology.service';
+
+import { z } from 'zod';
 
 /**
  * The photo backends TREK can talk to, named rather than taken as a free
@@ -34,8 +39,7 @@ const SYNOLOGY_DEFAULT_LIMIT = 100;
  * all: nothing here has anything left to browse. Which of the two providers is
  * on is a per-call question, answered by providerRefusal().
  */
-const anyPhotoProviderEnabled = (_ctx: McpContext, self: MemoriesMcp): boolean =>
-  self.enabledProviderIds().length > 0;
+const anyPhotoProviderEnabled = (_ctx: McpContext, self: MemoriesMcp): boolean => self.enabledProviderIds().length > 0;
 
 /**
  * Memories MCP surface: finding photos in a connected Immich or Synology Photos
@@ -87,20 +91,40 @@ export class MemoriesMcp {
 
   @Tool({
     name: 'search_provider_photos',
-    description: 'Search a connected photo library (Immich or Synology Photos) by capture date and return the matching asset ids with their capture time, place and coordinates. Start here when the user asks for the photos of a trip, a journey or a single day, then pass the ids on to add_journey_provider_photos. Prefer list_provider_albums when the user names an album instead of a date range. Metadata only: no image data crosses the wire, and the pictures themselves are fetched by the app, not by this tool.',
+    description:
+      'Search a connected photo library (Immich or Synology Photos) by capture date and return the matching asset ids with their capture time, place and coordinates. Start here when the user asks for the photos of a trip, a journey or a single day, then pass the ids on to add_journey_provider_photos. Prefer list_provider_albums when the user names an album instead of a date range. Metadata only: no image data crosses the wire, and the pictures themselves are fetched by the app, not by this tool.',
     inputSchema: {
       provider: PROVIDER.describe('Which connected library to search'),
       from: ISO_DATE.optional().describe('Earliest capture date, YYYY-MM-DD, inclusive'),
       to: ISO_DATE.optional().describe('Latest capture date, YYYY-MM-DD, inclusive'),
-      page: z.number().int().min(1).optional().describe('1-based page number, defaults to 1. Page forward while hasMore is true'),
-      size: z.number().int().min(1).max(MAX_PAGE_SIZE).optional().describe(`Photos per page, at most ${MAX_PAGE_SIZE}. Defaults to ${IMMICH_DEFAULT_SIZE} for Immich and ${SYNOLOGY_DEFAULT_LIMIT} for Synology Photos, as the REST routes do`),
+      page: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe('1-based page number, defaults to 1. Page forward while hasMore is true'),
+      size: z
+        .number()
+        .int()
+        .min(1)
+        .max(MAX_PAGE_SIZE)
+        .optional()
+        .describe(
+          `Photos per page, at most ${MAX_PAGE_SIZE}. Defaults to ${IMMICH_DEFAULT_SIZE} for Immich and ${SYNOLOGY_DEFAULT_LIMIT} for Synology Photos, as the REST routes do`,
+        ),
     },
     annotations: TOOL_ANNOTATIONS_OPEN_WORLD_READONLY,
     when: anyPhotoProviderEnabled,
-    access: { group: 'journey', mode: 'read' },
+    access: { group: 'memories', mode: 'read' },
   })
   async searchProviderPhotos(
-    { provider, from, to, page, size }: { provider: ProviderId; from?: string; to?: string; page?: number; size?: number },
+    {
+      provider,
+      from,
+      to,
+      page,
+      size,
+    }: { provider: ProviderId; from?: string; to?: string; page?: number; size?: number },
     ctx: McpContext,
   ) {
     const refused = this.providerRefusal(provider);
@@ -108,7 +132,13 @@ export class MemoriesMcp {
 
     if (provider === 'immich') {
       // Same coercion the REST route performs on the body before calling.
-      const result = await this.immich.searchPhotos(ctx.userId, from, to, Math.max(1, page ?? 1), Math.min(size ?? IMMICH_DEFAULT_SIZE, MAX_PAGE_SIZE));
+      const result = await this.immich.searchPhotos(
+        ctx.userId,
+        from,
+        to,
+        Math.max(1, page ?? 1),
+        Math.min(size ?? IMMICH_DEFAULT_SIZE, MAX_PAGE_SIZE),
+      );
       if (result.error) return errorResult(result.error);
       return ok({ provider, assets: result.assets ?? [], hasMore: !!result.hasMore });
     }
@@ -118,20 +148,27 @@ export class MemoriesMcp {
     // meaning the same thing for both providers.
     const limit = size && size > 0 ? size : SYNOLOGY_DEFAULT_LIMIT;
     const pageIndex = (page ?? 1) - 1;
-    const result = await this.synology.searchSynologyPhotos(ctx.userId, from, to, pageIndex > 0 ? pageIndex * limit : 0, limit);
+    const result = await this.synology.searchSynologyPhotos(
+      ctx.userId,
+      from,
+      to,
+      pageIndex > 0 ? pageIndex * limit : 0,
+      limit,
+    );
     if ('error' in result) return errorResult(result.error.message);
     return ok({ provider, assets: result.data.assets, total: result.data.total, hasMore: result.data.hasMore });
   }
 
   @Tool({
     name: 'list_provider_albums',
-    description: 'List the albums of a connected photo library (Immich or Synology Photos), with each album id, name and photo count. Use this when the user names an album ("the Rome album") rather than a date range, then read its photos with list_provider_album_photos. For "photos from that week" use search_provider_photos instead.',
+    description:
+      'List the albums of a connected photo library (Immich or Synology Photos), with each album id, name and photo count. Use this when the user names an album ("the Rome album") rather than a date range, then read its photos with list_provider_album_photos. For "photos from that week" use search_provider_photos instead.',
     inputSchema: {
       provider: PROVIDER.describe('Which connected library to list albums from'),
     },
     annotations: TOOL_ANNOTATIONS_OPEN_WORLD_READONLY,
     when: anyPhotoProviderEnabled,
-    access: { group: 'journey', mode: 'read' },
+    access: { group: 'memories', mode: 'read' },
   })
   async listProviderAlbums({ provider }: { provider: ProviderId }, ctx: McpContext) {
     const refused = this.providerRefusal(provider);
@@ -148,20 +185,33 @@ export class MemoriesMcp {
     // A Synology album that was shared with the user carries a passphrase, and
     // list_provider_album_photos cannot open it without one. The REST route
     // hands it to the picker for the same reason.
-    return ok({ provider, albums: result.data.albums });
+    // The provider needs a shared-album passphrase, but it is a credential and
+    // must not be copied into MCP tool history. The follow-up service call
+    // resolves a stored passphrase server-side when the caller omits it.
+    return ok({
+      provider,
+      albums: result.data.albums.map(({ passphrase: _passphrase, ...album }) => album),
+    });
   }
 
   @Tool({
     name: 'list_provider_album_photos',
-    description: 'List every photo in one album of a connected library, with asset ids, capture times and coordinates. Follow list_provider_albums with this once the right album is known, then hand the asset ids to add_journey_provider_photos. Metadata only, and unpaginated: a large album comes back whole.',
+    description:
+      'List every photo in one album of a connected library, with asset ids, capture times and coordinates. Follow list_provider_albums with this once the right album is known, then hand the asset ids to add_journey_provider_photos. Metadata only, and unpaginated: a large album comes back whole.',
     inputSchema: {
       provider: PROVIDER.describe('Which connected library the album lives in'),
       album_id: z.string().min(1).describe('Album id as returned by list_provider_albums'),
-      passphrase: z.string().min(1).optional().describe('Only for a Synology Photos album that was shared with the user: pass back the passphrase list_provider_albums returned for it, otherwise the album cannot be opened'),
+      passphrase: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          'Optional Synology Photos shared-album passphrase; omit it when the server can resolve the configured album',
+        ),
     },
     annotations: TOOL_ANNOTATIONS_OPEN_WORLD_READONLY,
     when: anyPhotoProviderEnabled,
-    access: { group: 'journey', mode: 'read' },
+    access: { group: 'memories', mode: 'read' },
   })
   async listProviderAlbumPhotos(
     { provider, album_id, passphrase }: { provider: ProviderId; album_id: string; passphrase?: string },

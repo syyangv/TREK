@@ -97,6 +97,11 @@ const oauth: TranslationStrings = {
   'oauth.authorize.alwaysTool.listTrips': 'Liệt kê các chuyến đi của bạn để AI có thể khám phá ID chuyến đi',
   'oauth.authorize.alwaysTool.getTripSummary':
     'Đọc tổng quan về chuyến đi cần thiết để sử dụng bất kỳ công cụ nào khác',
+  // Photo-library metadata is explicitly opt-in for OAuth clients.
+  'oauth.scope.group.memories': 'Photo libraries', // en-fallback
+  'oauth.scope.memories:read.label': 'Browse photo libraries', // en-fallback
+  'oauth.scope.memories:read.description':
+    'Search connected photo libraries and read capture metadata to attach photos to journeys', // en-fallback
   'oauth.scope.group.files': 'Tệp',
   'oauth.scope.group.settings': 'Cài đặt',
   'oauth.scope.files:read.label': 'Xem tệp của chuyến đi',

@@ -1,6 +1,12 @@
-import { CanActivate, ExecutionContext, HttpException, Injectable } from '@nestjs/common';
-import type { Request } from 'express';
+import { getClientIp } from '../audit/client-ip';
+import { RateLimitService } from '../common/rate-limit.service';
 import { TokenService } from '../tokens/token.service';
+import { CanActivate, ExecutionContext, HttpException, Injectable } from '@nestjs/common';
+
+import type { Request } from 'express';
+
+const API_TOKEN_AUTH_RATE_WINDOW_MS = 60_000;
+const API_TOKEN_AUTH_RATE_MAX_PER_MINUTE = 120;
 
 /**
  * Authenticates a caller of the public API with a long-lived `trek_…` token.
@@ -31,23 +37,38 @@ import { TokenService } from '../tokens/token.service';
  */
 @Injectable()
 export class ApiTokenGuard implements CanActivate {
-  constructor(private readonly tokens: TokenService) {}
+  constructor(
+    private readonly tokens: TokenService,
+    private readonly rl: RateLimitService,
+  ) {}
 
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<Request>();
     const token = extractApiToken(req);
     if (!token) {
-      throw new HttpException(
-        { error: 'API token required', code: 'API_TOKEN_REQUIRED' },
-        401,
-      );
+      throw new HttpException({ error: 'API token required', code: 'API_TOKEN_REQUIRED' }, 401);
     }
+
+    // The controller's user-keyed limiter cannot protect this path because an
+    // invalid token never produces a user. Bound token guesses by the trusted
+    // request IP before hitting the token store; valid callers still receive the
+    // controller's higher per-user budget after authentication.
+    const ip = getClientIp(req) ?? 'unknown';
+    if (
+      !this.rl.check(
+        'public-api-auth',
+        ip,
+        API_TOKEN_AUTH_RATE_MAX_PER_MINUTE,
+        API_TOKEN_AUTH_RATE_WINDOW_MS,
+        Date.now(),
+      )
+    ) {
+      throw new HttpException({ error: 'Too many authentication attempts', code: 'API_TOKEN_RATE_LIMITED' }, 429);
+    }
+
     const user = this.tokens.verifyApiToken(token);
     if (!user) {
-      throw new HttpException(
-        { error: 'Invalid API token', code: 'API_TOKEN_INVALID' },
-        401,
-      );
+      throw new HttpException({ error: 'Invalid API token', code: 'API_TOKEN_INVALID' }, 401);
     }
     req.user = user;
     return true;

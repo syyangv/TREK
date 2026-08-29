@@ -92,6 +92,11 @@ const oauth: TranslationStrings = {
   'oauth.authorize.alwaysIncluded': '始终包含',
   'oauth.authorize.alwaysTool.listTrips': '列出你的行程，以使 AI 找到行程 ID',
   'oauth.authorize.alwaysTool.getTripSummary': '读取行程概览，这是使用其他工具所需的信息',
+  // Photo-library metadata is explicitly opt-in for OAuth clients.
+  'oauth.scope.group.memories': 'Photo libraries', // en-fallback
+  'oauth.scope.memories:read.label': 'Browse photo libraries', // en-fallback
+  'oauth.scope.memories:read.description':
+    'Search connected photo libraries and read capture metadata to attach photos to journeys', // en-fallback
   'oauth.scope.group.files': '文件',
   'oauth.scope.group.settings': '设置',
   'oauth.scope.files:read.label': '查看行程文件',

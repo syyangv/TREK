@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router'
-import { authApi } from '../../api/client'
-import { useAddonStore } from '../../store/addonStore'
-import { useAuthStore } from '../../store/authStore'
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router';
+import { authApi } from '../../api/client';
+import { useAddonStore } from '../../store/addonStore';
+import { useAuthStore } from '../../store/authStore';
 
 /**
  * Settings page logic — loads addons + the app version, tracks the active tab
@@ -12,38 +12,45 @@ import { useAuthStore } from '../../store/authStore'
  * Behaviour is identical to the previous in-component logic.
  */
 export function useSettings() {
-  const [searchParams] = useSearchParams()
-  const { isEnabled: addonEnabled, loadAddons } = useAddonStore()
-  const managed = useAuthStore(s => s.managed)
+  const [searchParams] = useSearchParams();
+  const { isEnabled: addonEnabled, loadAddons } = useAddonStore();
+  const managed = useAuthStore((s) => s.managed);
 
-  const memoriesEnabled = addonEnabled('memories')
-  const mcpEnabled = addonEnabled('mcp')
-  const airtrailEnabled = addonEnabled('airtrail')
-  const llmEnabled = addonEnabled('llm_parsing')
-  const hasIntegrations = memoriesEnabled || mcpEnabled || airtrailEnabled || llmEnabled
+  const memoriesEnabled = addonEnabled('memories');
+  const mcpEnabled = addonEnabled('mcp');
+  const airtrailEnabled = addonEnabled('airtrail');
+  const llmEnabled = addonEnabled('llm_parsing');
+  // Public API keys are account credentials, not an optional integration. Keep
+  // the integrations surface reachable even when every provider addon is off;
+  // the tab's optional sections still gate themselves independently.
+  const hasApiKeys = true;
+  const hasIntegrations = hasApiKeys || memoriesEnabled || mcpEnabled || airtrailEnabled || llmEnabled;
 
-  const [appVersion, setAppVersion] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState('display')
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('display');
 
   useEffect(() => {
-    loadAddons()
-    authApi.getAppConfig?.().then(c => setAppVersion(c?.version)).catch(() => {})
-  }, [])
+    loadAddons();
+    authApi
+      .getAppConfig?.()
+      .then((c) => setAppVersion(c?.version))
+      .catch(() => {});
+  }, []);
 
   // Auto-switch to account tab when MFA is required
   useEffect(() => {
     if (searchParams.get('mfa') === 'required') {
-      setActiveTab('account')
+      setActiveTab('account');
     }
-  }, [searchParams])
+  }, [searchParams]);
 
   // Deep link into a tab: /settings?tab=plugins. Lets one tab point at another —
   // e.g. an unconfigured plugin notification channel sends you to where its
   // credentials actually live, instead of just naming the place.
   useEffect(() => {
-    const tab = searchParams.get('tab')
-    if (tab) setActiveTab(tab)
-  }, [searchParams])
+    const tab = searchParams.get('tab');
+    if (tab) setActiveTab(tab);
+  }, [searchParams]);
 
-  return { hasIntegrations, appVersion, activeTab, setActiveTab, managed }
+  return { hasIntegrations, appVersion, activeTab, setActiveTab, managed };
 }

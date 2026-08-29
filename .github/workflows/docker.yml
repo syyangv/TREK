@@ -109,6 +109,8 @@ jobs:
         id: bump
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUMP_INPUT: ${{ github.event.inputs.bump || 'auto' }}
+          CONFIRM_MAJOR: ${{ github.event.inputs.confirm_major || '' }}
         run: |
           git fetch --tags
 
@@ -116,6 +118,7 @@ jobs:
           STABLE_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | grep -v '\-pre\.' | sort -V | tail -1)
           STABLE="${STABLE_TAG#v}"
           STABLE="${STABLE:-0.0.0}"
+          CURRENT_PACKAGE_VERSION="$(node -p "require('./package.json').version")"
           BASE_SHA="$(git rev-parse HEAD)"
 
           # Recover an ambiguously completed prior run. A published tag plus the
@@ -136,10 +139,11 @@ jobs:
               if [ "$IS_DRAFT" = "false" ] && [ "$RECOVERY_SHA" = "$TAG_SHA" ]; then
                 if [ "$RECOVERY_PARENT" = "$BASE_SHA" ]; then
                   echo "Recovered completed release $STABLE_TAG at $TAG_SHA for current base $BASE_SHA."
-                  echo "VERSION=$STABLE" >> "$GITHUB_OUTPUT"
-                  echo "SOURCE_SHA=$TAG_SHA" >> "$GITHUB_OUTPUT"
-                  echo "RELEASE_BRANCH=$RECOVERY_BRANCH" >> "$GITHUB_OUTPUT"
-                  echo "ALREADY_RELEASED=true" >> "$GITHUB_OUTPUT"
+                  printf '%s\n' \
+                    "VERSION=$STABLE" \
+                    "SOURCE_SHA=$TAG_SHA" \
+                    "RELEASE_BRANCH=$RECOVERY_BRANCH" \
+                    "ALREADY_RELEASED=true" >> "$GITHUB_OUTPUT"
                   gh api --method DELETE \
                     "repos/${GITHUB_REPOSITORY}/git/refs/heads/${RECOVERY_BRANCH}" \
                     || echo "::warning::Could not remove recovered branch ${RECOVERY_BRANCH}."
@@ -159,11 +163,20 @@ jobs:
 
           PRE_TAG=$(git tag -l 'v*-pre.*' | sort -V | tail -1)
 
-          BUMP_INPUT="${{ github.event.inputs.bump || 'auto' }}"
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$STABLE"
+          BUMP_INPUT="${BUMP_INPUT:-auto}"
+          # Never derive a release below the version checked into the source.
+          # This matters when main already carries (for example) 4.1.0 while
+          # the latest fetched stable tag is still 4.0.6: the release must not
+          # silently rewrite the source metadata backwards to a 4.0.x line.
+          BASE_VERSION="$STABLE"
+          if [[ "$CURRENT_PACKAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            && [ "$(printf '%s\n' "$BASE_VERSION" "$CURRENT_PACKAGE_VERSION" | sort -V | tail -1)" = "$CURRENT_PACKAGE_VERSION" ]; then
+            BASE_VERSION="$CURRENT_PACKAGE_VERSION"
+          fi
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
 
           if [ "$BUMP_INPUT" = "major" ]; then
-            if [ "${{ github.event.inputs.confirm_major }}" != "MAJOR" ]; then
+            if [ "$CONFIRM_MAJOR" != "MAJOR" ]; then
               echo "::error::confirm_major must equal 'MAJOR' to cut a major release"
               exit 1
             fi
@@ -183,12 +196,12 @@ jobs:
               PRE_MAJOR="$(echo "$PRE_BASE" | cut -d. -f1)"
               # Refuse to auto-finalize a major bump — it bypasses confirm_major
               if [ "$PRE_MAJOR" -gt "$MAJOR" ]; then
-                echo "::error::In-flight prerelease $PRE_TAG is a major bump ($STABLE → $PRE_BASE). Use bump=major with confirm_major=MAJOR to finalize."
+                echo "::error::In-flight prerelease $PRE_TAG is a major bump ($BASE_VERSION → $PRE_BASE). Use bump=major with confirm_major=MAJOR to finalize."
                 exit 1
               fi
               # If prerelease base is strictly greater than stable, finalize it
-              HIGHEST=$(printf '%s\n' "$PRE_BASE" "$STABLE" | sort -V | tail -1)
-              if [ "$HIGHEST" = "$PRE_BASE" ] && [ "$PRE_BASE" != "$STABLE" ]; then
+              HIGHEST=$(printf '%s\n' "$PRE_BASE" "$BASE_VERSION" | sort -V | tail -1)
+              if [ "$HIGHEST" = "$PRE_BASE" ] && [ "$PRE_BASE" != "$BASE_VERSION" ]; then
                 NEW_VERSION="$PRE_BASE"
                 BUMP="finalize"
               else
@@ -205,12 +218,12 @@ jobs:
 
           echo "Bump type: $BUMP"
           RELEASE_BRANCH="release-build/v$NEW_VERSION"
-          echo "VERSION=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> "$GITHUB_OUTPUT"
-          echo "$STABLE → $NEW_VERSION ($BUMP)"
+          printf '%s\n' \
+            "VERSION=$NEW_VERSION" \
+            "RELEASE_BRANCH=$RELEASE_BRANCH" >> "$GITHUB_OUTPUT"
+          echo "$BASE_VERSION → $NEW_VERSION ($BUMP)"
 
           # Update all workspace + root package.json files and the root lockfile in one shot
-          CURRENT_PACKAGE_VERSION="$(node -p "require('./package.json').version")"
           if [ "$CURRENT_PACKAGE_VERSION" = "$NEW_VERSION" ]; then
             echo "Package metadata already at $NEW_VERSION; no version mutation needed."
           else
@@ -267,7 +280,9 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
       - name: Prepare platform tag-safe name
-        run: echo "PLATFORM_PAIR=$(echo ${{ matrix.platform }} | sed 's|/|-|g')" >> $GITHUB_ENV
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@v4
         with:
@@ -366,9 +381,11 @@ jobs:
           set -euo pipefail
           DIGEST="$(docker buildx imagetools inspect "$CANDIDATE" --format '{{json .}}' | jq -er '.manifest.digest')"
           [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-          echo "image=thvysy44/trek-fork@$DIGEST" >> "$GITHUB_OUTPUT"
-          echo "tag=$CANDIDATE" >> "$GITHUB_OUTPUT"
+          {
+            echo "digest=$DIGEST"
+            echo "image=thvysy44/trek-fork@$DIGEST"
+            echo "tag=$CANDIDATE"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Export candidate manifest metadata
         run: |

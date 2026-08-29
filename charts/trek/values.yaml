@@ -1,6 +1,8 @@
 
 image:
-  repository: mauriceboe/trek
+  # The fork publishes its own image namespace; using the upstream default here
+  # would silently deploy a different application than the chart was released with.
+  repository: thvysy44/trek-fork
   # tag: latest
   # digest: sha256:... # When set, takes precedence over tag.
   digest: ""

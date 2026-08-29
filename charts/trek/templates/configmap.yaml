@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: {{ include "trek.fullname" . }}-config
   labels:
-    app: {{ include "trek.name" . }}
+    app: {{ include "trek.fullname" . }}
 data:
   NODE_ENV: {{ .Values.env.NODE_ENV | quote }}
   PORT: {{ .Values.env.PORT | quote }}

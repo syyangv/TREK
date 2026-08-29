@@ -1,10 +1,11 @@
-import { useEffect } from 'react'
-import { useAddonStore } from '../../../store/addonStore'
-import MPhotoProvidersSection from './MPhotoProvidersSection'
-import MAirTrailConnectionSection from './MAirTrailConnectionSection'
-import MLlmConnectionSection from './MLlmConnectionSection'
-import MSettingsMcp from './MSettingsMcp'
-import { useAuthStore } from '../../../store/authStore'
+import { useEffect } from 'react';
+import { useAddonStore } from '../../../store/addonStore';
+import { useAuthStore } from '../../../store/authStore';
+import MAirTrailConnectionSection from './MAirTrailConnectionSection';
+import MApiKeysSection from './MApiKeysSection';
+import MLlmConnectionSection from './MLlmConnectionSection';
+import MPhotoProvidersSection from './MPhotoProvidersSection';
+import MSettingsMcp from './MSettingsMcp';
 
 /**
  * "Integrations" section. The photo-provider / AirTrail / LLM connection forms
@@ -13,18 +14,19 @@ import { useAuthStore } from '../../../store/authStore'
  * function audit is rebuilt natively in the mobile design language.
  */
 export default function MSettingsIntegrations() {
-  const { isEnabled: addonEnabled, loadAddons } = useAddonStore()
-  const mcpEnabled = addonEnabled('mcp')
-  const airtrailEnabled = addonEnabled('airtrail')
-  const llmEnabled = addonEnabled('llm_parsing')
-  const managed = useAuthStore((s) => s.managed)
+  const { isEnabled: addonEnabled, loadAddons } = useAddonStore();
+  const mcpEnabled = addonEnabled('mcp');
+  const airtrailEnabled = addonEnabled('airtrail');
+  const llmEnabled = addonEnabled('llm_parsing');
+  const managed = useAuthStore((s) => s.managed);
 
   useEffect(() => {
-    loadAddons()
-  }, [loadAddons])
+    loadAddons();
+  }, [loadAddons]);
 
   return (
     <>
+      <MApiKeysSection />
       <MPhotoProvidersSection />
       {airtrailEnabled && <MAirTrailConnectionSection />}
       {/* Which model reads a booking, and what that costs, comes with the instance on
@@ -33,5 +35,5 @@ export default function MSettingsIntegrations() {
       {llmEnabled && !managed && <MLlmConnectionSection />}
       {mcpEnabled && <MSettingsMcp />}
     </>
-  )
+  );
 }

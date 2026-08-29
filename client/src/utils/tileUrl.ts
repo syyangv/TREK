@@ -15,12 +15,12 @@
  */
 
 /** `{s}.` or a bare shard letter in front of tile.openstreetmap.org. */
-const OSM_SHARD = /^((?:https?:)?\/\/)(?:\{s\}|[a-d])\.tile\.openstreetmap\.org(?=[/:]|$)/i
+const OSM_SHARD = /^((?:https?:)?\/\/)(?:\{s\}|[a-d])\.tile\.openstreetmap\.org(?=[/:]|$)/i;
 
 /** Collapse a sharded OSM tile template onto the single supported host. */
 export function normalizeTileUrl(url: string): string {
-  if (!url) return url
-  return url.replace(OSM_SHARD, '$1tile.openstreetmap.org')
+  if (!url) return url;
+  return url.replace(OSM_SHARD, '$1tile.openstreetmap.org');
 }
 
 /**
@@ -30,23 +30,23 @@ export function normalizeTileUrl(url: string): string {
  * into the stored template: a saved URL stays portable and survives a key
  * change. Only CARTO hosts are touched; OSM and self-hosted templates are not.
  */
-const CARTO_HOST = /^(?:\{s\}|[a-d])?\.?basemaps\.cartocdn\.com$/i
+const CARTO_HOST = /^(?:\{s\}|[a-d])?\.?basemaps\.cartocdn\.com$/i;
 
 function templateHost(url: string): string {
-  return url.replace(/^\w*:?\/\//, '').split(/[/?#]/)[0]
+  return url.replace(/^\w*:?\/\//, '').split(/[/?#]/)[0];
 }
 
 export function withTileApiKey(url: string, key?: string | null): string {
-  if (!url || !key) return url
-  if (!CARTO_HOST.test(templateHost(url))) return url
-  if (/[?&]key=/.test(url)) return url
-  return `${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(key)}`
+  if (!url || !key) return url;
+  if (!CARTO_HOST.test(templateHost(url))) return url;
+  if (/[?&]key=/.test(url)) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(key)}`;
 }
 
 /** Keeps the key out of anything we persist: stored templates, book documents. */
 export function stripTileApiKey(url: string): string {
-  if (!url || !/[?&]key=/.test(url)) return url
-  return url.replace(/([?&])key=[^&]*&?/, '$1').replace(/[?&]$/, '')
+  if (!url || !/[?&]key=/.test(url)) return url;
+  return url.replace(/([?&])key=[^&]*&?/, '$1').replace(/[?&]$/, '');
 }
 
 /**
@@ -62,16 +62,20 @@ export function stripTileApiKey(url: string): string {
  * still explains why.
  */
 function isKeylessCarto(url: string): boolean {
-  return CARTO_HOST.test(templateHost(url)) && !/[?&]key=/.test(url)
+  return CARTO_HOST.test(templateHost(url)) && !/[?&]key=/.test(url);
 }
 
 /**
  * A blank template means "not configured", not "no tiles": the settings
  * previews save an empty string and would otherwise render grey.
  */
-export function resolveTileUrl(template: string | null | undefined, fallback: string, cartoKey?: string | null): string {
-  const chosen = withTileApiKey(normalizeTileUrl(template?.trim() || fallback), cartoKey)
-  return isKeylessCarto(chosen) ? fallback : chosen
+export function resolveTileUrl(
+  template: string | null | undefined,
+  fallback: string,
+  cartoKey?: string | null
+): string {
+  const chosen = withTileApiKey(normalizeTileUrl(template?.trim() || fallback), cartoKey);
+  return isKeylessCarto(chosen) ? fallback : chosen;
 }
 
 /**
@@ -83,18 +87,27 @@ export function resolveTileUrl(template: string | null | undefined, fallback: st
  * pane instead. Callers switch on `kind` rather than sniffing the URL, so a
  * self-hosted raster template keeps working exactly as it did.
  */
-export type Basemap =
-  | { kind: 'raster'; url: string }
-  | { kind: 'vector'; style: string }
+export type Basemap = { kind: 'raster'; url: string } | { kind: 'vector'; style: string };
 
 /** A MapLibre style document rather than a `{z}/{x}/{y}` tile template. */
 export function isVectorStyle(url: string | null | undefined): boolean {
-  if (!url) return false
-  const u = url.trim()
-  if (!u) return false
-  // A tile template always carries its placeholders; a style URL never does.
-  if (/\{[zxy]\}/i.test(u)) return false
-  return /^https?:\/\//i.test(u) || u.startsWith('mapbox://')
+  if (!url) return false;
+  const u = url.trim();
+  if (!u) return false;
+  // A tile template always carries its placeholders; a style URL usually does
+  // not. A static image URL is also placeholder-free, though, and is accepted by
+  // the settings field for legacy/custom installs, so the absence of placeholders
+  // alone must not turn `.../tile.png` into a MapLibre style document.
+  if (/\{[zxy]\}/i.test(u)) return false;
+  if (u.startsWith('mapbox://')) return true;
+  try {
+    const parsed = new URL(u);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const pathname = parsed.pathname.toLowerCase();
+    return pathname.endsWith('.json') || /\/styles?\//.test(pathname);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -107,9 +120,9 @@ export function isVectorStyle(url: string | null | undefined): boolean {
 export function resolveBasemap(
   template: string | null | undefined,
   fallback: string,
-  cartoKey?: string | null,
+  cartoKey?: string | null
 ): Basemap {
-  const chosen = resolveTileUrl(template, fallback, cartoKey)
-  if (isVectorStyle(chosen)) return { kind: 'vector', style: chosen }
-  return { kind: 'raster', url: chosen }
+  const chosen = resolveTileUrl(template, fallback, cartoKey);
+  if (isVectorStyle(chosen)) return { kind: 'vector', style: chosen };
+  return { kind: 'raster', url: chosen };
 }
