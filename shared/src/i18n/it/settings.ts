@@ -37,7 +37,7 @@ const settings: TranslationStrings = {
   'settings.mapCartoKeyHint': 'Le mappe base CARTO mostrano una filigrana senza chiave. Gratuita e senza account, da',
   'settings.mapCartoKeyLink': 'chiave API mappe base di carto.com',
   'settings.mapCartoKeyMissing':
-    'Questo modello è una mappa base CARTO. Senza chiave, CARTO stampa "API KEY REQUIRED" su ogni tassello.',
+    'Questo modello è una mappa base CARTO. Senza chiave, CARTO stampa "API KEY REQUIRED" su ogni tassello. Finché non inserisci una chiave, TREK mostra la mappa base predefinita.',
   'settings.mapStyle': 'Stile mappa',
   'settings.mapStylePlaceholder': 'Seleziona uno stile Mapbox',
   'settings.mapStyleHint': 'Preset o il tuo URL mapbox://styles/USER/ID',
@@ -532,6 +532,33 @@ const settings: TranslationStrings = {
   'settings.alwaysShowRoutes': 'Mostra sempre i percorsi delle prenotazioni',
   'settings.alwaysShowRoutesHint':
     'Mostra automaticamente sulla mappa il percorso di ogni volo, treno e altra prenotazione, senza doverlo attivare singolarmente.',
+
+  // Public API keys (Settings -> Integrations)
+  'settings.apiKeys.title': 'Chiavi API',
+  'settings.apiKeys.description':
+    "Chiavi per l'API pubblica, così altri software possono leggere i tuoi viaggi. Sola lettura: una chiave non può modificare né eliminare nulla.",
+  'settings.apiKeys.create': 'Crea chiave',
+  'settings.apiKeys.empty': 'Nessuna chiave. Creane una per collegare altri software.',
+  'settings.apiKeys.createdAt': 'creata',
+  'settings.apiKeys.usedAt': 'ultimo uso',
+  'settings.apiKeys.deleteTitle': 'Elimina chiave',
+  'settings.apiKeys.deleteMessage':
+    "Tutto ciò che usa questa chiave smette di funzionare subito. L'operazione non è reversibile.",
+  'settings.apiKeys.deleted': 'Chiave eliminata',
+  'settings.apiKeys.deleteFailed': 'Impossibile eliminare la chiave',
+  'settings.apiKeys.createFailed': 'Impossibile creare la chiave',
+  'settings.apiKeys.copy': 'Copia',
+  'settings.apiKeys.docsHint': 'Invia la chiave come "Authorization: Bearer ..." oppure "X-API-Key: ..." a /api/v1.',
+  'settings.apiKeys.modal.createTitle': 'Crea chiave API',
+  'settings.apiKeys.modal.name': 'Nome',
+  'settings.apiKeys.modal.namePlaceholder': 'ad es. Dawarich',
+  'settings.apiKeys.modal.nameHint': 'Solo per te, per riconoscere la chiave in seguito.',
+  'settings.apiKeys.modal.creating': 'Creazione...',
+  'settings.apiKeys.modal.create': 'Crea',
+  'settings.apiKeys.modal.createdTitle': 'Chiave API creata',
+  'settings.apiKeys.modal.createdWarning':
+    'Copia la chiave adesso. Viene mostrata una sola volta e non può essere recuperata in seguito.',
+  'settings.apiKeys.modal.done': 'Fatto',
 };
 
 export default settings;

@@ -37,7 +37,7 @@ vi.mock('leaflet', () => {
   return {
     default: {
       map: vi.fn(() => mockMap),
-      tileLayer: vi.fn(() => ({ addTo: vi.fn() })),
+      tileLayer: vi.fn(() => ({ addTo: vi.fn(), setUrl: vi.fn() })),
       marker: vi.fn(() => mockMarker),
       polyline: vi.fn(() => { const line: any = { addTo: vi.fn(() => line), bindTooltip: vi.fn(() => line) }; return line }),
       divIcon: vi.fn(() => ({})),
@@ -45,7 +45,7 @@ vi.mock('leaflet', () => {
       layerGroup: vi.fn(() => ({ addLayer: vi.fn(), addTo: vi.fn(), remove: vi.fn() })),
     },
     map: vi.fn(() => mockMap),
-    tileLayer: vi.fn(() => ({ addTo: vi.fn() })),
+    tileLayer: vi.fn(() => ({ addTo: vi.fn(), setUrl: vi.fn() })),
     marker: vi.fn(() => mockMarker),
     polyline: vi.fn(() => { const line: any = { addTo: vi.fn(() => line), bindTooltip: vi.fn(() => line) }; return line }),
     divIcon: vi.fn(() => ({})),
@@ -54,13 +54,33 @@ vi.mock('leaflet', () => {
 });
 
 import React from 'react';
-import { render, act, fireEvent } from '../../../tests/helpers/render';
+import { render, act, fireEvent, waitFor } from '../../../tests/helpers/render';
 import { resetAllStores, seedStore } from '../../../tests/helpers/store';
 import { useSettingsStore } from '../../store/settingsStore';
 import { buildSettings } from '../../../tests/helpers/factories';
 import L from 'leaflet';
 import JourneyMap from './JourneyMap';
 import type { JourneyMapHandle } from './JourneyMap';
+
+// maplibre-gl-leaflet hangs the vector basemap into Leaflet's tile pane. The mock
+// only has to be callable and hand back a layer with the three methods the callers
+// use, since nothing here renders WebGL.
+import { maplibreGL } from '@maplibre/maplibre-gl-leaflet';
+
+vi.mock('@maplibre/maplibre-gl-leaflet', () => ({
+  maplibreGL: vi.fn(() => {
+    // One GL map per layer, kept stable: a fresh object per call would hand the
+    // assertions a different spy than the code just used.
+    const gl = {
+      setStyle: vi.fn(), on: vi.fn(), isStyleLoaded: () => false,
+      getStyle: () => ({ layers: [] }), setLayoutProperty: vi.fn(),
+    }
+    const layer: Record<string, unknown> = { remove: vi.fn(), getMaplibreMap: vi.fn(() => gl) }
+    layer.addTo = vi.fn(() => layer)
+    return layer
+  }),
+}));
+vi.mock('../Map/engines/maplibre', () => ({ default: {} }));
 
 const entriesWithCoords = [
   { id: 'e1', lat: 48.8566, lng: 2.3522, title: 'Paris', mood: null, entry_date: '2025-06-01' },
@@ -377,15 +397,43 @@ describe('JourneyMap', () => {
     }
   });
 
-  it('FE-COMP-JOURNEYMAP-026: dark mode picks the dark basemap', () => {
+  it('FE-COMP-JOURNEYMAP-026: dark mode picks the dark basemap', async () => {
     render(<JourneyMap checkins={[]} entries={entriesWithCoords} dark />);
-    expect(vi.mocked(L.tileLayer).mock.calls[0][0]).toContain('dark_all');
+    // The default basemap is a vector style now, so it arrives as a style option
+    // rather than as a tile template, and it attaches after a dynamic import.
+    await waitFor(() => {
+      const calls = vi.mocked(maplibreGL).mock.calls;
+      const call = calls[calls.length - 1]?.[0] as { style: string } | undefined;
+      expect(call?.style).toContain('openfreemap.org/styles/dark');
+    });
   });
 
   it('FE-COMP-JOURNEYMAP-027: a configured tile url overrides the default basemap', () => {
     seedStore(useSettingsStore, { settings: buildSettings({ map_tile_url: 'https://tiles.test/{z}/{x}/{y}.png' }) });
     render(<JourneyMap checkins={[]} entries={entriesWithCoords} />);
     expect(vi.mocked(L.tileLayer).mock.calls[0][0]).toBe('https://tiles.test/{z}/{x}/{y}.png');
+  });
+
+  it('FE-COMP-JOURNEYMAP-041: a basemap change restyles in place instead of rebuilding the map (#2097)', async () => {
+    render(<JourneyMap checkins={[]} entries={entriesWithCoords} />);
+    const layer = await waitFor(() => {
+      const results = vi.mocked(maplibreGL).mock.results;
+      const made = results[results.length - 1];
+      expect(made).toBeTruthy();
+      return made!.value as { getMaplibreMap: () => { setStyle: ReturnType<typeof vi.fn> } };
+    });
+    const mapsBefore = vi.mocked(L.map).mock.calls.length;
+
+    // A raster template the user configured replaces the vector basemap. The
+    // markers and tracks the map already carries are drawn by the effect that
+    // builds it, so a rebuild here would tear them down mid-flight.
+    act(() => {
+      seedStore(useSettingsStore, { settings: buildSettings({ map_tile_url: 'https://tiles.test/{z}/{x}/{y}.png' }) });
+    });
+
+    expect(vi.mocked(L.map).mock.calls.length).toBe(mapsBefore);
+    expect(mockedMap().remove).not.toHaveBeenCalled();
+    expect(layer.getMaplibreMap().setStyle).not.toHaveBeenCalledWith(expect.stringContaining('tiles.test'));
   });
 
   it('FE-COMP-JOURNEYMAP-028: the activeMarkerId prop flies to that marker after the settle delay', () => {

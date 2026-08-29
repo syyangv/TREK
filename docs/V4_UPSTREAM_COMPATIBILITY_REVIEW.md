@@ -1,23 +1,28 @@
-# v4.0.0 upstream compatibility and replacement review
+# v4.1.0 upstream compatibility and replacement review
 
-**Review date:** 2026-08-27
+**Review date:** 2026-08-29
 **Fork:** `syyangv/TREK`
+**Current integration:** [PR #58](https://github.com/syyangv/TREK/pull/58), merge
+commit `fae97028`
 
 This review decides, one behavior at a time, when upstream v4 may replace fork
 code and where a documented fork delta must remain. A clean textual merge is
-not evidence that a behavioral replacement is safe.
+not evidence that a behavioral replacement is safe. This revision records the
+v4.1.0 sync as well as the earlier v4.0.0 replacement work.
 
 ## Review basis
 
-- Upstream release: `v4.0.0` at `a00b84b2`.
-- Fork immediately before integration: `a320f8e0`.
-- v4 integration merge: `91d833a0`.
-- Integration branch after focused coverage fixes: `3730fbe5`.
-- Fork `origin/main` reviewed for this changeset: `e2874272` (PR #51 merge).
-- Reviewed branch head before these replacements: `b8cdfbc5`.
+- Historical upstream baseline: v4.0.0 at `a00b84b2`.
+- Current upstream release: v4.1.0 at `c87e6d2f` (tag `v4.1.0`).
+- Fork immediately before the current sync: `e89f7888`.
+- Current integration merge: `fae97028` (PR #58).
+- The two tips shared `a00b84b2`; the fork carried 121 fork-only commits and
+  upstream carried 782 commits not present in the fork at sync time.
+- The current merge had 11 textual conflict files; all were resolved manually.
 
-The review used the post-merge delta against `v4.0.0`, original custom-feature
-commits, focused source and test inspection, and code-review graph impact data.
+The review used the post-merge delta, the original custom-feature commits,
+`FORK_CUSTOMIZATIONS.md`, focused source and test inspection, and code-review
+graph impact data.
 
 ## Classification
 
@@ -30,37 +35,63 @@ commits, focused source and test inspection, and code-review graph impact data.
 
 ## One-by-one decisions
 
-|   # | Component or invariant                                                      | Classification                                   | Replacement decision                                                                                                                                                                                                 |
-| --: | --------------------------------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|   1 | Instance-wide Google Places credential                                      | **Upstream replacement — completed**             | Use v4 `PLACES_API_KEY` through `app-config`. Do not restore `GOOGLE_MAPS_API_KEY`; rename the runtime secret before deployment.                                                                                     |
-|   2 | Vacay active-year selection                                                 | **Upstream replacement — completed**             | Use v4 `defaultPeriodYear`, which supports calendar, fiscal, and anniversary periods. Remove the unused calendar-only `defaultVacayYear`.                                                                            |
-|   3 | Vacay locale mappings (`vacay.pto`, `vacay.sickLeave`, public-holiday keys) | **Upstream base + fork delta**                   | Rebase the 22 locale files on upstream, then preserve the fork keys and run strict i18n parity.                                                                                                                      |
-|   4 | Packing list initial view                                                   | **Conflict — preserve fork policy**              | Keep the fork default of `personal`; upstream v4 defaults to `common`. Treat any change as a product decision with focused tests.                                                                                    |
-|   5 | Packing template selection and application                                  | **Upstream base + fork delta**                   | Retain the v4 packing-list foundation and the fork's personal/common/category scopes, visibility rules, overwrite confirmation, and accessible UI.                                                                   |
-|   6 | Packing template creation and replacement                                   | **Upstream base + fork delta**                   | Preserve the fork's three-tier template flow, category-scoped `409 TEMPLATE_EXISTS`, explicit confirmation, and transactional replacement across schema, API, service, UI, and tests.                                |
-|   7 | Solo-trip packing controls                                                  | **Upstream base + fork delta**                   | When the owner is alone, hide sharing-only controls and badges while showing the complete personal list. Do not infer solo state before member hydration.                                                            |
-|   8 | Solo-trip Collaboration tab                                                 | **Upstream base + fork delta**                   | Preserve `hasCompanions` gating and the `membersLoaded` guard so companion trips do not temporarily lose their saved tab.                                                                                            |
-|   9 | Todo start date and creator default                                         | **Fork-only**                                    | Preserve the complete vertical slice: migration, schema, controller/service/MCP, client model, editor, row, translations, and tests.                                                                                 |
-|  10 | Assignment Time Slot editor                                                 | **Upstream base + fork delta**                   | Keep v4 time storage and APIs; retain `TimeSlotFields`, `TimeSlotModal`, collision warnings, and accessible actions. Consolidate duplicated optimistic-save logic before another sync.                               |
-|  11 | Day Detail planned-items section                                            | **Upstream base + fork delta**                   | Retain the bounded Plan section and Time Slot entry point; do not maintain a wholesale fork of `DayDetailPanel`.                                                                                                     |
-|  12 | Collapse past days by default                                               | **Upstream base + fork delta**                   | Preserve versioned local-storage migration and desktop/mobile synchronization; isolate persistence in a hook when this area is next changed.                                                                         |
-|  13 | English-only Places content                                                 | **Conflict — preserve fork policy**              | Upstream is locale-aware; the fork deliberately requests English place labels and details at the API boundary.                                                                                                       |
-|  14 | Journey `location_type` persistence                                         | **Fork-only**                                    | Preserve the database column, shared types, Nest service, store, and editor mapping as one end-to-end feature.                                                                                                       |
-|  15 | User-controlled PWA updates                                                 | **Conflict — preserve fork policy**              | Keep `registerType: 'prompt'`, `UpdateBanner`, retryable activation, and cache retention. Do not accept v4 automatic update, forced reload, worker unregister, or cache wipe behavior.                               |
-|  16 | Vacation-memory PWA identity                                                | **Fork-only**                                    | Preserve the master icon, generated assets, manifest/HTML metadata, theme colors, and documented generation pipeline.                                                                                                |
-|  17 | Dynamic viewport units                                                      | **Upstream base + fork delta**                   | Retain `dvh` for application panels and modals; keep print/PDF sizing fixed and audit new upstream mobile layouts individually.                                                                                      |
-|  18 | Compact v4 dashboard cards                                                  | **Upstream base + thin fork delta**              | Keep the compact CSS override without forking dashboard JSX; require visual smoke coverage after upstream layout changes.                                                                                            |
-|  19 | Simplified Chinese `个人清单` terminology                                   | **Conflict — preserve fork policy**              | Preserve `packing.viewPersonal` and `packing.cloneToMine`, plus the focused terminology test. Do not replace them with upstream `我的清单`.                                                                          |
-|  20 | Vacay entitlement inheritance and carry-over                                | **Upstream base + behavior-critical fork delta** | Inherit the preceding year's configured `vacation_days`; calculate `carried_over` independently and never overwrite the new year's base entitlement.                                                                 |
-|  21 | Obsidian Vacay import                                                       | **Fork-only — redesign required**                | Preserve read-only integration intent, but resolve the authority and read-path conflicts below before expanding or declaring it compliant.                                                                           |
-|  22 | CI, release, promotion, and Tailscale deployment                            | **Conflict / fork-only security boundary**       | Never wholesale-replace workflows. Preserve repository identity, `thvysy44/trek-fork`, immutable digests, environment approval, signed promotion, restricted deploy agent, poller verification, and health evidence. |
+| # | Component or invariant | Classification | Replacement decision |
+| --: | --- | --- | --- |
+| 1 | Instance-wide Google Places credential | **Upstream replacement — completed** | Use `PLACES_API_KEY` through `app-config`. Do not restore `GOOGLE_MAPS_API_KEY`; rename the runtime secret before deployment. |
+| 2 | Vacay active-year selection | **Upstream replacement — completed** | Use `defaultPeriodYear`, which supports calendar, fiscal, and anniversary periods. Remove the unused calendar-only helper. |
+| 3 | Vacay locale mappings | **Upstream base + fork delta** | Rebase the 22 locale files on upstream, preserve the fork keys, and run strict i18n parity. |
+| 4 | Packing list initial view | **Conflict — preserve fork policy** | Keep the fork default of `personal`; upstream v4 defaults to `common`. Treat any change as a product decision with focused tests. |
+| 5 | Packing template selection and application | **Upstream base + fork delta** | Retain the v4 packing foundation and the fork's personal/common/category scopes, visibility rules, overwrite confirmation, and accessible UI. |
+| 6 | Packing template creation and replacement | **Upstream base + fork delta** | Preserve the fork's three-tier template flow, category-scoped `409 TEMPLATE_EXISTS`, explicit confirmation, and transactional replacement across schema, API, service, UI, and tests. |
+| 7 | Solo-trip packing controls | **Upstream base + fork delta** | When the owner is alone, hide sharing-only controls and badges while showing the complete personal list. Do not infer solo state before member hydration. |
+| 8 | Solo-trip Collaboration tab | **Upstream base + fork delta** | Preserve `hasCompanions` gating and the `membersLoaded` guard so companion trips do not temporarily lose their saved tab. |
+| 9 | Todo start date and creator default | **Fork-only** | Preserve the complete vertical slice: migration, schema, controller/service/MCP, client model, editor, row, translations, and tests. |
+| 10 | Assignment Time Slot editor | **Upstream base + fork delta** | Keep v4 time storage and APIs; retain `TimeSlotFields`, `TimeSlotModal`, collision warnings, and accessible actions. |
+| 11 | Day Detail planned-items section | **Upstream base + fork delta** | Retain the bounded Plan section and Time Slot entry point; do not maintain a wholesale fork of `DayDetailPanel`. |
+| 12 | Collapse past days by default | **Upstream base + fork delta** | Preserve versioned local-storage migration and desktop/mobile synchronization; isolate persistence in a hook when this area changes again. |
+| 13 | English-only Places content | **Conflict — preserve fork policy** | Upstream is locale-aware; the fork deliberately requests English place labels and details at the API boundary. |
+| 14 | Journey `location_type` persistence | **Fork-only** | Preserve the database column, shared types, Nest service, store, editor, and tests as one end-to-end feature. |
+| 15 | User-controlled PWA updates | **Conflict — preserve fork policy** | Keep `registerType: 'prompt'`, `UpdateBanner`, retryable activation, and cache retention. Do not accept automatic update, forced reload, worker unregister, or cache wipe behavior. |
+| 16 | Vacation-memory PWA identity | **Fork-only** | Preserve the master icon, generated assets, manifest/HTML metadata, theme colors, and documented generation pipeline. |
+| 17 | Dynamic viewport units | **Upstream base + fork delta** | Retain `dvh` for application panels and modals; keep print/PDF sizing fixed and audit new upstream mobile layouts individually. |
+| 18 | Compact v4 dashboard cards | **Upstream base + thin fork delta** | Keep the compact CSS override without forking dashboard JSX; require visual smoke coverage after upstream layout changes. |
+| 19 | Simplified Chinese `个人清单` terminology | **Conflict — preserve fork policy** | Preserve `packing.viewPersonal` and `packing.cloneToMine`, plus the focused terminology test. Do not replace them with upstream `我的清单`. |
+| 20 | Vacay entitlement inheritance and carry-over | **Upstream base + behavior-critical fork delta** | Inherit the preceding year's configured `vacation_days`; calculate `carried_over` independently and never overwrite the new year's base entitlement. |
+| 21 | Obsidian Vacay import | **Fork-only — redesign required** | Preserve the read-only integration intent, but resolve the authority and read-path conflicts below before expanding or declaring it compliant. |
+| 22 | CI, release, promotion, and Tailscale deployment | **Conflict / fork-only security boundary** | Never wholesale-replace workflows. Preserve repository identity, `thvysy44/trek-fork`, immutable digests, environment approval, signed promotion, restricted deploy agent, poller verification, and health evidence. |
 
-## Completed upstream replacements
+## v4.1.0 sync outcome
+
+PR #58 adopts the upstream v4.1.0 product surface, including the MapLibre
+vector basemap, public API and OAuth scopes, expanded MCP tools, storage
+administration, school-holiday support, datetime normalization, and the new
+book/map schema limits. These are upstream capabilities; they do not replace
+the fork policies listed in the table above.
+
+The following preservation decisions were made during the merge:
+
+- Both Docker workflows retain the fork's repository guards, image namespace,
+  candidate manifest, and immutable-digest release gates. Upstream's
+  deterministic amd64-first manifest ordering was adopted without changing the
+  fork image coordinates.
+- The three existing fork migration slots remain before upstream's two new
+  tail slots (`reservations.ingest_state` and `mcp_tokens.kind`). This keeps
+  both a fork-upgraded database and an upstream-upgraded database able to run
+  the missing idempotent steps.
+- The booking place/day-stop flow remains in the desktop and mobile clients, the
+  reservation controller/service/RPC path, its migration, and its regression
+  tests. The user-controlled PWA update path, offline caches, Vacay rules,
+  Obsidian read-only boundary, solo-trip controls, and Simplified Chinese
+  packing terminology remain documented fork invariants.
+- Upstream MCP/admin locale keys were added to every locale, including `zh` and
+  `zh-TW`, without replacing the fork's existing translations.
+
+## Completed upstream replacements retained from v4.0.0
 
 ### Maps credential surface
 
 v4 resolves the operator key through `server/src/app-config/env.schema.ts` and
-`server/src/app-config/derive.ts`. `server/.env.example` now documents
+`server/src/app-config/derive.ts`. `server/.env.example` documents
 `PLACES_API_KEY`, and the derive tests cover canonical mapping, absence of a
 key, and rejection of the legacy name. There is deliberately no fallback.
 `docker-compose.yml` also passes the variable into the app container; keeping
@@ -69,10 +100,9 @@ Never commit an actual credential value.
 
 ### Vacay active-year selection
 
-The runtime already uses `defaultPeriodYear` from
-`client/src/vacay/yearWindow.ts`. The removed helper was referenced only by its
-own tests. Surviving coverage includes calendar, fiscal, anniversary, closest
-configured period, and empty-plan behavior.
+The runtime uses `defaultPeriodYear` from `client/src/vacay/yearWindow.ts`.
+Surviving coverage includes calendar, fiscal, anniversary, closest configured
+period, and empty-plan behavior.
 
 ## Highest-priority conflicts
 
@@ -93,20 +123,18 @@ reconciliation writes in a transaction.
 
 ### Resolved — Runtime Maps credential and Compose wiring
 
-Production now stores `PLACES_API_KEY` in the Compose project `.env`, passes it
-through `docker-compose.yml`, and runs a Google Cloud key restricted to
+Production stores `PLACES_API_KEY` in the Compose project `.env`, passes it
+through `docker-compose.yml`, and uses a Google Cloud key restricted to
 `places.googleapis.com` and the production server's public egress IP. The key
-value is never committed or printed. A post-release Google Places probe
-returned HTTP 200, and production `/api/health` remained healthy on v4.0.4.
+value is never committed or printed. A post-release Google Places probe returned
+HTTP 200, and production `/api/health` remained healthy on v4.0.4.
 
 The public egress IP may change. If Google returns an IP-address restriction
 error, update the key restriction before treating the OpenStreetMap fallback as
 normal behavior. Browser-referrer restrictions are incompatible with the
 server-side Places request path.
 
-### P1 — Integration hotspots
-
-Before the next major upstream sync:
+### P1 — Integration hotspots that remain open
 
 1. Extract a shared Assignment Time Slot editing hook.
 2. Represent roster state as loading, solo, or collaborative.
@@ -116,46 +144,51 @@ Before the next major upstream sync:
 ## Rules for future upstream syncs
 
 1. Start with the upstream component and reapply only documented fork deltas.
-2. Replace vertical data features only as complete migration/schema/API/UI/test units.
+2. Replace vertical data features only as complete migration/schema/API/UI/test
+   units.
 3. Never resolve deployment or PWA policy conflicts by accepting all upstream.
 4. Update this review and `FORK_CUSTOMIZATIONS.md` when adding an invariant.
 
 ## Verification
 
-Focused verification completed for the two upstream replacements:
-
-```text
-npm run test --workspace=server -- tests/unit/app-config/derive.test.ts
-Result: 30 passed
-
-npm run test --workspace=client -- src/store/vacayStore.test.ts src/vacay/yearWindow.test.ts
-Result: 42 passed
-
-npm run typecheck --workspace=server
-Result: passed
-
-npm run typecheck --workspace=client
-Result: passed
-
-npm run test --workspace=shared -- src/i18n/i18n-zh-packing-custom.spec.ts
-Result: 1 passed
-```
-
-Release preflight on 2026-08-27 also completed:
+PR #58 passed the following local checks:
 
 ```text
 npm run build
 Result: passed
 
-npm run lint
-Result: passed (the auto-fix script changed unrelated files locally; those edits
-were not included in this changeset)
+npm run typecheck --workspace=shared
+npm run typecheck --workspace=server
+npm run typecheck:tests --workspace=server
+npm run typecheck --workspace=client
+Result: all passed
 
 npm test
-Result: passed outside the sandbox; the first sandboxed attempt failed only
-because server tests could not bind local sockets (`listen EPERM`)
+Result: passed; server integration tests ran with local socket access
+
+npm run i18n:parity:strict --workspace=shared
+Result: File parity: OK; Key parity: OK
+
+npm run lint --workspace=shared
+npm run lint:check --workspace=server
+npm run lint:check --workspace=client
+Result: passed
+
+actionlint -ignore 'SC[0-9]+' .github/workflows/docker-dev.yml .github/workflows/docker.yml
+Result: passed; unfiltered actionlint still reports existing ShellCheck diagnostics
+
+docker compose config --quiet
+Result: passed
+
+helm lint charts/trek
+Result: passed; informational icon recommendation only
 ```
 
-Production acceptance additionally requires green CI and Security Scan for the
-merged SHA, a non-draft stable release with provenance, signed immutable-digest
-promotion, poller agreement, and `/api/health` returning `{"status":"ok"}`.
+Focused regression suites covered booking day stops, desktop and mobile
+reservation surfaces, migrations, storage administration, Vacay, PWA behavior,
+book schemas, packing terminology, and shared locale changes.
+
+Production acceptance is not part of this local review. After the PR merges,
+the protected release process must still provide green CI and Security Scan, a
+stable release with provenance, a signed immutable-digest promotion, poller
+agreement, and `/api/health` returning `{"status":"ok"}`.

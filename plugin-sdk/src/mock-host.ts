@@ -373,6 +373,10 @@ export function createMockHost(opts: MockHostOptions = {}): MockHost {
   const bucketItems: unknown[] = [...(opts.atlasBucketList ?? [])];
   const journals: unknown[] = [...(opts.journals ?? [])];
   const journalEntries: unknown[] = [...(opts.journalEntries ?? [])];
+  // Photos a plugin attached in this session; the mock keeps them so a test can
+  // assert on what it wrote without a real gallery behind it.
+  const journalPhotos: unknown[] = [];
+  let journalPhotoSeq = 1;
   const savedPlaces: unknown[] = [];
   const vacayEntries = new Set<string>();
   const vacayHolidays = new Set<string>();
@@ -1009,6 +1013,24 @@ export function createMockHost(opts: MockHostOptions = {}): MockHost {
           const entry = { id: journalEntries.length + 1, journey_id: journeyId, ...input };
           journalEntries.push(entry);
           return entry;
+        },
+        async addEntryPhoto(entryId, input) {
+          need('db:write:journal', 'journal.addEntryPhoto');
+          requireActingUser();
+          requireAddon(opts.journeyAddonEnabled, 'journey');
+          const entry = rows(journalEntries).find((x) => x.id === entryId);
+          if (!entry) throw new Error(`RESOURCE_FORBIDDEN: no editable journal entry ${entryId} for this user`);
+          if (typeof input?.name !== 'string' || input.name.trim() === '') throw new Error('invalid photo input: name is required');
+          if (typeof input?.content_base64 !== 'string' || input.content_base64 === '') throw new Error('invalid photo input: content_base64 is required');
+          // Same refusals the host applies, so a plugin fails here rather than in production.
+          const ext = (input.name.slice(input.name.lastIndexOf('.')) || '').toLowerCase();
+          if (!['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.heic', '.heif'].includes(ext)) {
+            throw new Error(`photo extension '${ext || '(none)'}' is not an allowed image type`);
+          }
+          if (input.content_base64.length > 14 * 1024 * 1024) throw new Error('photo exceeds the 10MB plugin upload cap');
+          const photo = { id: journalPhotoSeq++, photo_id: journalPhotoSeq, entry_id: entryId, caption: input.caption };
+          journalPhotos.push(photo);
+          return photo;
         },
         async createJourney(input) {
           need('db:write:journal', 'journal.createJourney');

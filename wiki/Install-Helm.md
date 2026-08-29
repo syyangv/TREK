@@ -84,7 +84,7 @@ helm install trek trek/trek \
 
 ```yaml
 image:
-  repository: mauriceboe/trek
+  repository: thvysy44/trek-fork
   # tag: latest        # defaults to the chart's appVersion
   pullPolicy: IfNotPresent
 

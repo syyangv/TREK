@@ -2,6 +2,18 @@
  * Unit tests for JourneyShareService — JOURNEY-SHARE-001 through JOURNEY-SHARE-018.
  * Uses a real in-memory SQLite DB so SQL logic is exercised faithfully.
  */
+import { db as dbConn } from '../../../src/db/database';
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import { DatabaseService } from '../../../src/nest/database/database.service';
+import { JourneyDomainService } from '../../../src/nest/journey/journey-domain.service';
+import { JourneyShareService } from '../../../src/nest/journey/journey-share.service';
+import { TrekPhotosRepository } from '../../../src/nest/photos/trek-photos.repository';
+import { RealtimeService } from '../../../src/nest/realtime/realtime.service';
+import { SettingsService } from '../../../src/nest/settings/settings.service';
+import { createUser, createJourney, createJourneyEntry, addJourneyContributor } from '../../helpers/factories';
+import { resetTestDb } from '../../helpers/test-db';
+
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 
 // -- DB setup -----------------------------------------------------------------
@@ -30,17 +42,18 @@ vi.mock('../../../src/config', () => ({
   updateJwtSecret: () => {},
 }));
 
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser, createJourney, createJourneyEntry, addJourneyContributor } from '../../helpers/factories';
-import { DatabaseService } from '../../../src/nest/database/database.service';
-import { RealtimeService } from '../../../src/nest/realtime/realtime.service';
-import { TrekPhotosRepository } from '../../../src/nest/photos/trek-photos.repository';
-import { JourneyDomainService } from '../../../src/nest/journey/journey-domain.service';
-import { JourneyShareService } from '../../../src/nest/journey/journey-share.service';
-import { SettingsService } from '../../../src/nest/settings/settings.service';
-import { db as dbConn } from '../../../src/db/database';
+/** Share-link fixtures opt in explicitly; production entries default to private. */
+function createSharedJourneyEntry(
+  db: Parameters<typeof createJourneyEntry>[0],
+  journeyId: number,
+  authorId: number,
+  overrides: Parameters<typeof createJourneyEntry>[3] = {},
+) {
+  return createJourneyEntry(db, journeyId, authorId, {
+    ...overrides,
+    visibility: overrides.visibility ?? 'shared',
+  });
+}
 
 const dbs = new DatabaseService(dbConn);
 const svc = new JourneyShareService(
@@ -67,32 +80,48 @@ afterAll(() => {
 /** Insert a trek_photos + journey_photos (gallery) + journey_entry_photos row and return the trek_photos id (used as photoId in public URLs). */
 function insertJourneyPhoto(
   entryId: number,
-  opts: { filePath?: string; assetId?: string; ownerId?: number } = {}
+  opts: { filePath?: string; assetId?: string; ownerId?: number } = {},
 ): number {
   const provider = opts.assetId ? 'immich' : 'local';
   const filePath = !opts.assetId ? (opts.filePath ?? '/photos/test.jpg') : null;
-  const trekResult = testDb.prepare(`
+  const trekResult = testDb
+    .prepare(
+      `
     INSERT INTO trek_photos (provider, asset_id, file_path, owner_id, created_at)
     VALUES (?, ?, ?, ?, ?)
-  `).run(provider, opts.assetId ?? null, filePath, opts.ownerId ?? null, Date.now());
+  `,
+    )
+    .run(provider, opts.assetId ?? null, filePath, opts.ownerId ?? null, Date.now());
   const trekId = trekResult.lastInsertRowid as number;
 
   // Look up journey_id from entry so gallery row is keyed to the journey (not entry).
-  const entryRow = testDb.prepare('SELECT journey_id FROM journey_entries WHERE id = ?').get(entryId) as { journey_id: number };
+  const entryRow = testDb.prepare('SELECT journey_id FROM journey_entries WHERE id = ?').get(entryId) as {
+    journey_id: number;
+  };
   const journeyId = entryRow.journey_id;
   const now = Date.now();
 
-  testDb.prepare(`
+  testDb
+    .prepare(
+      `
     INSERT OR IGNORE INTO journey_photos (journey_id, photo_id, caption, sort_order, created_at)
     VALUES (?, ?, NULL, 0, ?)
-  `).run(journeyId, trekId, now);
+  `,
+    )
+    .run(journeyId, trekId, now);
 
-  const galleryRow = testDb.prepare('SELECT id FROM journey_photos WHERE journey_id = ? AND photo_id = ?').get(journeyId, trekId) as { id: number };
+  const galleryRow = testDb
+    .prepare('SELECT id FROM journey_photos WHERE journey_id = ? AND photo_id = ?')
+    .get(journeyId, trekId) as { id: number };
 
-  testDb.prepare(`
+  testDb
+    .prepare(
+      `
     INSERT OR IGNORE INTO journey_entry_photos (entry_id, journey_photo_id, sort_order, created_at)
     VALUES (?, ?, 0, ?)
-  `).run(entryId, galleryRow.id, now);
+  `,
+    )
+    .run(entryId, galleryRow.id, now);
 
   // Return trek_photos.id — this is p.photo_id in the public API response
   // and the value the client sends to /api/public/journey/:token/photos/:photoId/:kind
@@ -273,7 +302,7 @@ describe('validateShareTokenForPhoto', () => {
   it('JOURNEY-SHARE-009: returns journeyId and ownerId for valid token + photo', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
-    const entry = createJourneyEntry(testDb, journey.id, user.id);
+    const entry = createSharedJourneyEntry(testDb, journey.id, user.id);
     const photoId = insertJourneyPhoto(entry.id, { ownerId: user.id });
     const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, {});
 
@@ -293,7 +322,7 @@ describe('validateShareTokenForPhoto', () => {
     const { user } = createUser(testDb);
     const journey1 = createJourney(testDb, user.id);
     const journey2 = createJourney(testDb, user.id);
-    const entry2 = createJourneyEntry(testDb, journey2.id, user.id);
+    const entry2 = createSharedJourneyEntry(testDb, journey2.id, user.id);
     const photoId = insertJourneyPhoto(entry2.id);
     const { token } = svc.createOrUpdateJourneyShareLink(journey1.id, user.id, {});
 
@@ -305,7 +334,7 @@ describe('validateShareTokenForPhoto', () => {
   it('JOURNEY-SHARE-012: falls back to journey owner_id when photo has no owner_id', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
-    const entry = createJourneyEntry(testDb, journey.id, user.id);
+    const entry = createSharedJourneyEntry(testDb, journey.id, user.id);
     const photoId = insertJourneyPhoto(entry.id, { ownerId: undefined });
     const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, {});
 
@@ -319,9 +348,13 @@ describe('validateShareTokenForPhoto', () => {
   it('JOURNEY-SHARE-017: returns null when the owner disabled the gallery (share_gallery=false)', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
-    const entry = createJourneyEntry(testDb, journey.id, user.id);
+    const entry = createSharedJourneyEntry(testDb, journey.id, user.id);
     const photoId = insertJourneyPhoto(entry.id, { ownerId: user.id });
-    const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, { share_timeline: true, share_gallery: false, share_map: true });
+    const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, {
+      share_timeline: true,
+      share_gallery: false,
+      share_map: true,
+    });
 
     expect(svc.validateShareTokenForPhoto(token, photoId)).toBeNull();
   });
@@ -332,11 +365,13 @@ describe('validateShareTokenForPhoto', () => {
     // instead of jp.photo_id, causing a 404 for Immich photos in public shares.
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
-    const entry = createJourneyEntry(testDb, journey.id, user.id);
+    const entry = createSharedJourneyEntry(testDb, journey.id, user.id);
 
     // Pre-populate trek_photos to push the autoincrement higher
     for (let i = 0; i < 5; i++) {
-      testDb.prepare(`INSERT INTO trek_photos (provider, asset_id, owner_id, created_at) VALUES ('immich', ?, ?, ?)`).run(`bulk-asset-${i}`, user.id, Date.now());
+      testDb
+        .prepare(`INSERT INTO trek_photos (provider, asset_id, owner_id, created_at) VALUES ('immich', ?, ?, ?)`)
+        .run(`bulk-asset-${i}`, user.id, Date.now());
     }
 
     // This trek_photos row gets a high id (e.g. 6) while journey_photos id will be 1
@@ -356,7 +391,7 @@ describe('validateShareTokenForAsset', () => {
   it('JOURNEY-SHARE-013: returns ownerId when asset belongs to shared journey', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
-    const entry = createJourneyEntry(testDb, journey.id, user.id);
+    const entry = createSharedJourneyEntry(testDb, journey.id, user.id);
     insertJourneyPhoto(entry.id, { assetId: 'immich-asset-123', ownerId: user.id });
     const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, {});
 
@@ -375,9 +410,13 @@ describe('validateShareTokenForAsset', () => {
   it('JOURNEY-SHARE-018: returns null when the owner disabled the gallery (share_gallery=false)', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
-    const entry = createJourneyEntry(testDb, journey.id, user.id);
+    const entry = createSharedJourneyEntry(testDb, journey.id, user.id);
     insertJourneyPhoto(entry.id, { assetId: 'immich-asset-999', ownerId: user.id });
-    const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, { share_timeline: true, share_gallery: false, share_map: true });
+    const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, {
+      share_timeline: true,
+      share_gallery: false,
+      share_map: true,
+    });
 
     expect(svc.validateShareTokenForAsset(token, 'immich-asset-999')).toBeNull();
   });
@@ -385,7 +424,7 @@ describe('validateShareTokenForAsset', () => {
   it('JOURNEY-SHARE-029: falls back to the journey owner when the photo has no owner_id', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
-    const entry = createJourneyEntry(testDb, journey.id, user.id);
+    const entry = createSharedJourneyEntry(testDb, journey.id, user.id);
     insertJourneyPhoto(entry.id, { assetId: 'immich-asset-orphan' });
     const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, {});
 
@@ -423,13 +462,13 @@ describe('getPublicJourney', () => {
       title: 'Japan 2026',
       subtitle: 'Cherry blossom season',
     });
-    const entry1 = createJourneyEntry(testDb, journey.id, user.id, {
+    const entry1 = createSharedJourneyEntry(testDb, journey.id, user.id, {
       type: 'entry',
       title: 'Arrived in Tokyo',
       entry_date: '2026-03-20',
       location_name: 'Tokyo',
     });
-    createJourneyEntry(testDb, journey.id, user.id, {
+    createSharedJourneyEntry(testDb, journey.id, user.id, {
       type: 'entry',
       title: 'Kyoto Day Trip',
       entry_date: '2026-03-22',
@@ -459,12 +498,12 @@ describe('getPublicJourney', () => {
   it('JOURNEY-SHARE-018: excludes skeleton entries from public view', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
-    createJourneyEntry(testDb, journey.id, user.id, {
+    createSharedJourneyEntry(testDb, journey.id, user.id, {
       type: 'entry',
       title: 'Visible Entry',
       entry_date: '2026-01-10',
     });
-    createJourneyEntry(testDb, journey.id, user.id, {
+    createSharedJourneyEntry(testDb, journey.id, user.id, {
       type: 'skeleton',
       title: 'Skeleton Entry',
       entry_date: '2026-01-11',
@@ -478,15 +517,48 @@ describe('getPublicJourney', () => {
     expect(result!.entries[0].title).toBe('Visible Entry');
   });
 
+  it('JOURNEY-SHARE-031: excludes private entries from timeline, map, and public stats', () => {
+    const { user } = createUser(testDb);
+    const journey = createJourney(testDb, user.id);
+    createSharedJourneyEntry(testDb, journey.id, user.id, {
+      title: 'Private note',
+      location_name: 'Hidden place',
+      visibility: 'private',
+    });
+    createSharedJourneyEntry(testDb, journey.id, user.id, {
+      title: 'Shared note',
+      location_name: 'Shared place',
+      visibility: 'shared',
+    });
+    createSharedJourneyEntry(testDb, journey.id, user.id, {
+      title: 'Public note',
+      location_name: 'Public place',
+      visibility: 'public',
+    });
+    const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, {
+      share_timeline: true,
+      share_gallery: true,
+      share_map: true,
+    });
+
+    const result = svc.getPublicJourney(token)!;
+    expect(result.entries.map((entry) => entry.title)).toEqual(['Shared note', 'Public note']);
+    expect(result.stats.entries).toBe(2);
+    expect(result.stats.places).toBe(2);
+    expect(JSON.stringify(result)).not.toContain('Private note');
+    expect(JSON.stringify(result)).not.toContain('Hidden place');
+  });
+
   it('JOURNEY-SHARE-019: enriches entries with parsed tags and photos', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
-    const entry = createJourneyEntry(testDb, journey.id, user.id, {
+    const entry = createSharedJourneyEntry(testDb, journey.id, user.id, {
       type: 'entry',
       entry_date: '2026-04-01',
     });
     // Set tags on the entry directly
-    testDb.prepare('UPDATE journey_entries SET tags = ? WHERE id = ?')
+    testDb
+      .prepare('UPDATE journey_entries SET tags = ? WHERE id = ?')
       .run(JSON.stringify(['food', 'culture']), entry.id);
     insertJourneyPhoto(entry.id, { filePath: '/photos/a.jpg' });
     insertJourneyPhoto(entry.id, { filePath: '/photos/b.jpg' });
@@ -517,13 +589,21 @@ describe('getPublicJourney', () => {
   it('JOURNEY-SHARE-021: withholds timeline, gallery and GPS when all flags are off', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id, { title: 'Secret' });
-    const entry = createJourneyEntry(testDb, journey.id, user.id, {
-      type: 'entry', title: 'Day 1', story: 'private notes', entry_date: '2026-05-01', location_name: 'Paris',
+    const entry = createSharedJourneyEntry(testDb, journey.id, user.id, {
+      type: 'entry',
+      title: 'Day 1',
+      story: 'private notes',
+      entry_date: '2026-05-01',
+      location_name: 'Paris',
     });
-    testDb.prepare('UPDATE journey_entries SET location_lat = ?, location_lng = ? WHERE id = ?').run(48.8566, 2.3522, entry.id);
+    testDb
+      .prepare('UPDATE journey_entries SET location_lat = ?, location_lng = ? WHERE id = ?')
+      .run(48.8566, 2.3522, entry.id);
     insertJourneyPhoto(entry.id);
     const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, {
-      share_timeline: false, share_gallery: false, share_map: false,
+      share_timeline: false,
+      share_gallery: false,
+      share_map: false,
     });
 
     const result = svc.getPublicJourney(token)!;
@@ -535,12 +615,20 @@ describe('getPublicJourney', () => {
   it('JOURNEY-SHARE-022: shares the timeline but strips GPS when the map flag is off', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
-    const entry = createJourneyEntry(testDb, journey.id, user.id, {
-      type: 'entry', title: 'Day 1', story: 'notes', entry_date: '2026-05-01', location_name: 'Paris',
+    const entry = createSharedJourneyEntry(testDb, journey.id, user.id, {
+      type: 'entry',
+      title: 'Day 1',
+      story: 'notes',
+      entry_date: '2026-05-01',
+      location_name: 'Paris',
     });
-    testDb.prepare('UPDATE journey_entries SET location_lat = ?, location_lng = ? WHERE id = ?').run(48.8566, 2.3522, entry.id);
+    testDb
+      .prepare('UPDATE journey_entries SET location_lat = ?, location_lng = ? WHERE id = ?')
+      .run(48.8566, 2.3522, entry.id);
     const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, {
-      share_timeline: true, share_gallery: true, share_map: false,
+      share_timeline: true,
+      share_gallery: true,
+      share_map: false,
     });
 
     const result = svc.getPublicJourney(token)!;
@@ -554,12 +642,20 @@ describe('getPublicJourney', () => {
   it('JOURNEY-SHARE-023: map-only share exposes coordinates but not the story', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
-    const entry = createJourneyEntry(testDb, journey.id, user.id, {
-      type: 'entry', title: 'Day 1', story: 'private notes', entry_date: '2026-05-01', location_name: 'Paris',
+    const entry = createSharedJourneyEntry(testDb, journey.id, user.id, {
+      type: 'entry',
+      title: 'Day 1',
+      story: 'private notes',
+      entry_date: '2026-05-01',
+      location_name: 'Paris',
     });
-    testDb.prepare('UPDATE journey_entries SET location_lat = ?, location_lng = ? WHERE id = ?').run(48.8566, 2.3522, entry.id);
+    testDb
+      .prepare('UPDATE journey_entries SET location_lat = ?, location_lng = ? WHERE id = ?')
+      .run(48.8566, 2.3522, entry.id);
     const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, {
-      share_timeline: false, share_gallery: false, share_map: true,
+      share_timeline: false,
+      share_gallery: false,
+      share_map: true,
     });
 
     const result = svc.getPublicJourney(token)!;
@@ -575,15 +671,21 @@ describe('getPublicJourney', () => {
   it('JOURNEY-SHARE-025: withholds photo capture coordinates when the map flag is off', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
-    const entry = createJourneyEntry(testDb, journey.id, user.id, {
-      type: 'entry', title: 'Day 1', story: 'notes', entry_date: '2026-05-01',
+    const entry = createSharedJourneyEntry(testDb, journey.id, user.id, {
+      type: 'entry',
+      title: 'Day 1',
+      story: 'notes',
+      entry_date: '2026-05-01',
     });
     const trekId = insertJourneyPhoto(entry.id, { ownerId: user.id });
-    testDb.prepare('UPDATE trek_photos SET lat = ?, lng = ?, taken_at = ? WHERE id = ?')
+    testDb
+      .prepare('UPDATE trek_photos SET lat = ?, lng = ?, taken_at = ? WHERE id = ?')
       .run(48.8584, 2.2945, '2026-05-01T10:00:00Z', trekId);
 
     const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, {
-      share_timeline: true, share_gallery: true, share_map: false,
+      share_timeline: true,
+      share_gallery: true,
+      share_map: false,
     });
 
     const result = svc.getPublicJourney(token)!;
@@ -602,15 +704,18 @@ describe('getPublicJourney', () => {
   it('JOURNEY-SHARE-026: hands out photo coordinates once the map is shared', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
-    const entry = createJourneyEntry(testDb, journey.id, user.id, {
-      type: 'entry', title: 'Day 1', entry_date: '2026-05-01',
+    const entry = createSharedJourneyEntry(testDb, journey.id, user.id, {
+      type: 'entry',
+      title: 'Day 1',
+      entry_date: '2026-05-01',
     });
     const trekId = insertJourneyPhoto(entry.id, { ownerId: user.id });
-    testDb.prepare('UPDATE trek_photos SET lat = ?, lng = ? WHERE id = ?')
-      .run(48.8584, 2.2945, trekId);
+    testDb.prepare('UPDATE trek_photos SET lat = ?, lng = ? WHERE id = ?').run(48.8584, 2.2945, trekId);
 
     const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, {
-      share_timeline: true, share_gallery: true, share_map: true,
+      share_timeline: true,
+      share_gallery: true,
+      share_map: true,
     });
 
     const gallery = svc.getPublicJourney(token)!.gallery as Record<string, unknown>[];
@@ -621,12 +726,17 @@ describe('getPublicJourney', () => {
   it('JOURNEY-SHARE-024: strips inline entry photos (and their asset metadata) when the gallery is off', () => {
     const { user } = createUser(testDb);
     const journey = createJourney(testDb, user.id);
-    const entry = createJourneyEntry(testDb, journey.id, user.id, {
-      type: 'entry', title: 'Day 1', story: 'notes', entry_date: '2026-05-01',
+    const entry = createSharedJourneyEntry(testDb, journey.id, user.id, {
+      type: 'entry',
+      title: 'Day 1',
+      story: 'notes',
+      entry_date: '2026-05-01',
     });
     insertJourneyPhoto(entry.id, { ownerId: user.id });
     const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, {
-      share_timeline: true, share_gallery: false, share_map: true,
+      share_timeline: true,
+      share_gallery: false,
+      share_map: true,
     });
 
     const result = svc.getPublicJourney(token)!;
@@ -641,9 +751,13 @@ describe('getPublicJourney', () => {
     const { token } = svc.createOrUpdateJourneyShareLink(journey.id, user.id, { share_map: true });
 
     expect(svc.getPublicJourney(token)!.cartoApiKey).toBe('');
-    testDb.prepare("INSERT INTO app_settings (key, value) VALUES ('default_user_setting_carto_api_key', 'instance-key')").run();
+    testDb
+      .prepare("INSERT INTO app_settings (key, value) VALUES ('default_user_setting_carto_api_key', 'instance-key')")
+      .run();
     expect(svc.getPublicJourney(token)!.cartoApiKey).toBe('instance-key');
-    testDb.prepare("INSERT INTO settings (user_id, key, value) VALUES (?, 'carto_api_key', ' owner-key ')").run(user.id);
+    testDb
+      .prepare("INSERT INTO settings (user_id, key, value) VALUES (?, 'carto_api_key', ' owner-key ')")
+      .run(user.id);
     expect(svc.getPublicJourney(token)!.cartoApiKey).toBe('owner-key');
   });
 });

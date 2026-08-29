@@ -78,7 +78,7 @@ export function allRpcControllers(): object[] {
     new CollabRpc(anyService(), anyService(), anyService()),
     new AtlasRpc(anyService(), anyService()),
     new VacayRpc(anyService(), anyService()),
-    new JournalRpc(anyService(), anyService()),
+    new JournalRpc(anyService(), anyService(), anyService(), anyService(), anyService(), anyService()),
     new CollectionsRpc(anyService(), anyService()),
     new DbRpc(anyService()),
     new MetaRpc(anyService(), anyService()),

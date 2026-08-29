@@ -39,7 +39,7 @@ const settings: TranslationStrings = {
     'Без ключа базові карти CARTO показують водяний знак. Безкоштовно та без облікового запису, на',
   'settings.mapCartoKeyLink': 'ключ API базових карт carto.com',
   'settings.mapCartoKeyMissing':
-    'Цей шаблон є базовою картою CARTO. Без ключа CARTO наносить "API KEY REQUIRED" на кожен тайл.',
+    'Цей шаблон є базовою картою CARTO. Без ключа CARTO наносить "API KEY REQUIRED" на кожен тайл. Доки ключ не вказано, TREK показує базову карту за замовчуванням.',
   'settings.mapStyle': 'Стиль карти',
   'settings.mapStylePlaceholder': 'Виберіть стиль Mapbox',
   'settings.mapStyleHint': 'Preset або власний URL mapbox://styles/USER/ID',
@@ -533,6 +533,31 @@ const settings: TranslationStrings = {
   'settings.alwaysShowRoutes': 'Завжди показувати маршрути бронювань',
   'settings.alwaysShowRoutesHint':
     'Автоматично показує на карті маршрут для кожного рейсу, поїзда та іншого бронювання — без потреби вмикати це окремо для кожного елемента.',
+
+  // Public API keys (Settings -> Integrations)
+  'settings.apiKeys.title': 'Ключі API',
+  'settings.apiKeys.description':
+    'Ключі для публічного API, щоб інші програми могли читати ваші подорожі. Лише читання: ключ нічого не змінить і не видалить.',
+  'settings.apiKeys.create': 'Створити ключ',
+  'settings.apiKeys.empty': 'Ключів ще немає. Створіть один, щоб підключити іншу програму.',
+  'settings.apiKeys.createdAt': 'створено',
+  'settings.apiKeys.usedAt': 'востаннє використано',
+  'settings.apiKeys.deleteTitle': 'Видалити ключ',
+  'settings.apiKeys.deleteMessage': 'Усе, що використовує цей ключ, одразу перестане працювати. Скасувати не можна.',
+  'settings.apiKeys.deleted': 'Ключ видалено',
+  'settings.apiKeys.deleteFailed': 'Не вдалося видалити ключ',
+  'settings.apiKeys.createFailed': 'Не вдалося створити ключ',
+  'settings.apiKeys.copy': 'Копіювати',
+  'settings.apiKeys.docsHint': 'Надсилайте ключ як "Authorization: Bearer ..." або "X-API-Key: ..." на /api/v1.',
+  'settings.apiKeys.modal.createTitle': 'Створити ключ API',
+  'settings.apiKeys.modal.name': 'Назва',
+  'settings.apiKeys.modal.namePlaceholder': 'напр. Dawarich',
+  'settings.apiKeys.modal.nameHint': 'Лише для вас, щоб пізніше впізнати ключ.',
+  'settings.apiKeys.modal.creating': 'Створення...',
+  'settings.apiKeys.modal.create': 'Створити',
+  'settings.apiKeys.modal.createdTitle': 'Ключ API створено',
+  'settings.apiKeys.modal.createdWarning': 'Скопіюйте ключ зараз. Він показується один раз, пізніше його не отримати.',
+  'settings.apiKeys.modal.done': 'Готово',
 };
 
 export default settings;

@@ -593,6 +593,9 @@
 .trek-dash .upc-date .d { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; }
 .trek-dash .upc-date .m { font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-3); margin-top: 4px; font-weight: 500; }
 .trek-dash .upc-info .t { font-size: 14px; font-weight: 500; margin-bottom: 2px; }
+.trek-dash .upc-info .t { display: flex; align-items: center; gap: 7px; }
+/* An unconfirmed booking looked exactly like a confirmed one here (#1934). */
+.trek-dash .upc-pending { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 6px; border-radius: 999px; background: var(--bg-2); color: var(--ink-3); }
 .trek-dash .upc-info .s { font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
 .trek-dash .upc-info .s svg { width: 11px; height: 11px; }
 .trek-dash .upc-type { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; }

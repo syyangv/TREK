@@ -106,11 +106,14 @@ export const SYSTEM_NOTICES: SystemNotice[] = [
     conditions: [{ kind: 'managed', is: false }],
     publishedAt: '2026-08-22T00:00:00Z',
     priority: 110,
-    // The 4.0.x window. The copy is about this release, so somebody arriving on
-    // 4.1 — or jumping 3.x straight to 4.2 — should get that release's notice
-    // instead of this one, not a summary of a version they skipped.
+    // The whole 4.x line. The copy is about what 4.0.0 brought, and that is still
+    // what somebody arriving anywhere on 4.x is being introduced to — the minor
+    // releases after it add to that picture rather than replace it. Held open to
+    // the 5.0.0 boundary (exclusive) so a 4.1/4.2 install is not left with no
+    // notice at all, which is what a per-release window did the moment 4.1.0
+    // shipped without an entry of its own.
     minVersion: '4.0.0',
-    maxVersion: '4.1.0',
+    maxVersion: '5.0.0',
   },
 
   // ── Thank-you + support the project — shown once per install AND once per upgrade ──

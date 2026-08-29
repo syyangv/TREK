@@ -109,28 +109,35 @@ export function backfillBookingPlaceStops(db: Database.Database): number {
        FROM day_assignments
       WHERE day_id = ?`,
   );
-  const insertAssignment = db.prepare(
-    'INSERT INTO day_assignments (day_id, place_id, order_index) VALUES (?, ?, ?)',
-  );
-  const linkBooking = db.prepare(
-    'UPDATE reservations SET assignment_id = ? WHERE id = ? AND assignment_id IS NULL',
-  );
+  const insertAssignment = db.prepare('INSERT INTO day_assignments (day_id, place_id, order_index) VALUES (?, ?, ?)');
+  const linkBooking = db.prepare('UPDATE reservations SET assignment_id = ? WHERE id = ? AND assignment_id IS NULL');
 
   let repaired = 0;
   for (const booking of bookings) {
     const existing = findExisting.get(booking.day_id, booking.place_id) as { id: number } | undefined;
-    const assignmentId = existing?.id ?? Number(
-      insertAssignment.run(
-        booking.day_id,
-        booking.place_id,
-        (nextOrder.get(booking.day_id) as { order_index: number }).order_index,
-      ).lastInsertRowid,
-    );
+    const assignmentId =
+      existing?.id ??
+      Number(
+        insertAssignment.run(
+          booking.day_id,
+          booking.place_id,
+          (nextOrder.get(booking.day_id) as { order_index: number }).order_index,
+        ).lastInsertRowid,
+      );
     linkBooking.run(assignmentId, booking.reservation_id);
     repaired++;
   }
 
   return repaired;
+}
+
+/** Apply the boundary-leg transport column migration independently in tests. */
+export function migrateIncomingLegTransportMode(db: Database.Database): void {
+  try {
+    db.exec('ALTER TABLE day_assignments ADD COLUMN incoming_leg_transport_mode TEXT');
+  } catch (err: any) {
+    if (!err.message?.includes('duplicate column name')) throw err;
+  }
 }
 
 function runMigrations(db: Database.Database): void {
@@ -3161,8 +3168,12 @@ function runMigrations(db: Database.Database): void {
       } catch (err: any) {
         if (!err.message?.includes('duplicate column name')) throw err;
       }
-      db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_trips_feed_token ON trips(feed_token) WHERE feed_token IS NOT NULL');
-      db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_feed_token ON users(feed_token) WHERE feed_token IS NOT NULL');
+      db.exec(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_trips_feed_token ON trips(feed_token) WHERE feed_token IS NOT NULL',
+      );
+      db.exec(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_users_feed_token ON users(feed_token) WHERE feed_token IS NOT NULL',
+      );
     },
     // Optimistic-concurrency token for offline conflict detection (#1135).
     // packing_items had only created_at, so an offline edit could not be checked
@@ -3176,7 +3187,9 @@ function runMigrations(db: Database.Database): void {
       } catch (err: any) {
         if (!err.message?.includes('duplicate column name')) throw err;
       }
-      db.exec('UPDATE packing_items SET updated_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP) WHERE updated_at IS NULL');
+      db.exec(
+        'UPDATE packing_items SET updated_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP) WHERE updated_at IS NULL',
+      );
     },
     // Video support (#823): the trek_photos registry held only images. media_type
     // discriminates image vs video so the gallery, lightbox and provider proxy can
@@ -3329,13 +3342,25 @@ function runMigrations(db: Database.Database): void {
 
     // Migration 151: user-added links on collections + saved places (JSON text)
     () => {
-      try { db.exec('ALTER TABLE collections ADD COLUMN links TEXT'); } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
-      try { db.exec('ALTER TABLE collection_places ADD COLUMN links TEXT'); } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
+      try {
+        db.exec('ALTER TABLE collections ADD COLUMN links TEXT');
+      } catch (err) {
+        console.warn('[migrations] Non-fatal migration step failed:', err);
+      }
+      try {
+        db.exec('ALTER TABLE collection_places ADD COLUMN links TEXT');
+      } catch (err) {
+        console.warn('[migrations] Non-fatal migration step failed:', err);
+      }
     },
     // Migration 152: per-member permission role on a shared list. Existing
     // accepted members default to 'editor' so nothing regresses.
     () => {
-      try { db.exec("ALTER TABLE collection_members ADD COLUMN role TEXT NOT NULL DEFAULT 'editor'"); } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
+      try {
+        db.exec("ALTER TABLE collection_members ADD COLUMN role TEXT NOT NULL DEFAULT 'editor'");
+      } catch (err) {
+        console.warn('[migrations] Non-fatal migration step failed:', err);
+      }
     },
     // Migration 153: per-trip invite links (#1143). One rotating token per trip;
     // a logged-in existing user who opens the link joins the trip as a member.
@@ -3358,7 +3383,11 @@ function runMigrations(db: Database.Database): void {
     // who REGISTERS via the link is auto-added to the trip. Nullable for backward
     // compatibility; ON DELETE SET NULL so removing the trip just unbinds the invite.
     () => {
-      try { db.exec('ALTER TABLE invite_tokens ADD COLUMN trip_id INTEGER REFERENCES trips(id) ON DELETE SET NULL'); } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
+      try {
+        db.exec('ALTER TABLE invite_tokens ADD COLUMN trip_id INTEGER REFERENCES trips(id) ON DELETE SET NULL');
+      } catch (err) {
+        console.warn('[migrations] Non-fatal migration step failed:', err);
+      }
     },
     // Migration 155: plugin system scaffold (#plugins). A plugin is a row here;
     // its code lives on the /plugins volume and (once the runtime lands) runs in
@@ -3429,24 +3458,34 @@ function runMigrations(db: Database.Database): void {
     // Boot now retries every enabled plugin regardless of last status.
     () => {
       try {
-        db.exec("ALTER TABLE plugins ADD COLUMN enabled INTEGER NOT NULL DEFAULT 0;");
+        db.exec('ALTER TABLE plugins ADD COLUMN enabled INTEGER NOT NULL DEFAULT 0;');
         // Anything not explicitly deactivated was meant to be on ('inactive' is the
         // only status deactivate() sets; a crash/shutdown could leave error/stopped/starting).
         db.exec("UPDATE plugins SET enabled = 1 WHERE status != 'inactive';");
-      } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
+      } catch (err) {
+        console.warn('[migrations] Non-fatal migration step failed:', err);
+      }
     },
     // Migration 157: plugin capabilities (from trek-plugin.json) — the client
     // needs them to place widgets (e.g. widget.slot 'hero' renders as an overlay
     // on the boarding-pass bar instead of the dashboard sidebar).
     () => {
-      try { db.exec("ALTER TABLE plugins ADD COLUMN capabilities TEXT NOT NULL DEFAULT '{}';"); } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
+      try {
+        db.exec("ALTER TABLE plugins ADD COLUMN capabilities TEXT NOT NULL DEFAULT '{}';");
+      } catch (err) {
+        console.warn('[migrations] Non-fatal migration step failed:', err);
+      }
     },
     // Migration 158: TOFU pin for a plugin's author signing key (#plugins, #4).
     // Set on first install of a signed plugin; a later install whose registry key
     // differs is a hard stop (author change / key rotation / attack) unless an
     // admin re-trusts. NULL for unsigned plugins (signing is opt-in).
     () => {
-      try { db.exec("ALTER TABLE plugins ADD COLUMN author_pubkey TEXT;"); } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
+      try {
+        db.exec('ALTER TABLE plugins ADD COLUMN author_pubkey TEXT;');
+      } catch (err) {
+        console.warn('[migrations] Non-fatal migration step failed:', err);
+      }
     },
     // Migration 159: hash-chained capability audit log (#plugins, L1 hardening).
     // Every host-mediated capability call the plugin makes is recorded at the RPC
@@ -3467,7 +3506,9 @@ function runMigrations(db: Database.Database): void {
           hash TEXT NOT NULL
         );`);
         db.exec('CREATE INDEX IF NOT EXISTS idx_plugin_audit_plugin ON plugin_capability_audit (plugin_id, id);');
-      } catch (err) { console.warn('[migrations] Non-fatal migration step failed:', err); }
+      } catch (err) {
+        console.warn('[migrations] Non-fatal migration step failed:', err);
+      }
     },
     // Migration 160: per-collection custom labels (#collections). Each list owns
     // its own label set (unlike the instance-wide `tags` table), and a place can
@@ -3487,7 +3528,9 @@ function runMigrations(db: Database.Database): void {
         PRIMARY KEY (collection_place_id, label_id)
       );`);
       db.exec('CREATE INDEX IF NOT EXISTS idx_collection_labels_collection ON collection_labels(collection_id);');
-      db.exec('CREATE INDEX IF NOT EXISTS idx_collection_place_labels_place ON collection_place_labels(collection_place_id);');
+      db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_collection_place_labels_place ON collection_place_labels(collection_place_id);',
+      );
       db.exec('CREATE INDEX IF NOT EXISTS idx_collection_place_labels_label ON collection_place_labels(label_id);');
     },
     // Migration 161: plugin-owned metadata on core entities (#1429). A namespaced
@@ -3507,7 +3550,9 @@ function runMigrations(db: Database.Database): void {
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         UNIQUE (plugin_id, entity_type, entity_id, key)
       );`);
-      db.exec('CREATE INDEX IF NOT EXISTS idx_plugin_meta_entity ON plugin_entity_metadata (plugin_id, entity_type, entity_id);');
+      db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_plugin_meta_entity ON plugin_entity_metadata (plugin_id, entity_type, entity_id);',
+      );
     },
 
     // Freeze the FX rate on settle-up transfers too (#1445). budget_settlements
@@ -3823,7 +3868,9 @@ function runMigrations(db: Database.Database): void {
           UNIQUE(collection_place_id, user_id)
         );
       `);
-      db.exec('CREATE INDEX IF NOT EXISTS idx_collection_place_ratings_place ON collection_place_ratings (collection_place_id);');
+      db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_collection_place_ratings_place ON collection_place_ratings (collection_place_id);',
+      );
     },
     // Per-segment travel mode (#1281): the day-plan route can use a different
     // transport mode for each leg. leg_transport_mode on an assignment is the mode
@@ -3849,11 +3896,11 @@ function runMigrations(db: Database.Database): void {
     // trailing migration re-runs on upgrade and actually adds these columns.
     () => {
       const planCols = db.prepare("PRAGMA table_info('vacay_plans')").all() as Array<{ name: string }>;
-      if (!planCols.some(col => col.name === 'school_holidays_enabled')) {
+      if (!planCols.some((col) => col.name === 'school_holidays_enabled')) {
         db.exec('ALTER TABLE vacay_plans ADD COLUMN school_holidays_enabled INTEGER DEFAULT 0');
       }
       const calendarCols = db.prepare("PRAGMA table_info('vacay_holiday_calendars')").all() as Array<{ name: string }>;
-      if (!calendarCols.some(col => col.name === 'type')) {
+      if (!calendarCols.some((col) => col.name === 'type')) {
         db.exec("ALTER TABLE vacay_holiday_calendars ADD COLUMN type TEXT NOT NULL DEFAULT 'public_holiday'");
       }
     },
@@ -3944,13 +3991,7 @@ function runMigrations(db: Database.Database): void {
     // is itself a place (that place's outgoing leg_transport_mode wins).
     // Appended LAST: the array is index-addressed against schema_version, so a slot
     // inserted anywhere above this line is simply skipped on every existing database.
-    () => {
-      try {
-        db.exec('ALTER TABLE day_assignments ADD COLUMN incoming_leg_transport_mode TEXT');
-      } catch (err: any) {
-        if (!err.message?.includes('duplicate column name')) throw err;
-      }
-    },
+    () => migrateIncomingLegTransportMode(db),
     // #1298 — an expense can hang off a place, exactly as it already hangs off a
     // reservation. Same nullable FK, same ON DELETE SET NULL: the delete paths
     // take the linked expense with the place themselves, so the constraint is a
@@ -3959,8 +4000,10 @@ function runMigrations(db: Database.Database): void {
     // slot inserted above this line never runs on an existing database.
     () => {
       const cols = db.prepare("SELECT name FROM pragma_table_info('budget_items')").all() as Array<{ name: string }>;
-      if (!cols.some(c => c.name === 'place_id')) {
-        db.exec('ALTER TABLE budget_items ADD COLUMN place_id INTEGER REFERENCES places(id) ON DELETE SET NULL DEFAULT NULL');
+      if (!cols.some((c) => c.name === 'place_id')) {
+        db.exec(
+          'ALTER TABLE budget_items ADD COLUMN place_id INTEGER REFERENCES places(id) ON DELETE SET NULL DEFAULT NULL',
+        );
       }
     },
     // A reservation_day_positions row only makes sense when its reservation and
@@ -4002,7 +4045,7 @@ function runMigrations(db: Database.Database): void {
     () => {
       const upsert = db.prepare(
         `INSERT INTO app_settings (key, value) VALUES (?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
       );
       for (const column of ['maps_api_key', 'unsplash_api_key'] as const) {
         const existing = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(column) as
@@ -4013,14 +4056,14 @@ function runMigrations(db: Database.Database): void {
           .prepare(
             `SELECT id, ${column} AS value FROM users
               WHERE role = 'admin' AND ${column} IS NOT NULL AND ${column} != ''
-              ORDER BY id ASC LIMIT 1`
+              ORDER BY id ASC LIMIT 1`,
           )
           .get() as { id: number; value: string } | undefined;
         if (!row?.value) continue;
         const otherHolder = db
           .prepare(
             `SELECT 1 FROM users
-              WHERE id != ? AND ${column} IS NOT NULL AND ${column} != '' LIMIT 1`
+              WHERE id != ? AND ${column} IS NOT NULL AND ${column} != '' LIMIT 1`,
           )
           .get(row.id);
         if (otherHolder) continue;
@@ -4035,12 +4078,14 @@ function runMigrations(db: Database.Database): void {
     // Guarded so re-running the migration tail is a no-op.
     () => {
       const cols = db.prepare("SELECT name FROM pragma_table_info('trek_photos')").all() as Array<{ name: string }>;
-      const has = (name: string) => cols.some(c => c.name === name);
+      const has = (name: string) => cols.some((c) => c.name === name);
       if (!has('taken_at')) db.exec('ALTER TABLE trek_photos ADD COLUMN taken_at TEXT');
       if (!has('lat')) db.exec('ALTER TABLE trek_photos ADD COLUMN lat REAL');
       if (!has('lng')) db.exec('ALTER TABLE trek_photos ADD COLUMN lng REAL');
       // Answering "which photos of this journey have coordinates" without a scan.
-      db.exec('CREATE INDEX IF NOT EXISTS idx_trek_photos_geo ON trek_photos(lat, lng) WHERE lat IS NOT NULL AND lng IS NOT NULL');
+      db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_trek_photos_geo ON trek_photos(lat, lng) WHERE lat IS NOT NULL AND lng IS NOT NULL',
+      );
     },
     // A journey shared while the trip is still running reads like a blog, and a
     // blog puts the newest entry first (#1614). The owner decides per share link,
@@ -4048,8 +4093,10 @@ function runMigrations(db: Database.Database): void {
     // journey. Off by default: an already-published link must not reorder itself
     // under its readers.
     () => {
-      const cols = db.prepare("SELECT name FROM pragma_table_info('journey_share_tokens')").all() as Array<{ name: string }>;
-      if (!cols.some(c => c.name === 'newest_first')) {
+      const cols = db.prepare("SELECT name FROM pragma_table_info('journey_share_tokens')").all() as Array<{
+        name: string;
+      }>;
+      if (!cols.some((c) => c.name === 'newest_first')) {
         db.exec('ALTER TABLE journey_share_tokens ADD COLUMN newest_first INTEGER NOT NULL DEFAULT 0');
       }
     },
@@ -4110,7 +4157,9 @@ function runMigrations(db: Database.Database): void {
 
       type Row = { id: number; region_code: string; region_name: string; country_code: string };
       const rows = db
-        .prepare(`SELECT id, region_code, region_name, country_code FROM visited_regions WHERE UPPER(COALESCE(country_code, '')) = 'GB'`)
+        .prepare(
+          `SELECT id, region_code, region_name, country_code FROM visited_regions WHERE UPPER(COALESCE(country_code, '')) = 'GB'`,
+        )
         .all() as Row[];
       if (rows.length === 0) return;
 
@@ -4177,7 +4226,7 @@ function runMigrations(db: Database.Database): void {
       const rows = db
         .prepare(
           `SELECT id, ticket_json FROM budget_items
-            WHERE ticket_json IS NOT NULL AND ticket_json != '' AND COALESCE(note, '') = ''`
+            WHERE ticket_json IS NOT NULL AND ticket_json != '' AND COALESCE(note, '') = ''`,
         )
         .all() as Array<{ id: number; ticket_json: string }>;
       const restore = db.prepare('UPDATE budget_items SET note = ?, ticket_json = NULL WHERE id = ?');
@@ -4238,6 +4287,43 @@ function runMigrations(db: Database.Database): void {
       }
     },
 
+    // Reservations an automated ingest parked for review are 'staged' and stay
+    // out of the two anonymous exports (ICS feed, shared trip) until a person
+    // confirms them. Nothing writes 'staged' yet; this is the gate the mail
+    // ingest writes through.
+    //
+    // 'live' as the default is what keeps this from being a breaking change:
+    // SQLite fills every existing row on the ALTER, and no current writer names
+    // the column, so every booking that is visible today stays visible.
+    // Appended LAST, the array is index-addressed against schema_version.
+    () => {
+      const hasColumn = db.prepare("SELECT 1 FROM pragma_table_info('reservations') WHERE name = 'ingest_state'").get();
+      if (!hasColumn) {
+        db.exec("ALTER TABLE reservations ADD COLUMN ingest_state TEXT NOT NULL DEFAULT 'live'");
+      }
+    },
+
+    /*
+     * Separate an integration key from an MCP token (#2089).
+     *
+     * Both live in mcp_tokens and until now both opened everything a token can
+     * open. That was fine while /mcp was the only consumer; with a public REST
+     * surface it means a key somebody minted for a chat client also reads their
+     * trips over HTTP, and a key minted for an integration can drive every MCP
+     * tool. One credential, two very different blast radii.
+     *
+     * `kind` splits them, and every existing row becomes 'mcp' — that is what
+     * they were issued for, and silently widening a key that is already in
+     * somebody's config would be the opposite of what this migration is for.
+     *
+     * Appended LAST: the array is index-addressed against schema_version.
+     */
+    () => {
+      const cols = db.prepare("SELECT name FROM pragma_table_info('mcp_tokens')").all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === 'kind')) {
+        db.exec("ALTER TABLE mcp_tokens ADD COLUMN kind TEXT NOT NULL DEFAULT 'mcp'");
+      }
+    },
   ];
 
   if (currentVersion < migrations.length) {

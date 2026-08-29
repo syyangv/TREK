@@ -79,7 +79,11 @@ function makeLegacyDb(): Database.Database {
   );
 
   const { version } = db.prepare('SELECT version FROM schema_version').get() as { version: number };
-  db.prepare('UPDATE schema_version SET version = ?').run(version - 1);
+  // The merged tail keeps the three fork slots before upstream's two new
+  // slots. Rewind to the slot immediately before the fork backfill so this
+  // test still exercises the actual upgrade migration rather than the final
+  // upstream token-kind guard.
+  db.prepare('UPDATE schema_version SET version = ?').run(version - 3);
 
   return db;
 }

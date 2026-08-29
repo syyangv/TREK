@@ -271,7 +271,7 @@ const admin: TranslationStrings = {
   'admin.plugins.perm.db:write:vacay':
     'Urlaubstage und Betriebsferien im aktiven Plan des handelnden Nutzers umschalten (benötigt das Vacay-Addon)',
   'admin.plugins.perm.db:write:journal':
-    'Tagebucheinträge in Reisetagebüchern anlegen, bearbeiten und löschen, die der handelnde Nutzer bearbeiten kann (benötigt das Journey-Addon)',
+    'Tagebucheinträge in Reisetagebüchern anlegen, bearbeiten, löschen und mit Fotos versehen, die der handelnde Nutzer bearbeiten kann (benötigt das Journey-Addon)',
   'admin.plugins.perm.db:write:collections':
     'Sammlungen anlegen und bearbeiten und Orte darin speichern, mit der Sammlungsrolle des handelnden Nutzers (benötigt das Collections-Addon)',
   'admin.plugins.perm.db:write:files':
@@ -330,6 +330,12 @@ const admin: TranslationStrings = {
   'admin.plugins.perm.hook:day-schedule-provider': 'Zeiteinträge an den Tagesplan anhängen (Ladestopps, Puffer)',
   'admin.plugins.perm.hook:day-tint-provider':
     'Tage im Tagesplan farblich markieren (z. B. zu welchem Reiseabschnitt ein Tag gehört)',
+  'admin.plugins.cap.mcpTools': 'Veröffentlicht KI-Tools',
+  'admin.plugins.mcpToolsTitle': 'Veröffentlichte KI-Tools',
+  'admin.plugins.mcpToolsHint':
+    'Ein Assistent kann sie im Namen eines Nutzers ausführen. Jedes handelt mit den oben erteilten Rechten.',
+  'admin.plugins.perm.mcp:tools':
+    'Tools veröffentlichen, die ein KI-Assistent in deinem Namen ausführen kann (es handelt mit den Rechten, die du dem Plugin hier erteilst, nicht mit denen des Assistenten)',
   'admin.plugins.perm.geolocation:read':
     'Deinen Live-Standort abfragen, solange eine seiner Ansichten offen ist (TREK liest ihn mit der Standortfreigabe dieser Seite, nicht mit einer eigenen des Plugins)',
   'admin.plugins.perm.hook:pdf-section-provider': 'Textabschnitte an den PDF-Export einer Reise anhängen',

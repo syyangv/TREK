@@ -127,8 +127,8 @@ export default defineConfig(({ mode }) => ({
             // handled by the rule above). Best-effort offline only:
             // opportunistically caches what the user has already
             // viewed online. Full pre-download offline maps require the Leaflet
-            // renderer (raster prefetch in tilePrefetcher.ts) — the GL vector
-            // pipeline is not prefetched. StaleWhileRevalidate keeps the basemap
+            // renderer (raster prefetch in tilePrefetcher.ts and vector prefetch in
+            // glPrefetcher.ts). StaleWhileRevalidate keeps the basemap
             // fresh online while still serving from cache when offline. Mapbox
             // sends CORS, so responses are non-opaque (real 200s, no quota pad).
             urlPattern: /^https:\/\/(api\.mapbox\.com|[a-d]\.tiles\.mapbox\.com)\/.*/i,
@@ -142,13 +142,23 @@ export default defineConfig(({ mode }) => ({
           {
             // OpenFreeMap MapLibre glyphs, sprites and vector tiles (the style
             // itself is handled by the style rule above).
-            // Same best-effort offline model as Mapbox GL: viewed resources are
-            // reused from cache, but the vector tile pipeline is not prefetched.
+            //
+            // CacheFirst, and sharing its cache with the prefetcher: OpenFreeMap
+            // serves tiles under a versioned planet path, so a cached tile is
+            // never stale — a new planet is a new URL. StaleWhileRevalidate
+            // would revalidate every tile of a pre-downloaded region on the next
+            // online visit for nothing.
+            //
+            // cacheName matches sync/glPrefetcher.ts, which writes here directly:
+            // one cache means normal browsing tops the offline region up instead
+            // of filling a second copy beside it. maxEntries is above the
+            // prefetcher's own cap so a browsing session cannot evict a region
+            // the user asked to keep.
             urlPattern: /^https:\/\/tiles\.openfreemap\.org\/.*/i,
-            handler: 'StaleWhileRevalidate',
+            handler: 'CacheFirst',
             options: {
-              cacheName: 'openfreemap-tiles',
-              expiration: { maxEntries: 3000, maxAgeSeconds: 30 * 24 * 60 * 60 },
+              cacheName: 'gl-map-offline',
+              expiration: { maxEntries: 6000, maxAgeSeconds: 90 * 24 * 60 * 60 },
               cacheableResponse: { statuses: [200] },
             },
           },

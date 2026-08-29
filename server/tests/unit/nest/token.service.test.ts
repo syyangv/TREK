@@ -1,3 +1,20 @@
+// ---------------------------------------------------------------------------
+// Imports (after mocks)
+// ---------------------------------------------------------------------------
+import { runMigrations } from '../../../src/db/migrations';
+import { createTables } from '../../../src/db/schema';
+import { revokeUserSessions } from '../../../src/mcp/sessionManager';
+import { EphemeralTokenService } from '../../../src/nest/auth/ephemeral-token.service';
+import { createEphemeralToken } from '../../../src/nest/auth/ephemeral-tokens';
+import { DatabaseService } from '../../../src/nest/database/database.service';
+import { TokenService } from '../../../src/nest/tokens/token.service';
+import { TokensModule } from '../../../src/nest/tokens/tokens.module';
+import { createUser } from '../../helpers/factories';
+import { expectRegisteredProvider } from '../../helpers/module-providers';
+import { resetTestDb } from '../../helpers/test-db';
+
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
+
 /**
  * token.service.test.ts
  *
@@ -30,23 +47,6 @@ const { testDb, dbMock } = vi.hoisted(() => {
 vi.mock('../../../src/db/database', () => dbMock);
 vi.mock('../../../src/nest/auth/ephemeral-tokens', () => ({ createEphemeralToken: vi.fn() }));
 vi.mock('../../../src/mcp/sessionManager', () => ({ revokeUserSessions: vi.fn() }));
-
-// ---------------------------------------------------------------------------
-// Imports (after mocks)
-// ---------------------------------------------------------------------------
-
-import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
-import { createTables } from '../../../src/db/schema';
-import { runMigrations } from '../../../src/db/migrations';
-import { resetTestDb } from '../../helpers/test-db';
-import { createUser } from '../../helpers/factories';
-import { TokenService } from '../../../src/nest/tokens/token.service';
-import { TokensModule } from '../../../src/nest/tokens/tokens.module';
-import { DatabaseService } from '../../../src/nest/database/database.service';
-import { createEphemeralToken } from '../../../src/nest/auth/ephemeral-tokens';
-import { revokeUserSessions } from '../../../src/mcp/sessionManager';
-import { expectRegisteredProvider } from '../../helpers/module-providers';
-import { EphemeralTokenService } from '../../../src/nest/auth/ephemeral-token.service';
 
 const svc = new TokenService(new DatabaseService(testDb), new EphemeralTokenService());
 
@@ -91,9 +91,9 @@ describe('MCP token service', () => {
   it('AUTH-DB-044: createMcpToken returns 400 when user has 10 tokens already', () => {
     const { user } = createUser(testDb);
     for (let i = 0; i < 10; i++) {
-      testDb.prepare(
-        'INSERT INTO mcp_tokens (user_id, name, token_hash, token_prefix) VALUES (?, ?, ?, ?)'
-      ).run(user.id, `Token ${i}`, `hash${i}`, `trek_prefix${i}`);
+      testDb
+        .prepare('INSERT INTO mcp_tokens (user_id, name, token_hash, token_prefix) VALUES (?, ?, ?, ?)')
+        .run(user.id, `Token ${i}`, `hash${i}`, `trek_prefix${i}`);
     }
     const result = svc.createMcpToken(user.id, 'One More');
     expect(result.status).toBe(400);
@@ -121,7 +121,9 @@ describe('MCP token service', () => {
     const { user } = createUser(testDb);
     const created = svc.createMcpToken(user.id, 'sweep-down');
     const tokenId = String((created.token as { id: number }).id);
-    vi.mocked(revokeUserSessions).mockImplementationOnce(() => { throw new Error('sweep down'); });
+    vi.mocked(revokeUserSessions).mockImplementationOnce(() => {
+      throw new Error('sweep down');
+    });
 
     expect(svc.deleteMcpToken(user.id, tokenId)).toEqual({ success: true });
     expect(testDb.prepare('SELECT id FROM mcp_tokens WHERE id = ?').get(tokenId)).toBeUndefined();
@@ -151,6 +153,101 @@ describe('MCP token service', () => {
 });
 
 // ---------------------------------------------------------------------------
+// API keys — the same table, a different door
+//
+// An MCP token drives every assistant tool; an API key reads trips over HTTP.
+// The kind is in the WHERE clause of every lookup, so these tests are the ones
+// that would catch a credential quietly opening the wrong surface.
+// ---------------------------------------------------------------------------
+
+describe('API key service', () => {
+  it('TOKEN-010: an API key does not verify as an MCP token', () => {
+    const { user } = createUser(testDb);
+    const created = svc.createApiToken(user.id, 'dawarich');
+    const raw = (created.token as { raw_token: string }).raw_token;
+
+    expect(svc.verifyApiToken(raw)?.id).toBe(user.id);
+    expect(svc.verifyMcpToken(raw)).toBeNull();
+  });
+
+  it('TOKEN-011: an MCP token does not verify as an API key', () => {
+    const { user } = createUser(testDb);
+    const created = svc.createMcpToken(user.id, 'claude');
+    const raw = (created.token as { raw_token: string }).raw_token;
+
+    expect(svc.verifyMcpToken(raw)?.id).toBe(user.id);
+    expect(svc.verifyApiToken(raw)).toBeNull();
+  });
+
+  it('TOKEN-012: each list shows only its own kind', () => {
+    const { user } = createUser(testDb);
+    svc.createMcpToken(user.id, 'claude');
+    svc.createApiToken(user.id, 'dawarich');
+
+    const mcp = svc.listMcpTokens(user.id) as Record<string, unknown>[];
+    const api = svc.listApiTokens(user.id) as Record<string, unknown>[];
+    expect(mcp.map((t) => t.name)).toEqual(['claude']);
+    expect(api.map((t) => t.name)).toEqual(['dawarich']);
+  });
+
+  it('TOKEN-013: deleting across kinds 404s, identically to an unknown id', () => {
+    const { user } = createUser(testDb);
+    const mcpId = String((svc.createMcpToken(user.id, 'claude').token as { id: number }).id);
+    const apiId = String((svc.createApiToken(user.id, 'dawarich').token as { id: number }).id);
+
+    expect(svc.deleteApiToken(user.id, mcpId)).toEqual({ error: 'Token not found', status: 404 });
+    expect(svc.deleteMcpToken(user.id, apiId)).toEqual({ error: 'Token not found', status: 404 });
+    // Neither row was touched: a wrong-kind delete must not be a way to revoke
+    // someone's assistant access from the API-key screen.
+    expect(testDb.prepare('SELECT id FROM mcp_tokens WHERE id = ?').get(mcpId)).toBeDefined();
+    expect(testDb.prepare('SELECT id FROM mcp_tokens WHERE id = ?').get(apiId)).toBeDefined();
+  });
+
+  it('TOKEN-014: the ten-token ceiling counts each kind on its own', () => {
+    const { user } = createUser(testDb);
+    for (let i = 0; i < 10; i += 1) svc.createMcpToken(user.id, `mcp-${i}`);
+
+    expect(svc.createMcpToken(user.id, 'one-too-many').status).toBe(400);
+    // A full MCP shelf must not lock the user out of minting an API key.
+    expect(svc.createApiToken(user.id, 'dawarich').status).toBeUndefined();
+  });
+
+  it('TOKEN-015: an API key is stored hashed, with only a prefix in the clear', () => {
+    const { user } = createUser(testDb);
+    const created = svc.createApiToken(user.id, 'dawarich');
+    const raw = (created.token as { raw_token: string }).raw_token;
+
+    const row = testDb
+      .prepare('SELECT token_hash, token_prefix, kind FROM mcp_tokens WHERE user_id = ?')
+      .get(user.id) as { token_hash: string; token_prefix: string; kind: string };
+    expect(row.kind).toBe('api');
+    expect(row.token_hash).not.toBe(raw);
+    expect(raw.startsWith(row.token_prefix)).toBe(true);
+  });
+
+  it('TOKEN-016: verifying an API key records last_used_at, so a stale key is visible', () => {
+    const { user } = createUser(testDb);
+    const raw = (svc.createApiToken(user.id, 'dawarich').token as { raw_token: string }).raw_token;
+
+    const before = svc.listApiTokens(user.id) as Record<string, unknown>[];
+    expect(before[0].last_used_at).toBeNull();
+
+    svc.verifyApiToken(raw);
+    const after = svc.listApiTokens(user.id) as Record<string, unknown>[];
+    expect(after[0].last_used_at).not.toBeNull();
+  });
+
+  it('TOKEN-017: deleting an API key does not revoke unrelated MCP sessions', () => {
+    const { user } = createUser(testDb);
+    const created = svc.createApiToken(user.id, 'dawarich');
+    const tokenId = String((created.token as { id: number }).id);
+
+    expect(svc.deleteApiToken(user.id, tokenId)).toEqual({ success: true });
+    expect(revokeUserSessions).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // MCP tokens — the admin half
 //
 // Same table, no user scope. These came from AdminService, which only owned
@@ -175,11 +272,22 @@ describe('MCP token service (admin view)', () => {
     const { user: other } = createUser(testDb);
     svc.createMcpToken(user.id, 'a');
     svc.createMcpToken(other.id, 'b');
+    svc.createApiToken(user.id, 'dawarich');
 
     const all = svc.listAllMcpTokens() as Record<string, unknown>[];
     expect(all).toHaveLength(2);
-    expect(all.every(t => typeof t.username === 'string')).toBe(true);
-    expect(all.some(t => t.token_hash !== undefined)).toBe(false);
+    expect(all.every((t) => typeof t.username === 'string')).toBe(true);
+    expect(all.some((t) => t.token_hash !== undefined)).toBe(false);
+  });
+
+  it('TOKEN-018: admin MCP deletion cannot delete a public API key', () => {
+    const { user } = createUser(testDb);
+    const created = svc.createApiToken(user.id, 'dawarich');
+    const tokenId = String((created.token as { id: number }).id);
+
+    expect(svc.adminDeleteMcpToken(tokenId)).toEqual({ error: 'Token not found', status: 404 });
+    expect(testDb.prepare('SELECT id FROM mcp_tokens WHERE id = ?').get(tokenId)).toBeDefined();
+    expect(revokeUserSessions).not.toHaveBeenCalled();
   });
 
   it('TOKEN-004: adminDeleteMcpToken removes any user token and revokes that user', () => {
@@ -259,10 +367,16 @@ describe('verifyMcpToken', () => {
     const created = svc.createMcpToken(user.id, 'stamped');
     const raw = (created.token as { raw_token: string }).raw_token;
     const id = (created.token as { id: number }).id;
-    expect((testDb.prepare('SELECT last_used_at FROM mcp_tokens WHERE id = ?').get(id) as { last_used_at: string | null }).last_used_at).toBeNull();
+    expect(
+      (testDb.prepare('SELECT last_used_at FROM mcp_tokens WHERE id = ?').get(id) as { last_used_at: string | null })
+        .last_used_at,
+    ).toBeNull();
 
     svc.verifyMcpToken(raw);
-    expect((testDb.prepare('SELECT last_used_at FROM mcp_tokens WHERE id = ?').get(id) as { last_used_at: string | null }).last_used_at).not.toBeNull();
+    expect(
+      (testDb.prepare('SELECT last_used_at FROM mcp_tokens WHERE id = ?').get(id) as { last_used_at: string | null })
+        .last_used_at,
+    ).not.toBeNull();
 
     svc.verifyMcpToken('trek_wrong');
     expect(testDb.prepare('SELECT COUNT(*) c FROM mcp_tokens').get()).toEqual({ c: 1 });

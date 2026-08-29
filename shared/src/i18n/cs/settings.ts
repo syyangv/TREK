@@ -37,7 +37,7 @@ const settings: TranslationStrings = {
   'settings.mapCartoKeyHint': 'Podkladové mapy CARTO se bez klíče zobrazují s vodoznakem. Zdarma a bez účtu, na',
   'settings.mapCartoKeyLink': 'carto.com API klíč pro podkladové mapy',
   'settings.mapCartoKeyMissing':
-    'Tato šablona je podkladová mapa CARTO. Bez klíče CARTO vypálí do každé dlaždice nápis "API KEY REQUIRED".',
+    'Tato šablona je podkladová mapa CARTO. Bez klíče CARTO vypálí do každé dlaždice nápis "API KEY REQUIRED". Dokud klíč nezadáte, TREK zobrazuje výchozí podkladovou mapu.',
   'settings.mapStyle': 'Styl mapy',
   'settings.mapStylePlaceholder': 'Vyberte styl Mapbox',
   'settings.mapStyleHint': 'Preset nebo vaše vlastní URL mapbox://styles/USER/ID',
@@ -524,6 +524,32 @@ const settings: TranslationStrings = {
   'settings.alwaysShowRoutes': 'Vždy zobrazovat trasy rezervací',
   'settings.alwaysShowRoutesHint':
     'Automaticky zobrazí na mapě trasu každého letu, vlaku a jiné rezervace, aniž byste ji museli zapínat jednotlivě.',
+
+  // Public API keys (Settings -> Integrations)
+  'settings.apiKeys.title': 'Klíče API',
+  'settings.apiKeys.description':
+    'Klíče pro veřejné API, aby jiný software mohl číst tvoje cesty. Jen pro čtení: klíč nemůže nic měnit ani mazat.',
+  'settings.apiKeys.create': 'Vytvořit klíč',
+  'settings.apiKeys.empty': 'Zatím žádné klíče. Vytvoř jeden a připoj další software.',
+  'settings.apiKeys.createdAt': 'vytvořen',
+  'settings.apiKeys.usedAt': 'naposledy použit',
+  'settings.apiKeys.deleteTitle': 'Smazat klíč',
+  'settings.apiKeys.deleteMessage': 'Vše, co tento klíč používá, okamžitě přestane fungovat. Akci nelze vrátit zpět.',
+  'settings.apiKeys.deleted': 'Klíč smazán',
+  'settings.apiKeys.deleteFailed': 'Klíč se nepodařilo smazat',
+  'settings.apiKeys.createFailed': 'Klíč se nepodařilo vytvořit',
+  'settings.apiKeys.copy': 'Kopírovat',
+  'settings.apiKeys.docsHint': 'Pošli klíč jako "Authorization: Bearer ..." nebo "X-API-Key: ..." na /api/v1.',
+  'settings.apiKeys.modal.createTitle': 'Vytvořit klíč API',
+  'settings.apiKeys.modal.name': 'Název',
+  'settings.apiKeys.modal.namePlaceholder': 'např. Dawarich',
+  'settings.apiKeys.modal.nameHint': 'Jen pro tebe, abys klíč později poznal.',
+  'settings.apiKeys.modal.creating': 'Vytváří se...',
+  'settings.apiKeys.modal.create': 'Vytvořit',
+  'settings.apiKeys.modal.createdTitle': 'Klíč API vytvořen',
+  'settings.apiKeys.modal.createdWarning':
+    'Zkopíruj klíč hned teď. Zobrazí se jen jednou a později ho už nelze získat.',
+  'settings.apiKeys.modal.done': 'Hotovo',
 };
 
 export default settings;

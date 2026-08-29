@@ -2,7 +2,6 @@
  * Unit tests for MCP scope helper functions in server/src/mcp/scopes.ts.
  * No DB or mocks needed — pure functions only.
  */
-import { describe, it, expect } from 'vitest';
 import {
   validateScopes,
   canReadTrips,
@@ -13,6 +12,8 @@ import {
   ALL_SCOPES,
   SCOPE_INFO,
 } from '../../../src/mcp/scopes';
+
+import { describe, it, expect } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // ALL_SCOPES
@@ -46,7 +47,7 @@ describe('ALL_SCOPES', () => {
     expect(ALL_SCOPES.length).toBeGreaterThan(0);
   });
 
-  it('derives exactly the 14 known scope groups (ScopeGroup lockstep)', () => {
+  it('derives exactly the 17 known scope groups (ScopeGroup lockstep)', () => {
     // The runtime half of the ScopeGroup lockstep — the type half is
     // MCP_ACCESS_GROUPS_MATCH_SCOPE_GROUPS in src/mcp/nest-mcp-policy.ts,
     // covered by `npm run typecheck`. If this list changes, the MCP
@@ -57,12 +58,16 @@ describe('ALL_SCOPES', () => {
       'budget',
       'collab',
       'collections',
+      'files',
       'geo',
       'journey',
+      'memories',
       'notifications',
       'packing',
       'places',
+      'plugins',
       'reservations',
+      'settings',
       'todos',
       'trips',
       'vacay',

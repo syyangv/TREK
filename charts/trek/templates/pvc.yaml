@@ -4,7 +4,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ include "trek.fullname" . }}-data
   labels:
-    app: {{ include "trek.name" . }}
+    app: {{ include "trek.fullname" . }}
   {{- with .Values.persistence.data.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -26,7 +26,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ include "trek.fullname" . }}-uploads
   labels:
-    app: {{ include "trek.name" . }}
+    app: {{ include "trek.fullname" . }}
   {{- with .Values.persistence.uploads.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}

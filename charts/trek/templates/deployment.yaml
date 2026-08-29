@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: {{ include "trek.fullname" . }}
   labels:
-    app: {{ include "trek.name" . }}
+    app: {{ include "trek.fullname" . }}
 spec:
   replicas: 1
   # TREK is a single-writer SQLite app on a ReadWriteOnce PVC, so the default
@@ -14,14 +14,14 @@ spec:
     type: {{ .Values.updateStrategy | default "Recreate" }}
   selector:
     matchLabels:
-      app: {{ include "trek.name" . }}
+      app: {{ include "trek.fullname" . }}
   template:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
       labels:
-        app: {{ include "trek.name" . }}
+        app: {{ include "trek.fullname" . }}
     spec:
       {{- if .Values.imagePullSecrets }}
       imagePullSecrets:

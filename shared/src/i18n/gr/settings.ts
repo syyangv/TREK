@@ -40,7 +40,7 @@ const settings: TranslationStrings = {
     'Οι βασικοί χάρτες CARTO εμφανίζουν υδατογράφημα χωρίς κλειδί. Δωρεάν, χωρίς λογαριασμό, από',
   'settings.mapCartoKeyLink': 'κλειδί API βασικών χαρτών carto.com',
   'settings.mapCartoKeyMissing':
-    'Αυτό το πρότυπο είναι βασικός χάρτης CARTO. Χωρίς κλειδί, η CARTO τυπώνει "API KEY REQUIRED" σε κάθε πλακίδιο.',
+    'Αυτό το πρότυπο είναι βασικός χάρτης CARTO. Χωρίς κλειδί, η CARTO τυπώνει "API KEY REQUIRED" σε κάθε πλακίδιο. Μέχρι να εισαγάγετε κλειδί, το TREK εμφανίζει τον προεπιλεγμένο βασικό χάρτη.',
   'settings.mapStyle': 'Στυλ Χάρτη',
   'settings.mapStylePlaceholder': 'Επιλέξτε ένα στυλ Mapbox',
   'settings.mapStyleHint': 'Προκαθορισμένο ή δικό σας mapbox://styles/USER/ID URL',
@@ -544,6 +544,33 @@ const settings: TranslationStrings = {
   'settings.alwaysShowRoutes': 'Πάντα εμφάνιση διαδρομών κράτησης',
   'settings.alwaysShowRoutesHint':
     'Εμφανίζει αυτόματα στον χάρτη τη διαδρομή κάθε πτήσης, τρένου και άλλης κράτησης, χωρίς να χρειάζεται να την ενεργοποιείτε μία προς μία.',
+
+  // Public API keys (Settings -> Integrations)
+  'settings.apiKeys.title': 'Κλειδιά API',
+  'settings.apiKeys.description':
+    'Κλειδιά για το δημόσιο API, ώστε άλλο λογισμικό να μπορεί να διαβάζει τα ταξίδια σου. Μόνο για ανάγνωση: ένα κλειδί δεν μπορεί να αλλάξει ή να διαγράψει τίποτα.',
+  'settings.apiKeys.create': 'Δημιουργία κλειδιού',
+  'settings.apiKeys.empty': 'Δεν υπάρχουν κλειδιά ακόμη. Δημιούργησε ένα για να συνδέσεις άλλο λογισμικό.',
+  'settings.apiKeys.createdAt': 'δημιουργήθηκε',
+  'settings.apiKeys.usedAt': 'τελευταία χρήση',
+  'settings.apiKeys.deleteTitle': 'Διαγραφή κλειδιού',
+  'settings.apiKeys.deleteMessage':
+    'Ό,τι χρησιμοποιεί αυτό το κλειδί σταματά αμέσως να λειτουργεί. Η ενέργεια δεν αναιρείται.',
+  'settings.apiKeys.deleted': 'Το κλειδί διαγράφηκε',
+  'settings.apiKeys.deleteFailed': 'Δεν ήταν δυνατή η διαγραφή του κλειδιού',
+  'settings.apiKeys.createFailed': 'Δεν ήταν δυνατή η δημιουργία του κλειδιού',
+  'settings.apiKeys.copy': 'Αντιγραφή',
+  'settings.apiKeys.docsHint': 'Στείλε το κλειδί ως "Authorization: Bearer ..." ή "X-API-Key: ..." στο /api/v1.',
+  'settings.apiKeys.modal.createTitle': 'Δημιουργία κλειδιού API',
+  'settings.apiKeys.modal.name': 'Όνομα',
+  'settings.apiKeys.modal.namePlaceholder': 'π.χ. Dawarich',
+  'settings.apiKeys.modal.nameHint': 'Μόνο για σένα, για να αναγνωρίζεις το κλειδί αργότερα.',
+  'settings.apiKeys.modal.creating': 'Δημιουργία...',
+  'settings.apiKeys.modal.create': 'Δημιουργία',
+  'settings.apiKeys.modal.createdTitle': 'Το κλειδί API δημιουργήθηκε',
+  'settings.apiKeys.modal.createdWarning':
+    'Αντίγραψε το κλειδί τώρα. Εμφανίζεται μία φορά και δεν μπορεί να ανακτηθεί αργότερα.',
+  'settings.apiKeys.modal.done': 'Έτοιμο',
 };
 
 export default settings;
