@@ -113,6 +113,10 @@ unplanned in Places with nothing in the UI saying a further step was needed.
 - An explicit `assignment_id` always wins; the flag never creates a second stop.
 - The default is on. The linked place is nearly always meant to be part of that
   day, and leaving it off is precisely what silently files it as unplanned.
+- The upgrade migration also repairs older dated bookings that already had a
+  `place_id` and `day_id` but no day stop: it reuses an existing same-day stop
+  when possible, otherwise appends one and links the booking. Undated bookings
+  remain unplanned because they still have no safe day to schedule.
 
 Preserve the locale keys `reservations.alsoAddToDay` and
 `reservations.alsoAddToDayHint` in every locale.

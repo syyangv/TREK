@@ -55,4 +55,7 @@ Fix taken. An opt-in checkbox in the booking dialog, checked by default, sends
 transaction as the booking and binds `assignment_id` to it. Widening
 `plannedIds` to count bookings was considered and rejected -- it would stop the
 unplanned filter from being an actionable list of places still needing to be
-scheduled.
+scheduled. A follow-up boot migration repairs dated place-linked bookings
+created before that checkbox existed (including the observed legacy rows),
+without changing undated bookings or treating a metadata-only link as a day
+stop.
