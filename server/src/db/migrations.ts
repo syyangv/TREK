@@ -67,6 +67,72 @@ export function trimUserWhitespace(db: Database.Database): boolean {
   return hadCollision;
 }
 
+/**
+ * Repair bookings created before the fork's booking-place stop behavior.
+ *
+ * Older clients could persist a dated reservation with `place_id` but without
+ * the corresponding `day_assignments` row. That left the place in the
+ * Unplanned pool even though the booking already identified the day it belongs
+ * to. Keep the repair idempotent and trip-scoped: reuse an existing same-day
+ * stop when possible, otherwise append a new one, then bind the booking to it.
+ * Undated bookings are intentionally left alone because they still have no day
+ * on which to place the stop.
+ */
+export function backfillBookingPlaceStops(db: Database.Database): number {
+  type LegacyBooking = { reservation_id: number; day_id: number; place_id: number };
+
+  const bookings = db
+    .prepare(
+      `SELECT r.id AS reservation_id, r.day_id, r.place_id
+         FROM reservations r
+         JOIN days d ON d.id = r.day_id AND d.trip_id = r.trip_id
+         JOIN places p ON p.id = r.place_id AND p.trip_id = r.trip_id
+        WHERE r.assignment_id IS NULL
+          AND r.day_id IS NOT NULL
+          AND r.place_id IS NOT NULL
+          AND COALESCE(r.type, 'other') <> 'hotel'
+        ORDER BY r.id ASC`,
+    )
+    .all() as LegacyBooking[];
+
+  if (bookings.length === 0) return 0;
+
+  const findExisting = db.prepare(
+    `SELECT id
+       FROM day_assignments
+      WHERE day_id = ? AND place_id = ?
+      ORDER BY id ASC
+      LIMIT 1`,
+  );
+  const nextOrder = db.prepare(
+    `SELECT COALESCE(MAX(order_index), -1) + 1 AS order_index
+       FROM day_assignments
+      WHERE day_id = ?`,
+  );
+  const insertAssignment = db.prepare(
+    'INSERT INTO day_assignments (day_id, place_id, order_index) VALUES (?, ?, ?)',
+  );
+  const linkBooking = db.prepare(
+    'UPDATE reservations SET assignment_id = ? WHERE id = ? AND assignment_id IS NULL',
+  );
+
+  let repaired = 0;
+  for (const booking of bookings) {
+    const existing = findExisting.get(booking.day_id, booking.place_id) as { id: number } | undefined;
+    const assignmentId = existing?.id ?? Number(
+      insertAssignment.run(
+        booking.day_id,
+        booking.place_id,
+        (nextOrder.get(booking.day_id) as { order_index: number }).order_index,
+      ).lastInsertRowid,
+    );
+    linkBooking.run(assignmentId, booking.reservation_id);
+    repaired++;
+  }
+
+  return repaired;
+}
+
 function runMigrations(db: Database.Database): void {
   db.exec('CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)');
   const versionRow = db.prepare('SELECT version FROM schema_version').get() as { version: number } | undefined;
@@ -4154,6 +4220,21 @@ function runMigrations(db: Database.Database): void {
         db.exec('ALTER TABLE journey_entries ADD COLUMN location_type TEXT');
       } catch (err: any) {
         if (!err.message?.includes('duplicate column name')) throw err;
+      }
+    },
+
+    // Fork migration: repair dated place-linked bookings created before the
+    // booking dialog began creating their corresponding day stop. The helper
+    // is idempotent and runs in this migration's transaction, so an upgrade
+    // repairs legacy rows without changing the meaning of undated bookings.
+    () => {
+      // Some older database copies can retain a stale day-assignment index
+      // after a file-level restore. Rebuild it before the lookup below so the
+      // repair is self-contained and does not require manual DB maintenance.
+      db.exec('REINDEX idx_day_assignments_place_id');
+      const repaired = backfillBookingPlaceStops(db);
+      if (repaired > 0) {
+        console.log(`[DB] Backfilled ${repaired} booking place stop(s)`);
       }
     },
 
