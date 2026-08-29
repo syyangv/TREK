@@ -26,6 +26,25 @@ For the v4 component-by-component replacement decisions, see
 See [CI/CD deployment](ci-cd-phase-3-4-deployment.md) and
 [Tailscale self-hosting](TAILSCALE_SELF_HOSTING.md).
 
+## Google Places production credential
+
+- Use only `PLACES_API_KEY`; `GOOGLE_MAPS_API_KEY` is obsolete and deliberately
+  unsupported.
+- Keep the credential in the production Compose project `.env`. Never commit,
+  log, or expose its value to the client.
+- `docker-compose.yml` must pass `PLACES_API_KEY` into the app container. A key
+  present only in `.env` is ineffective unless this mapping survives an
+  upstream sync.
+- Restrict the Google Cloud key to `places.googleapis.com` and the production
+  server's public egress IP. Browser HTTP-referrer restrictions do not work for
+  TREK's server-side requests.
+- The production IP may change. Treat `API_KEY_IP_ADDRESS_BLOCKED` and loss of
+  Google photos, ratings, or opening hours as signals to verify the egress IP
+  and update the key restriction.
+- After release, verify the variable is set in the container with its value
+  redacted, run a minimal Places API probe, and confirm `/api/health` remains
+  `{"status":"ok"}`.
+
 ## Vacay and Obsidian
 
 - Preserve the Vacay addon and its read-only Obsidian Yearly Glance import.
@@ -136,6 +155,9 @@ See [PWA implementation handoff](pwa-template-handoff.md).
 - [ ] Offline map cache is retained across a PWA update.
 - [ ] A booking created with a place picked still offers the day-stop
       checkbox, and accepting it makes the place read as planned.
+- [ ] Google Places returns a successful result when `PLACES_API_KEY` is
+      configured; an invalid or missing key must not go unnoticed as an
+      OpenStreetMap fallback.
 - [ ] Main CI, strict i18n parity, Docker smoke, Helm, and security gates pass.
 - [ ] Released image matches the intended main commit and immutable digest.
 - [ ] Private production `/api/health` returns `{"status":"ok"}`.

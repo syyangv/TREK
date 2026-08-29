@@ -72,7 +72,7 @@ Most of what follows is an addon an admin switches on or off. Lists, Costs, Docu
 
 - **Day plans**: drag places between days and reorder inside a day, with undo. Notes and bookings drag the same way, and a map marker drops straight onto a day
 - **Maps**: Leaflet, Mapbox GL or MapLibre GL (OpenFreeMap, no token), with clustering, photo markers and route lines. 3D buildings and terrain are Mapbox only
-- **Place search**: Google Places when a key is set (photos, ratings, opening hours), otherwise OpenStreetMap with no key
+- **Place search**: Google Places when `PLACES_API_KEY` is set (photos, ratings, opening hours), otherwise OpenStreetMap with no key
 - **Place enrichment**: descriptions, facts, hours and photo candidates from OpenStreetMap, Wikipedia, Wikidata and Wikimedia Commons
 - **POI explore**: pull OpenStreetMap POIs by category for the current viewport over Overpass
 - **Import**: shared Google Maps and Naver Maps lists, plus GPX, KML and KMZ files
@@ -247,6 +247,24 @@ with secure defaults and every option documented inline. Download it, then:
 ```bash
 docker compose up -d
 ```
+
+### Google Places search
+
+To use Google Places instead of the OpenStreetMap search fallback, enable
+**Places API (New)** in a billed Google Cloud project and add the server-side
+credential to the Compose project `.env` file:
+
+```dotenv
+PLACES_API_KEY=your-google-places-api-key
+```
+
+The production Compose definition passes this variable into the TREK app
+container. Do not commit the value. Restrict the Google Cloud key to
+`places.googleapis.com` and, for a server deployment with a stable egress
+address, to the server's public IP. Browser HTTP-referrer restrictions are not
+compatible with TREK's server-side Places requests. If the public IP changes,
+update the key restriction or Google will reject requests and TREK will fall
+back to OpenStreetMap.
 
 See [Install with Docker Compose](https://github.com/liketrek/TREK/wiki/Install-Docker-Compose)
 for the full walkthrough.

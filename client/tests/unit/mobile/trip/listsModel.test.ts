@@ -10,6 +10,7 @@ import {
   isPackingPlaceholder,
   isTodoOverdue,
   packingCategoryOrder,
+  packingHasCompanions,
   packingItemWeight,
   packingProgress,
   packingStatusFiltered,
@@ -28,6 +29,12 @@ import { buildPackingItem, buildTodoItem } from '../../../helpers/factories';
 const TODAY = '2026-07-15';
 
 describe('listsModel — packing', () => {
+  it('FE-MOB-LSTM-000: treats exactly one resolved member as a solo trip', () => {
+    expect(packingHasCompanions([])).toBe(true)
+    expect(packingHasCompanions([{ id: 1 }])).toBe(false)
+    expect(packingHasCompanions([{ id: 1 }, { id: 2 }])).toBe(true)
+  })
+
   it('FE-MOB-LSTM-001: packingViewItems splits the common pool from private items', () => {
     const common = buildPackingItem({ id: 1, is_private: 0 });
     const noFlag = buildPackingItem({ id: 2 });

@@ -5,7 +5,7 @@ import { Eyebrow, FIELD_CLS, FormSheetFooter, FormSheetHeader } from '../sheets/
 import { avatarSrc } from '../../../../utils/avatarSrc'
 import type { PackingItem, TripMember } from '../../../../types'
 import type { TripPlanner } from '../MTripShell'
-import { isPackingPlaceholder } from './listsModel'
+import { isPackingPlaceholder, packingHasCompanions } from './listsModel'
 
 export interface MPackItemSheetProps {
   planner: TripPlanner
@@ -63,6 +63,9 @@ export default function MPackItemSheet({
   const visibility: 'common' | 'personal' | 'shared' = isCommon ? 'common' : recipientIds.length > 0 ? 'shared' : 'personal'
   const iAmContributor = (item.contributors || []).some(c => c.user_id === currentUserId)
   const others = tripMembers.filter(m => m.id !== item.owner_id && m.id !== currentUserId)
+  // An empty roster is still hydrating; only one resolved member proves this
+  // is a solo trip and makes the sharing controls meaningless.
+  const hasCompanions = packingHasCompanions(tripMembers)
 
   const setSharing = (nextVisibility: 'common' | 'personal' | 'shared', nextRecipients: number[]) => {
     tripActions.setPackingItemSharing(tripId, item.id, nextVisibility, nextRecipients)
@@ -152,7 +155,7 @@ export default function MPackItemSheet({
           )}
         </div>
 
-        {!isPlaceholder && (
+        {hasCompanions && !isPlaceholder && (
           <>
             <Eyebrow className="mb-[6px] mt-4 uppercase">{t('packing.share')}</Eyebrow>
 

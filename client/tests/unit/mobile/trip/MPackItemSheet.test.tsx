@@ -75,6 +75,14 @@ describe('MPackItemSheet', () => {
     expect(screen.queryByText('packing.share')).toBeNull()
   })
 
+  it('FE-MOB-PACKITEM-006a: hides sharing controls when the trip has only one member', () => {
+    setup({ tripMembers: [ANNA] })
+
+    expect(screen.queryByText('packing.share')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'packing.viewCommon' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'packing.tierPersonal' })).toBeNull()
+  })
+
   it('FE-MOB-PACKITEM-007: strips non-digits from quantity and weight', () => {
     setup()
 
