@@ -57,6 +57,7 @@ import { PackingService } from '../../../src/nest/packing/packing.service';
 import { FilesService } from '../../../src/nest/files/files.service';
 import { ReservationsService } from '../../../src/nest/reservations/reservations.service';
 import { ReservationsReadRepository } from '../../../src/nest/reservations/reservations-read.repository';
+import type { AssignmentsService } from '../../../src/nest/assignments/assignments.service';
 import { BudgetService } from '../../../src/nest/budget/budget.service';
 import { ExchangeRatesService } from '../../../src/nest/budget/exchange-rates.service';
 import { CollabService } from '../../../src/nest/collab/collab.service';
@@ -81,6 +82,7 @@ import { TrekPhotosRepository } from '../../../src/nest/photos/trek-photos.repos
 // actual SQL of every domain it fans out to, so a shape change downstream shows
 // up here instead of being papered over by a stub.
 const dbs = () => new DatabaseService(testDb);
+const reservationAssignments = { dayExists: vi.fn(), placeExists: vi.fn(), createAssignment: vi.fn() } as unknown as AssignmentsService;
 const budgetSvc = new BudgetService(dbs(), new PermissionsService(dbs()), new ExchangeRatesService(), new RealtimeService());
 const daysSvc = new DaysService(dbs(), new PermissionsService(dbs()), new RealtimeService(), new QueryHelpersService(dbs()));
 // One shared cache instance (the PlacePhotoCacheService rule): the in-flight dedup in
@@ -100,7 +102,7 @@ const buildReadModel = (database: DatabaseService, roster: TripMembersService = 
   new TripReadModelService(
     database, roster, daysSvc, accommodationsSvc, budgetSvc,
     new PackingService(dbs(), new PermissionsService(dbs()), new RealtimeService(), notificationsStub()),
-    new ReservationsService(dbs(), new PermissionsService(dbs()), budgetSvc, new RealtimeService(), notificationsStub(), new ReservationsReadRepository(dbs())),
+    new ReservationsService(dbs(), new PermissionsService(dbs()), budgetSvc, new RealtimeService(), notificationsStub(), new ReservationsReadRepository(dbs()), reservationAssignments),
     new CollabService(dbs(), new PermissionsService(dbs()), new RealtimeService(), notificationsStub(), makeStorageFixture('').storage, new RateLimitService()),
     placesSvc,
     new TodoService(dbs(), new PermissionsService(dbs()), new RealtimeService()),

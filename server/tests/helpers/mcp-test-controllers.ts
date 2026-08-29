@@ -130,7 +130,9 @@ export function createMcpTestRegistry(): McpRegistry {
     journeyDomain,
     generalStorage,
   );
-  const reservationsService = new ReservationsService(dbService, permissionsService, budgetService, realtimeService, notificationsStub(), new ReservationsReadRepository(dbService));
+  // One instance, shared by AssignmentsMcp, ReservationsMcp and PlacesMcp.
+  const assignmentsService = new AssignmentsService(dbService, permissionsService, realtimeService, queryHelpersService, journeyDomain);
+  const reservationsService = new ReservationsService(dbService, permissionsService, budgetService, realtimeService, notificationsStub(), new ReservationsReadRepository(dbService), assignmentsService);
   const accommodationsService = new AccommodationsService(dbService, permissionsService, realtimeService);
   const membersService = new TripMembersService(dbService, budgetService, new UserCleanupService(dbService, budgetService), permissionsService, realtimeService, notificationsStub());
   const tripsService = new TripsService(
@@ -156,7 +158,6 @@ export function createMcpTestRegistry(): McpRegistry {
   // answer truthfully here instead of against the process-wide singleton.
   const addonsService = new AddonsService(dbService);
   // One instance, three consumers: AssignmentsMcp, ReservationsMcp and PlacesMcp.
-  const assignmentsService = new AssignmentsService(dbService, permissionsService, realtimeService, queryHelpersService, journeyDomain);
   return createTestRegistry(
     [
       new TagsMcp(new TagsService(dbService), authService),

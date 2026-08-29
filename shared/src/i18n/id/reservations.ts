@@ -46,6 +46,8 @@ const reservations: TranslationStrings = {
   'reservations.meta.noAccommodation': 'Tidak ada',
   'reservations.meta.hotelPlace': 'Akomodasi',
   'reservations.meta.linkPlace': 'Tempat / Aktivitas',
+  'reservations.alsoAddToDay': 'Tambahkan juga tempat ini ke {day}',
+  'reservations.alsoAddToDayHint': 'Tanpa perhentian pada hari itu, tempat tetap tercatat sebagai belum direncanakan.',
   'reservations.meta.pickPlace': 'Pilih tempat / aktivitas',
   'reservations.meta.pickHotel': 'Pilih akomodasi',
   'reservations.meta.fromDay': 'Dari',

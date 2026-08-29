@@ -45,6 +45,8 @@ const reservations: TranslationStrings = {
   'reservations.meta.noAccommodation': 'なし',
   'reservations.meta.hotelPlace': '宿泊先',
   'reservations.meta.linkPlace': '場所 / アクティビティ',
+  'reservations.alsoAddToDay': 'この場所を{day}にも追加',
+  'reservations.alsoAddToDayHint': 'その日に立ち寄り先がないと、場所は未計画のまま表示されます。',
   'reservations.meta.pickPlace': '場所 / アクティビティを選択',
   'reservations.meta.pickHotel': '宿泊先を選択',
   'reservations.meta.fromDay': '開始',

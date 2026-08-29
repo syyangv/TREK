@@ -63,6 +63,7 @@ import { PackingService } from '../../../src/nest/packing/packing.service';
 import { FilesService } from '../../../src/nest/files/files.service';
 import { ReservationsService } from '../../../src/nest/reservations/reservations.service';
 import { ReservationsReadRepository } from '../../../src/nest/reservations/reservations-read.repository';
+import type { AssignmentsService } from '../../../src/nest/assignments/assignments.service';
 import { BudgetService } from '../../../src/nest/budget/budget.service';
 import { ExchangeRatesService } from '../../../src/nest/budget/exchange-rates.service';
 import { CollabService } from '../../../src/nest/collab/collab.service';
@@ -90,6 +91,7 @@ import { EphemeralTokenService } from '../../../src/nest/auth/ephemeral-token.se
 // Real sibling services over the same in-memory DB — updateTrip's date-shift
 // resyncs and the summary/bundle aggregation run their actual SQL.
 const dbs = () => new DatabaseService(testDb);
+const reservationAssignments = { dayExists: vi.fn(), placeExists: vi.fn(), createAssignment: vi.fn() } as unknown as AssignmentsService;
 const budgetSvc = new BudgetService(dbs(), new PermissionsService(dbs()), new ExchangeRatesService(), new RealtimeService());
 const daysSvc = new DaysService(dbs(), new PermissionsService(dbs()), new RealtimeService(), new QueryHelpersService(dbs()));
 // Same collaborator set the container hands PlacesService (see places.service.test.ts).
@@ -117,7 +119,7 @@ const createAccommodation = accommodationsSvc.createAccommodation.bind(accommoda
 
 const svc = new TripsService(
   dbs(),
-  new ReservationsService(dbs(), new PermissionsService(dbs()), budgetSvc, new RealtimeService(), notificationsStub(), new ReservationsReadRepository(dbs())),
+  new ReservationsService(dbs(), new PermissionsService(dbs()), budgetSvc, new RealtimeService(), notificationsStub(), new ReservationsReadRepository(dbs()), reservationAssignments),
   daysSvc,
   new PermissionsService(dbs()),
   budgetSvc,
@@ -130,7 +132,7 @@ const membersSvc = new TripMembersService(dbs(), budgetSvc, new UserCleanupServi
 const readModelSvc = new TripReadModelService(
   dbs(), membersSvc, daysSvc, accommodationsSvc, budgetSvc,
   new PackingService(dbs(), new PermissionsService(dbs()), new RealtimeService(), notificationsStub()),
-  new ReservationsService(dbs(), new PermissionsService(dbs()), budgetSvc, new RealtimeService(), notificationsStub(), new ReservationsReadRepository(dbs())),
+  new ReservationsService(dbs(), new PermissionsService(dbs()), budgetSvc, new RealtimeService(), notificationsStub(), new ReservationsReadRepository(dbs()), reservationAssignments),
   new CollabService(dbs(), new PermissionsService(dbs()), new RealtimeService(), notificationsStub(), coversFx.storage, new RateLimitService()),
   placesSvc,
   new TodoService(dbs(), new PermissionsService(dbs()), new RealtimeService()),
@@ -1015,7 +1017,7 @@ describe('quirk fixes', () => {
     const fdbs = failingConnection(match);
     return new TripsService(
       fdbs,
-      new ReservationsService(dbs(), new PermissionsService(dbs()), budgetSvc, new RealtimeService(), notificationsStub(), new ReservationsReadRepository(dbs())),
+      new ReservationsService(dbs(), new PermissionsService(dbs()), budgetSvc, new RealtimeService(), notificationsStub(), new ReservationsReadRepository(dbs()), reservationAssignments),
       daysSvc,
       new PermissionsService(dbs()),
       budgetSvc,

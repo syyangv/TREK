@@ -22,6 +22,14 @@ describe('reservationCreateRequestSchema', () => {
     expect(reservationCreateRequestSchema.safeParse({ location: 'x' }).success).toBe(false);
   });
 
+  it('accepts only a boolean create_assignment flag', () => {
+    expect(reservationCreateRequestSchema.safeParse({ title: 'Dinner', create_assignment: true }).success).toBe(true);
+    expect(reservationCreateRequestSchema.safeParse({ title: 'Dinner', create_assignment: false }).success).toBe(true);
+    expect(reservationCreateRequestSchema.safeParse({ title: 'Dinner', create_assignment: 'true' }).success).toBe(
+      false,
+    );
+  });
+
   it('rejects a booking url that executes instead of navigating, on create and update', () => {
     expect(reservationCreateRequestSchema.safeParse({ title: 'Hotel', url: 'javascript:alert(1)' }).success).toBe(false);
     expect(reservationCreateRequestSchema.safeParse({ title: 'Hotel', url: 'JavaScript:alert(1)' }).success).toBe(false);

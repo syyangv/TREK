@@ -46,6 +46,8 @@ const reservations: TranslationStrings = {
   'reservations.meta.noAccommodation': 'Không có',
   'reservations.meta.hotelPlace': 'Chỗ ở',
   'reservations.meta.linkPlace': 'Địa điểm / Hoạt động',
+  'reservations.alsoAddToDay': 'Đồng thời thêm địa điểm này vào {day}',
+  'reservations.alsoAddToDayHint': 'Nếu không có điểm dừng trong ngày đó, địa điểm vẫn hiển thị là chưa lên kế hoạch.',
   'reservations.meta.pickPlace': 'Chọn địa điểm / hoạt động',
   'reservations.meta.pickHotel': 'Chọn chỗ ở',
   'reservations.meta.fromDay': 'Từ',

@@ -4,6 +4,7 @@ import MSheet from '../../../components/MSheet'
 import { useAddonStore } from '../../../../store/addonStore'
 import { useTranslation } from '../../../../i18n'
 import { resolveDayId } from '../../../../utils/formatters'
+import { resolvePendingStopDay } from '../../../../utils/bookingDayStop'
 import { parseReservationMetadata } from '../../../../utils/flightLegs'
 import { typeToCostCategory } from '@trek/shared'
 import CustomSelect from '../../../../components/shared/CustomSelect'
@@ -53,7 +54,7 @@ const EMPTY = {
  */
 export default function MReservationSheet({ planner, onOpenExpense }: MReservationSheetProps) {
   const {
-    t, toast, tripId, days, places, tripAccommodations, tripMembers, selectedDayId,
+    t, toast, tripId, days, places, assignments, tripAccommodations, tripMembers, selectedDayId,
     showReservationModal, setShowReservationModal,
     editingReservation, setEditingReservation, reservationPrefill,
     bookingForAssignmentId, setBookingForAssignmentId,
@@ -70,6 +71,11 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
   // Travelers assigned to this booking (#1517) — seeded from the editing
   // reservation on open, persisted separately after the save resolves.
   const [travelerIds, setTravelerIds] = useState<Set<number>>(new Set())
+  // Fork addition (docs/FORK_CUSTOMIZATIONS.md). Opt-in to also creating the day
+  // stop for a booking that links a place but no assignment. Defaults on: the
+  // linked place is nearly always meant to be part of that day's plan, and
+  // leaving it off is what silently files the place as unplanned.
+  const [alsoAddToDay, setAlsoAddToDay] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   // Ref (not state) so handleSubmit reads the intent set by the same click.
   const expenseIntentRef = useRef(false)
@@ -82,6 +88,7 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
     if (!showReservationModal) return
     setSnap({ res: editingReservation, assignmentId: bookingForAssignmentId ?? null })
     expenseIntentRef.current = false
+    setAlsoAddToDay(true)
     setPendingFiles([])
     setTravelerIds(new Set((editingReservation?.travelers || []).map(tv => tv.user_id)))
 
@@ -148,6 +155,19 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
 
   const res = snap.res
   const isHotel = form.type === 'hotel'
+  // Fork addition (docs/FORK_CUSTOMIZATIONS.md). The trip day this booking falls
+  // on, when the picked place is not already a stop there — drives the "also add
+  // to the day plan" offer. Rules live in the shared helper, so this surface and
+  // the desktop ReservationModal cannot drift apart.
+  const pendingStopDay = resolvePendingStopDay({
+    isEditing: !!res,
+    type: form.type,
+    placeId: form.place_id,
+    assignmentId: snap.assignmentId,
+    reservationTime: form.reservation_time,
+    days,
+    assignments,
+  })
   const set = (field: keyof typeof EMPTY, value: string | number) => setForm(prev => ({ ...prev, [field]: value }))
 
   const toggleTraveler = (id: number) => setTravelerIds(prev => {
@@ -236,6 +256,9 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
         assignment_id: (isHotel && !form.accommodation_id) ? null : (snap.assignmentId || null),
         accommodation_id: isHotel ? (form.accommodation_id || null) : null,
         place_id: isHotel ? null : (form.place_id || null),
+        // Fork addition. Ask the server to also create the day stop for the linked
+        // place, so it stops reading as unplanned (docs/FORK_CUSTOMIZATIONS.md).
+        create_assignment: !!(pendingStopDay && alsoAddToDay),
         metadata: Object.keys(metadata).length > 0 ? metadata : null,
         endpoints: [], needs_review: false,
       }
@@ -387,6 +410,28 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
               searchable
               size="sm"
             />
+
+            {/* Fork addition. Linking a place here only records metadata; without a
+                day stop the place still reads as unplanned. Offer the stop inline
+                rather than making the user leave and rebuild the booking. */}
+            {pendingStopDay && (
+              <button
+                type="button"
+                onClick={() => setAlsoAddToDay(v => !v)}
+                aria-pressed={alsoAddToDay}
+                className={`${TRAVELER_ROW_CLS} mt-[6px] ${alsoAddToDay ? '' : 'opacity-60'}`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[0.8125rem] font-medium text-m-ink">
+                    {t('reservations.alsoAddToDay', { day: pendingStopDay.title || t('dayplan.dayN', { n: pendingStopDay.day_number }) })}
+                  </span>
+                  <span className="mt-[1px] block text-[0.6875rem] text-m-faint">
+                    {t('reservations.alsoAddToDayHint')}
+                  </span>
+                </span>
+                {alsoAddToDay && <Check size={15} strokeWidth={2.4} className="flex-none text-m-act" />}
+              </button>
+            )}
 
             {/* LOCATION / ADDRESS */}
             <Eyebrow className="mb-[5px] mt-3 uppercase">{t('reservations.locationAddress')}</Eyebrow>

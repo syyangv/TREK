@@ -1401,6 +1401,22 @@ describe('useTripPlanner — bookings and transports', () => {
     expect(result.current.showReservationModal).toBe(false)
   })
 
+  it('FE-TP-HOOK-075b: an accepted day-stop offer derives its day and refreshes assignments', async () => {
+    seedTrip({ selectedDayId: 7 })
+
+    const { result } = await renderPlanner()
+    await act(async () => {
+      await result.current.handleSaveReservation({
+        title: 'Tennis', type: 'event', reservation_time: '2026-08-28T16:30', create_assignment: true,
+      } as never)
+    })
+
+    expect(actions.addReservation).toHaveBeenCalledWith(42, expect.objectContaining({
+      reservation_time: '2026-08-28T16:30', create_assignment: true, day_id: null,
+    }))
+    expect(actions.refreshDays).toHaveBeenCalledWith(42)
+  })
+
   it('FE-TP-HOOK-076: a booking with a linked cost reloads the budget items', async () => {
     seedTrip()
 

@@ -40,6 +40,7 @@ const permissionsStub = { checkPermission } as unknown as PermissionsService;
 // Constructor-injected since the budget fold (was a path mock of the deleted
 // services/budgetService).
 const budget = { createBudgetItem: vi.fn(), updateBudgetItem: vi.fn(), deleteBudgetItem: vi.fn(), linkBudgetItemToReservation: vi.fn() };
+const assignments = { dayExists: vi.fn(), placeExists: vi.fn(), createAssignment: vi.fn() } as unknown as AssignmentsService;
 
 const { notif } = vi.hoisted(() => ({ notif: { send: vi.fn().mockResolvedValue(undefined) } }));
 
@@ -52,6 +53,7 @@ import type { PermissionsService } from '../../../src/nest/permissions/permissio
 import { ReservationsService } from '../../../src/nest/reservations/reservations.service';
 import { ReservationsReadRepository } from '../../../src/nest/reservations/reservations-read.repository';
 import type { BudgetService } from '../../../src/nest/budget/budget.service';
+import type { AssignmentsService } from '../../../src/nest/assignments/assignments.service';
 // Was reservations.bridge, deleted along with the other three that had no
 // consumer outside the container. The cases below kept their assertions and
 // point at the service the bridge delegated to; only the delegation itself is
@@ -75,7 +77,7 @@ const bridge = {
 import { RealtimeService } from '../../../src/nest/realtime/realtime.service';
 import { notificationsStub } from '../../helpers/notifications';
 
-const svc = new ReservationsService(new DatabaseService(testDb), permissionsStub, budget as unknown as BudgetService, new RealtimeService(), notificationsStub(notif.send), new ReservationsReadRepository(new DatabaseService(testDb)));
+const svc = new ReservationsService(new DatabaseService(testDb), permissionsStub, budget as unknown as BudgetService, new RealtimeService(), notificationsStub(notif.send), new ReservationsReadRepository(new DatabaseService(testDb)), assignments);
 
 beforeAll(() => { createTables(testDb); runMigrations(testDb); });
 beforeEach(() => {

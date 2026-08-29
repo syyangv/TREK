@@ -46,6 +46,8 @@ const reservations: TranslationStrings = {
   'reservations.meta.noAccommodation': 'Hiçbiri',
   'reservations.meta.hotelPlace': 'Konaklama',
   'reservations.meta.linkPlace': 'Yer / Etkinlik',
+  'reservations.alsoAddToDay': 'Bu yeri {day} gününe de ekle',
+  'reservations.alsoAddToDayHint': 'O gün bir durak olmadan, yer planlanmamış olarak listelenmeye devam eder.',
   'reservations.meta.pickPlace': 'Yer / etkinlik seç',
   'reservations.meta.pickHotel': 'Konaklama seçin',
   'reservations.meta.fromDay': 'İtibaren',

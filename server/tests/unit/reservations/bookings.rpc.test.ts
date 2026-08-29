@@ -44,6 +44,7 @@ function build(opts: { canEdit?: boolean; cascade?: boolean; seenActions?: strin
     syncBudgetOnCreate: vi.fn(),
     syncBudgetOnUpdate: vi.fn(),
     notifyBookingChange: vi.fn(),
+    reconcileAssignments: vi.fn(),
   } as unknown as ReservationsService & Record<string, ReturnType<typeof vi.fn>>;
   // The lodging blocks live in AccommodationsService; AccommodationsRpc still calls its
   // injected copy `days`, which is why the fixture keeps that name.
@@ -89,6 +90,25 @@ describe('ReservationsRpc', () => {
     expect(seen).toContain('reservation_edit');
     const noUser = (await f.host().dispatch(req('reservations.create', { tripId: 1, input: { title: 'x', type: 'lodging' } }), undefined)) as RpcError;
     expect(noUser.error.message).toBe('reservation writes require an authenticated user context');
+  });
+
+  it('BOOK-RPC-001b gates and broadcasts the optional day-stop write', async () => {
+    const seen: string[] = [];
+    const f = build({ seenActions: seen });
+    (f.reservations.create as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      reservation: { id: 40 },
+      accommodationCreated: false,
+      assignmentCreated: { id: 12, day_id: 3, place_id: 7 },
+    });
+
+    await f.host().dispatch(req('reservations.create', {
+      tripId: 1,
+      input: { title: 'Tennis', type: 'event', create_assignment: true },
+    }), 42);
+
+    expect(seen).toEqual(['reservation_edit', 'day_edit']);
+    expect(events(f.realtime)).toEqual(['assignment:created', 'reservation:created']);
+    expect(f.reservations.reconcileAssignments).toHaveBeenCalledWith(1);
   });
 
   it('BOOK-RPC-002 a malformed endpoints array is rejected up front', async () => {

@@ -854,9 +854,18 @@ export function useTripPlanner() {
         }
         return r
       } else {
-        const r = await tripActions.addReservation(tripId, { ...data, day_id: selectedDayId || null })
+        const createAssignment = (data as Record<string, unknown>).create_assignment === true
+        const r = await tripActions.addReservation(tripId, {
+          ...data,
+          // The server derives the exact booking day for the day-stop side effect.
+          // Do not let the currently selected planner day win when it differs.
+          day_id: createAssignment ? null : (selectedDayId || null),
+        })
         toast.success(t('trip.toast.reservationAdded'))
         setShowReservationModal(false)
+        // The reservation request excludes this socket from the assignment event,
+        // so refresh the initiating planner after the transaction commits too.
+        if (createAssignment) await tripActions.refreshDays(tripId)
         // An imported booking auto-creates a linked cost server-side; the saving client gets
         // no budget:created echo, so refresh the budget items here to surface it without a reload.
         if ((data as Record<string, unknown>).create_budget_entry) await tripActions.loadBudgetItems?.(tripId)

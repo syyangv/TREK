@@ -50,6 +50,7 @@ import { PermissionsService } from '../../../src/nest/permissions/permissions.se
 import { RealtimeService } from '../../../src/nest/realtime/realtime.service';
 import { ReservationsService } from '../../../src/nest/reservations/reservations.service';
 import { ReservationsReadRepository } from '../../../src/nest/reservations/reservations-read.repository';
+import type { AssignmentsService } from '../../../src/nest/assignments/assignments.service';
 import { BudgetService } from '../../../src/nest/budget/budget.service';
 import { ExchangeRatesService } from '../../../src/nest/budget/exchange-rates.service';
 import { CalendarService, foldICS } from '../../../src/nest/calendar/calendar.service';
@@ -58,12 +59,13 @@ import { expectRegisteredProvider } from '../../helpers/module-providers';
 import { notificationsStub } from '../../helpers/notifications';
 
 const dbs = () => new DatabaseService(testDb);
+const reservationAssignments = { dayExists: vi.fn(), placeExists: vi.fn(), createAssignment: vi.fn() } as unknown as AssignmentsService;
 const budgetSvc = new BudgetService(dbs(), new PermissionsService(dbs()), new ExchangeRatesService(), new RealtimeService());
 
 // Named `svc` so the moved cases below read exactly as they did on TripsService.
 const svc = new CalendarService(
   dbs(),
-  new ReservationsService(dbs(), new PermissionsService(dbs()), budgetSvc, new RealtimeService(), notificationsStub(), new ReservationsReadRepository(dbs())),
+  new ReservationsService(dbs(), new PermissionsService(dbs()), budgetSvc, new RealtimeService(), notificationsStub(), new ReservationsReadRepository(dbs()), reservationAssignments),
 );
 
 beforeAll(() => {

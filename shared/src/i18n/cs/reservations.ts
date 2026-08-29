@@ -45,6 +45,8 @@ const reservations: TranslationStrings = {
   'reservations.meta.noAccommodation': 'Nic',
   'reservations.meta.hotelPlace': 'Ubytování',
   'reservations.meta.linkPlace': 'Místo / Aktivita',
+  'reservations.alsoAddToDay': 'Přidat toto místo také do {day}',
+  'reservations.alsoAddToDayHint': 'Bez zastávky v tento den zůstane místo vedené jako nenaplánované.',
   'reservations.meta.pickPlace': 'Vybrat místo / aktivitu',
   'reservations.meta.pickHotel': 'Vybrat ubytování',
   'reservations.meta.fromDay': 'Od dne',

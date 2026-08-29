@@ -15,6 +15,7 @@ import CustomTimePicker from '../shared/CustomTimePicker'
 import { openFile } from '../../utils/fileDownload'
 import { parseReservationMetadata } from '../../utils/flightLegs'
 import { resolveDayId } from '../../utils/formatters'
+import { resolvePendingStopDay } from '../../utils/bookingDayStop'
 import type { Day, Place, Reservation, TripFile, AssignmentsMap, Accommodation, BudgetItem } from '../../types'
 import { BookingCostsSection } from './BookingCostsSection'
 import { TravelerPicker } from './TravelerPicker'
@@ -101,6 +102,11 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
     hotel_place_id: '' as string | number, hotel_start_day: '' as string | number, hotel_end_day: '' as string | number,
     hotel_address: '',
   })
+  // Fork addition (see docs/FORK_CUSTOMIZATIONS.md). Opt-in to also creating the
+  // day stop for a booking that links a place but no assignment. Defaults on:
+  // the linked place is nearly always meant to be part of that day's plan, and
+  // leaving it off is what silently files the place as unplanned.
+  const [alsoAddToDay, setAlsoAddToDay] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [uploadingFile, setUploadingFile] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
@@ -122,6 +128,22 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
     return { min: dates[0], max: dates[dates.length - 1] }
   }, [days])
 
+  // Fork addition (see docs/FORK_CUSTOMIZATIONS.md). The trip day this booking
+  // falls on, when the picked place is not already a stop there — drives the
+  // "also add to the day plan" offer. Rules live in the shared helper.
+  const pendingStopDay = useMemo(
+    () => resolvePendingStopDay({
+      isEditing: !!reservation,
+      type: form.type,
+      placeId: form.place_id,
+      assignmentId: form.assignment_id,
+      reservationTime: form.reservation_time,
+      days,
+      assignments,
+    }),
+    [reservation, form.type, form.place_id, form.assignment_id, form.reservation_time, days, assignments],
+  )
+
   useEffect(() => {
     // Match an existing place by name (exact, then loose contains) for hotels.
     const matchPlaceId = (name: string | undefined): string | number => {
@@ -134,6 +156,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
     }
 
     setTravelerIds(new Set((reservation?.travelers || []).map(tv => tv.user_id)))
+    setAlsoAddToDay(true)
     if (reservation) {
       const meta = parseReservationMetadata(reservation)
       const rawEnd = reservation.reservation_end_time || ''
@@ -267,6 +290,9 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         // Hotels link a place through the accommodation record; every other type links
         // the picked trip place/activity directly on the reservation (#1353).
         place_id: form.type === 'hotel' ? null : (form.place_id || null),
+        // Fork addition. Ask the server to also create the day stop for the linked
+        // place, so it stops reading as unplanned (docs/FORK_CUSTOMIZATIONS.md).
+        create_assignment: !!(pendingStopDay && alsoAddToDay),
         metadata: Object.keys(metadata).length > 0 ? metadata : null,
         endpoints: [],
         needs_review: false,
@@ -535,6 +561,22 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
               searchable
               size="sm"
             />
+            {/* Fork addition. Linking a place here only records metadata; without a
+                day stop the place still reads as unplanned. Offer the stop inline
+                rather than making the user leave and rebuild the booking. */}
+            {pendingStopDay && (
+              <label htmlFor="reservation-also-add-to-day" className="flex items-start gap-2.5 cursor-pointer" style={{ marginTop: 8 }}>
+                <input id="reservation-also-add-to-day" type="checkbox" checked={alsoAddToDay}
+                  onChange={e => setAlsoAddToDay(e.target.checked)}
+                  className="mt-0.5 rounded border-edge" />
+                <div style={{ color: 'var(--text-secondary)', fontSize: 'calc(12px * var(--fs-scale-body, 1))' }}>
+                  {t('reservations.alsoAddToDay', { day: pendingStopDay.title || t('dayplan.dayN', { n: pendingStopDay.day_number }) })}
+                  <p style={{ margin: '2px 0 0', color: 'var(--text-tertiary)', fontSize: 'calc(11px * var(--fs-scale-caption, 1))' }}>
+                    {t('reservations.alsoAddToDayHint')}
+                  </p>
+                </div>
+              </label>
+            )}
           </div>
         )}
 

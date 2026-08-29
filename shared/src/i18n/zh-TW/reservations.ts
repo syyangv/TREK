@@ -45,6 +45,8 @@ const reservations: TranslationStrings = {
   'reservations.meta.noAccommodation': '無',
   'reservations.meta.hotelPlace': '住宿',
   'reservations.meta.linkPlace': '地點 / 活動',
+  'reservations.alsoAddToDay': '同時將此地點加入{day}',
+  'reservations.alsoAddToDayHint': '若不加入，該地點在「地點」中仍顯示為未規劃。',
   'reservations.meta.pickPlace': '選擇地點 / 活動',
   'reservations.meta.pickHotel': '選擇住宿',
   'reservations.meta.fromDay': '從',

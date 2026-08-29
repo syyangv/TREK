@@ -3,6 +3,11 @@
 Use this procedure to integrate upstream TREK updates without losing the
 customizations in [FORK_CUSTOMIZATIONS.md](FORK_CUSTOMIZATIONS.md).
 
+Known upstream defects are tracked separately in
+[UPSTREAM_ISSUES.md](UPSTREAM_ISSUES.md). Consult it when a sync surfaces
+unexpected behavior, so an inherited defect is not mistaken for a fork
+regression.
+
 ## 1. Inspect before merging
 
 ```bash

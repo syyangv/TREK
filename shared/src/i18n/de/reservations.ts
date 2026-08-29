@@ -48,6 +48,8 @@ const reservations: TranslationStrings = {
   'reservations.meta.noAccommodation': 'Keine',
   'reservations.meta.hotelPlace': 'Unterkunft',
   'reservations.meta.linkPlace': 'Ort / Aktivität',
+  'reservations.alsoAddToDay': 'Diesen Ort auch zu {day} hinzufügen',
+  'reservations.alsoAddToDayHint': 'Ohne Stopp an diesem Tag bleibt der Ort als ungeplant gelistet.',
   'reservations.meta.pickPlace': 'Ort / Aktivität wählen',
   'reservations.meta.pickHotel': 'Unterkunft auswählen',
   'reservations.meta.fromDay': 'Von',

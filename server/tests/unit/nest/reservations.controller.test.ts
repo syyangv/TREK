@@ -6,7 +6,7 @@ import type { AirtrailLinkService } from '../../../src/nest/integrations/airtrai
 import type { User } from '../../../src/types';
 
 const user = { id: 1, role: 'user', email: 'u@example.test' } as User;
-const trip = { id: 5, user_id: 1 };
+const trip = { id: 5, user_id: 1, currency: null };
 
 // Fire-and-forget write-back trigger, injected since airtrail.bridge died.
 const airtrailLink = { pushReservationToAirtrail: vi.fn().mockResolvedValue(undefined) } as unknown as AirtrailLinkService;
@@ -16,7 +16,9 @@ function makeService(overrides: Partial<ReservationsService> = {}): Reservations
     verifyTripAccess: vi.fn().mockReturnValue(trip),
     canEdit: vi.fn().mockReturnValue(true),
     referencesOutsideTrip: vi.fn().mockReturnValue([]),
+    canEditDay: vi.fn().mockReturnValue(true),
     broadcast: vi.fn(),
+    reconcileAssignments: vi.fn(),
     syncBudgetOnCreate: vi.fn(),
     syncBudgetOnUpdate: vi.fn(),
     notifyBookingChange: vi.fn(),
@@ -50,7 +52,7 @@ describe('ReservationsController (parity with the legacy /api/trips/:tripId/rese
       const broadcast = vi.fn(); const syncBudgetOnCreate = vi.fn(); const notifyBookingChange = vi.fn();
       const svc = makeService({ create, broadcast, syncBudgetOnCreate, notifyBookingChange } as Partial<ReservationsService>);
       const body = { title: 'Hotel', type: 'lodging', create_budget_entry: { total_price: 200 } };
-      expect(new ReservationsController(svc, airtrailLink).create(user, '5', body, 'sock')).toEqual({ reservation: { id: 9 } });
+      expect(new ReservationsController(svc, airtrailLink).create(user, trip, '5', body, 'sock')).toEqual({ reservation: { id: 9 } });
       expect(broadcast).toHaveBeenCalledWith('5', 'accommodation:created', {}, 'sock');
       expect(syncBudgetOnCreate).toHaveBeenCalledWith('5', 9, 'Hotel', 'lodging', { total_price: 200 }, 'sock');
       expect(broadcast).toHaveBeenCalledWith('5', 'reservation:created', { reservation: { id: 9 } }, 'sock');
@@ -64,9 +66,34 @@ describe('ReservationsController (parity with the legacy /api/trips/:tripId/rese
         referencesOutsideTrip: vi.fn().mockReturnValue(['accommodation_id']),
       } as Partial<ReservationsService>);
       const body = { title: 'Hotel', accommodation_id: 4711 };
-      expect(thrown(() => new ReservationsController(svc, airtrailLink).create(user, '5', body)))
+      expect(thrown(() => new ReservationsController(svc, airtrailLink).create(user, trip, '5', body)))
         .toEqual({ status: 400, body: { error: 'Not part of this trip: accommodation_id' } });
       expect(create).not.toHaveBeenCalled();
+    });
+
+    it('requires day_edit before creating the optional day stop', () => {
+      const create = vi.fn();
+      const canEditDay = vi.fn().mockReturnValue(false);
+      const svc = makeService({ create, canEditDay } as Partial<ReservationsService>);
+
+      expect(thrown(() => new ReservationsController(svc, airtrailLink).create(
+        user, trip, '5', { title: 'Tennis', create_assignment: true },
+      ))).toEqual({ status: 403, body: { error: 'No permission' } });
+      expect(canEditDay).toHaveBeenCalledWith(trip, user);
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('broadcasts and reconciles a newly-created day stop', () => {
+      const assignment = { id: 12, day_id: 7, place_id: 24, place: { id: 24, name: 'Tennis' } };
+      const create = vi.fn().mockReturnValue({ reservation: { id: 9 }, accommodationCreated: false, assignmentCreated: assignment });
+      const broadcast = vi.fn();
+      const reconcileAssignments = vi.fn();
+      const svc = makeService({ create, broadcast, reconcileAssignments } as Partial<ReservationsService>);
+
+      new ReservationsController(svc, airtrailLink).create(user, trip, '5', { title: 'Tennis', create_assignment: true }, 'sock');
+
+      expect(broadcast).toHaveBeenCalledWith('5', 'assignment:created', { assignment }, 'sock');
+      expect(reconcileAssignments).toHaveBeenCalledWith('5', 'sock');
     });
   });
 

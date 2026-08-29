@@ -15,6 +15,8 @@ import { ReservationsService } from './reservations.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { RequirePermission, TripAccessGuard } from '../permissions/trip-access.guard';
+import { Trip } from '../permissions/trip.decorator';
+import type { TripAccess } from '../database/database.service';
 import { AirtrailLinkService } from '../integrations/airtrail-link.service';
 import {
   ReservationCreateDto,
@@ -63,15 +65,23 @@ export class ReservationsController {
   @Post()
   create(
     @CurrentUser() user: User,
+    @Trip() trip: TripAccess,
     @Param('tripId') tripId: string,
     @Body() rawBody: ReservationCreateDto,
     @Headers('x-socket-id') socketId?: string,
   ) {
     const body = rawBody as ReservationBody & { title: string };
+    if (body.create_assignment === true && !this.reservations.canEditDay(trip, user)) {
+      throw new HttpException({ error: 'No permission' }, 403);
+    }
     this.rejectForeignReferences(tripId, body);
-    const { reservation, accommodationCreated } = this.reservations.create(tripId, body as never);
+    const { reservation, accommodationCreated, assignmentCreated } = this.reservations.create(tripId, body as never);
     if (accommodationCreated) {
       this.reservations.broadcast(tripId, 'accommodation:created', {}, socketId);
+    }
+    if (assignmentCreated) {
+      this.reservations.broadcast(tripId, 'assignment:created', { assignment: assignmentCreated }, socketId);
+      this.reservations.reconcileAssignments(tripId, socketId);
     }
     this.reservations.syncBudgetOnCreate(tripId, reservation.id, body.title, body.type, body.create_budget_entry, socketId);
     this.reservations.broadcast(tripId, 'reservation:created', { reservation }, socketId);
