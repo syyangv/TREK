@@ -5,11 +5,11 @@
     "docker-compose.yml": "c7dbf3c4bc796b21dbe76f2a1998d5fddbc2fff8b657af8217d128813798a38b"
   },
   "environment": "production",
-  "image": "thvysy44/trek-fork@sha256:2640241e92cd7e0d56faf089d7b3293c664c794afc067cd607512f84f87f8422",
-  "promoted_at": "2026-08-29T08:26:53.100034Z",
-  "release_sha": "951a1593503fd2a697c0dc159e108a363e265803",
+  "image": "thvysy44/trek-fork@sha256:ff11adacc97078e74dd8d197a9f444872c73c3c1d88a1b61975c417812535b4c",
+  "promoted_at": "2026-08-29T23:49:49.495415Z",
+  "release_sha": "4c8c438cf8cbbd2ab02c7722e48f4ca6645d01e9",
   "schema": 1,
-  "source_ref": "v4.0.5",
-  "source_sha": "e89f7888036870bb1f0693aee92bdd45c134a9e8",
-  "version": "4.0.5"
+  "source_ref": "v4.1.1",
+  "source_sha": "badf57fc021d579f5127e9c4ae92936584efcfcd",
+  "version": "4.1.1"
 }
