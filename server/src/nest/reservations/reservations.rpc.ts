@@ -38,8 +38,15 @@ export class ReservationsRpc {
     const input = parsed.data as Record<string, unknown>;
     this.requireValidEndpoints(input.endpoints);
     this.guards.requireTripEdit(tripId, actor, RESERVATION_EDIT_ACTION);
-    const { reservation, accommodationCreated } = this.reservations.create(String(tripId), input as never);
+    if (input.create_assignment === true) {
+      this.guards.requireTripEdit(tripId, actor, 'day_edit');
+    }
+    const { reservation, accommodationCreated, assignmentCreated } = this.reservations.create(String(tripId), input as never);
     if (accommodationCreated) this.realtime.broadcast(tripId, 'accommodation:created', {}, undefined);
+    if (assignmentCreated) {
+      this.realtime.broadcast(tripId, 'assignment:created', { assignment: assignmentCreated }, undefined);
+      this.reservations.reconcileAssignments(tripId);
+    }
     const i = input as { title?: string; type?: string; create_budget_entry?: unknown };
     this.reservations.syncBudgetOnCreate(String(tripId), reservation.id, i.title ?? '', i.type, i.create_budget_entry as never, undefined);
     this.realtime.broadcast(tripId, 'reservation:created', { reservation }, undefined);

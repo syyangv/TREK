@@ -104,6 +104,8 @@ unplanned in Places with nothing in the UI saying a further step was needed.
 - The checkbox sends `create_assignment: true`. The server creates the day stop
   inside the existing create transaction and binds the booking's
   `assignment_id` to it, so the booking and the place agree or neither changes.
+- Creating that extra stop requires `day_edit` as well as `reservation_edit`;
+  reservation-only editors cannot use the checkbox to mutate the day plan.
 - `create_assignment` is a boolean, never a day or place reference. The server
   uses the day it already derived from the booking's own date and the already
   trip-validated `place_id`, so the flag adds no reference a caller could aim
@@ -117,8 +119,9 @@ Preserve the locale keys `reservations.alsoAddToDay` and
 
 Tests: `FE-UTIL-BOOKDAY-001` to `011` (shared helper),
 `FE-PLANNER-RESMODAL-089` to `093` (desktop modal),
-`FE-MOB-RESSH-054` to `058` (mobile sheet), and `RESV-015` to `015e`
-(server integration).
+`FE-MOB-RESSH-054` to `058` (mobile sheet), and `RESV-015` to `015i`
+(server integration, including permission, stale-day, duplicate, and
+out-of-range protections).
 
 ## PWA and offline behavior
 

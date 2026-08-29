@@ -222,6 +222,8 @@ export const reservationUrlSchema = z.string().refine(
 export const reservationCreateRequestSchema = open.and(z.object({
   title: z.string().min(1),
   url: reservationUrlSchema.nullable().optional(),
+  /** Also create the exact-date day stop for a linked non-hotel place. */
+  create_assignment: z.boolean().optional(),
 }));
 export type ReservationCreateRequest = z.infer<typeof reservationCreateRequestSchema>;
 

@@ -1,6 +1,6 @@
 /**
  * Reservations integration tests.
- * Covers RESV-001 to RESV-007.
+ * Covers RESV-001 to RESV-015i.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
@@ -49,6 +49,7 @@ import { runMigrations } from '../../src/db/migrations';
 import { resetTestDb, resetRateLimits } from '../helpers/test-db';
 import { createUser, createTrip, createDay, createPlace, createReservation, addTripMember } from '../helpers/factories';
 import { authCookie } from '../helpers/auth';
+import { invalidatePermissionsCache } from '../../src/nest/permissions/permissions-cache';
 
 let nestApp: INestApplication;
 let app: Application;
@@ -63,6 +64,7 @@ beforeAll(async () => {
 beforeEach(() => {
   resetTestDb(testDb);
   resetRateLimits(nestApp);
+  invalidatePermissionsCache();
 });
 
 afterAll(async () => {
@@ -285,6 +287,87 @@ describe('Create reservation with create_assignment', () => {
     expect(res.status).toBe(201);
     expect(res.body.reservation.assignment_id).toBeFalsy();
     expect(testDb.prepare('SELECT COUNT(*) c FROM day_assignments').get()).toEqual({ c: 0 });
+  });
+
+  it('RESV-015f — derives the stop day from the booking date, not a stale selected day', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const staleDay = createDay(testDb, trip.id, { date: '2026-08-27' });
+    const bookingDay = createDay(testDb, trip.id, { date: '2026-08-28' });
+    const place = createPlace(testDb, trip.id, { name: 'Tennis Courts' });
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        title: 'Tennis', type: 'event', place_id: place.id, day_id: staleDay.id,
+        reservation_time: '2026-08-28T16:30', create_assignment: true,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.reservation.day_id).toBe(bookingDay.id);
+    const stop = testDb.prepare('SELECT * FROM day_assignments WHERE place_id = ?').get(place.id) as any;
+    expect(stop.day_id).toBe(bookingDay.id);
+  });
+
+  it('RESV-015g — reuses an existing same-day stop instead of creating a duplicate', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day = createDay(testDb, trip.id, { date: '2026-08-28' });
+    const place = createPlace(testDb, trip.id, { name: 'Tennis Courts' });
+    const existing = testDb.prepare(
+      'INSERT INTO day_assignments (day_id, place_id, order_index) VALUES (?, ?, 0)',
+    ).run(day.id, place.id);
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({ title: 'Tennis', type: 'event', place_id: place.id, reservation_time: '2026-08-28T16:30', create_assignment: true });
+
+    expect(res.status).toBe(201);
+    expect(res.body.reservation.assignment_id).toBe(Number(existing.lastInsertRowid));
+    expect(testDb.prepare('SELECT COUNT(*) c FROM day_assignments WHERE day_id = ? AND place_id = ?').get(day.id, place.id)).toEqual({ c: 1 });
+  });
+
+  it('RESV-015h — an out-of-range booking never gets clamped into a new stop', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    createDay(testDb, trip.id, { date: '2026-08-28' });
+    const place = createPlace(testDb, trip.id, { name: 'Tennis Courts' });
+
+    const res = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({ title: 'Tennis', type: 'event', place_id: place.id, reservation_time: '2026-09-30T16:30', create_assignment: true });
+
+    expect(res.status).toBe(201);
+    expect(res.body.reservation.assignment_id).toBeFalsy();
+    expect(testDb.prepare('SELECT COUNT(*) c FROM day_assignments').get()).toEqual({ c: 0 });
+  });
+
+  it('RESV-015i — creating the optional stop also requires day_edit', async () => {
+    const { user: owner } = createUser(testDb);
+    const { user: member } = createUser(testDb);
+    const trip = createTrip(testDb, owner.id);
+    addTripMember(testDb, trip.id, member.id);
+    const day = createDay(testDb, trip.id, { date: '2026-08-28' });
+    const place = createPlace(testDb, trip.id, { name: 'Tennis Courts' });
+    testDb.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('perm_day_edit', 'trip_owner')").run();
+    invalidatePermissionsCache();
+
+    try {
+      const res = await request(app)
+        .post(`/api/trips/${trip.id}/reservations`)
+        .set('Cookie', authCookie(member.id))
+        .send({ title: 'Tennis', type: 'event', place_id: place.id, reservation_time: '2026-08-28T16:30', create_assignment: true });
+
+      expect(res.status).toBe(403);
+      expect(testDb.prepare('SELECT COUNT(*) c FROM reservations').get()).toEqual({ c: 0 });
+      expect(testDb.prepare('SELECT COUNT(*) c FROM day_assignments WHERE day_id = ?').get(day.id)).toEqual({ c: 0 });
+    } finally {
+      testDb.prepare("DELETE FROM app_settings WHERE key = 'perm_day_edit'").run();
+      invalidatePermissionsCache();
+    }
   });
 });
 

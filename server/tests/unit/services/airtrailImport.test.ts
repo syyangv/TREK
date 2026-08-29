@@ -19,6 +19,7 @@ import { BudgetService } from '../../../src/nest/budget/budget.service';
 import { ExchangeRatesService } from '../../../src/nest/budget/exchange-rates.service';
 import { ReservationsService } from '../../../src/nest/reservations/reservations.service';
 import { ReservationsReadRepository } from '../../../src/nest/reservations/reservations-read.repository';
+import type { AssignmentsService } from '../../../src/nest/assignments/assignments.service';
 import type { AirtrailClient } from '../../../src/nest/integrations/airtrail.client';
 import type { AirtrailService } from '../../../src/nest/integrations/airtrail.service';
 import { notificationsStub } from '../../helpers/notifications';
@@ -28,6 +29,7 @@ import { notificationsStub } from '../../helpers/notifications';
 // were module mocks until the fold made them injected collaborators.
 const listFlights = vi.fn();
 const broadcast = vi.fn();
+const assignments = { dayExists: vi.fn(), placeExists: vi.fn(), createAssignment: vi.fn() } as unknown as AssignmentsService;
 
 function makeImportService(): AirtrailImportService {
   const dbs = () => new DatabaseService(db);
@@ -43,6 +45,7 @@ function makeImportService(): AirtrailImportService {
       realtime,
       notificationsStub(),
       new ReservationsReadRepository(dbs()),
+      assignments,
     ),
     { listFlights } as unknown as AirtrailClient,
     {

@@ -93,6 +93,14 @@ export interface CreateReservationData {
   needs_review?: boolean;
 }
 
+export type CreatedReservationAssignment = ReturnType<AssignmentsService['createAssignment']>;
+
+export interface CreateReservationResult {
+  reservation: ReservationRow;
+  accommodationCreated: boolean;
+  assignmentCreated: CreatedReservationAssignment;
+}
+
 export interface UpdateReservationData {
   title?: string;
   reservation_time?: string;
@@ -157,8 +165,16 @@ export class ReservationsService {
     return this.permissions.checkPermission('reservation_edit', user.role, trip.user_id, user.id, trip.user_id !== user.id);
   }
 
+  canEditDay(trip: Trip, user: User): boolean {
+    return this.permissions.checkPermission('day_edit', user.role, trip.user_id, user.id, trip.user_id !== user.id);
+  }
+
   broadcast<E extends TrekWsTripEventName>(tripId: string, event: E, payload: TrekWsPayload<E>, socketId: string | undefined): void {
     this.realtime.broadcast(tripId, event, payload, socketId);
+  }
+
+  reconcileAssignments(tripId: string | number, socketId?: string): void {
+    this.assignments.reconcile(tripId, socketId);
   }
 
   /** Fire-and-forget booking-change notification, mirroring the legacy dynamic import. */
@@ -495,11 +511,11 @@ export class ReservationsService {
 
   /** The accommodation insert, the reservation insert, the endpoint save and
    *  the metadata sync are one logical write — all-or-nothing. */
-  create(tripId: string | number, data: CreateReservationData): { reservation: ReservationRow; accommodationCreated: boolean } {
+  create(tripId: string | number, data: CreateReservationData): CreateReservationResult {
     return this.db.transaction(() => this.createInTx(tripId, data));
   }
 
-  private createInTx(tripId: string | number, data: CreateReservationData): { reservation: ReservationRow; accommodationCreated: boolean } {
+  private createInTx(tripId: string | number, data: CreateReservationData): CreateReservationResult {
     const {
       title, reservation_time, reservation_end_time, location,
       confirmation_number, notes, url, day_id, end_day_id, place_id, assignment_id,
@@ -540,12 +556,39 @@ export class ReservationsService {
     // stop, in which case the place stays filed as unplanned, because planned state
     // derives solely from day_assignments. When the dialog asked to schedule it,
     // create the stop here and bind the booking to it so the two links agree.
-    // Both inputs are already trip-scoped: the day was derived above from the
-    // booking's own date, and place_id was validated against this trip.
+    // The checkbox is deliberately only a boolean: for this path the server derives
+    // the exact day from the booking date instead of trusting a selected-day hint
+    // supplied by a client or plugin.
+    let assignmentDayId: number | null = null;
+    if (create_assignment && resolvedType !== 'hotel' && reservation_time) {
+      assignmentDayId = this.resolveDayIdFromTime(tripId, reservation_time, false);
+      // Keep the reservation's day and its newly-created stop on the same day even
+      // when an older client included a different selected `day_id` in the body.
+      if (assignmentDayId != null) resolvedDayId = assignmentDayId;
+    }
+
     let resolvedAssignmentId: number | null = assignment_id ?? null;
-    if (resolvedAssignmentId == null && create_assignment && resolvedType !== 'hotel' && resolvedDayId && place_id) {
-      const created = this.assignments.createAssignment(resolvedDayId, place_id);
-      resolvedAssignmentId = created?.id ?? null;
+    let assignmentCreated: CreatedReservationAssignment = null;
+    if (resolvedAssignmentId == null && assignmentDayId != null && place_id
+      && this.assignments.dayExists(assignmentDayId, tripId)
+      && this.assignments.placeExists(place_id, tripId)) {
+      const existing = this.db.get<{ id: number }>(
+        `SELECT da.id
+           FROM day_assignments da
+           JOIN days d ON d.id = da.day_id
+          WHERE da.day_id = ? AND da.place_id = ? AND d.trip_id = ?
+          ORDER BY da.id ASC
+          LIMIT 1`,
+        assignmentDayId, place_id, tripId,
+      );
+      if (existing) {
+        // A stale/concurrent client may ask to create a stop that appeared after
+        // its dialog opened. Reuse it instead of duplicating the same place/day.
+        resolvedAssignmentId = existing.id;
+      } else {
+        assignmentCreated = this.assignments.createAssignment(assignmentDayId, place_id);
+        resolvedAssignmentId = assignmentCreated?.id ?? null;
+      }
     }
 
     const result = this.db.run(`
@@ -597,7 +640,7 @@ export class ReservationsService {
 
     // The row was just inserted, so the re-select can't miss (legacy typed this any).
     const reservation = this.getReservationWithJoins(Number(result.lastInsertRowid))!;
-    return { reservation, accommodationCreated };
+    return { reservation, accommodationCreated, assignmentCreated };
   }
 
   updatePositions(tripId: string | number, positions: { id: number; day_plan_position?: number }[], dayId?: number | string | null) {
