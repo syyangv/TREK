@@ -55,7 +55,31 @@ Pay special attention to `.github/workflows`, `client/src/App.tsx`,
 `client/vite.config.js`, Vacay client/server code, locale files, deployment
 scripts, and Docker/Compose configuration.
 
-## 4. Verify locally
+## 4. Audit changed contracts after merging
+
+A clean textual merge is not behavioral proof. Before declaring the sync
+preserved, inspect every producer and consumer when an upstream rewrite changes
+an API, hook, store, or projected model shape. In particular:
+
+- Update exact-object assertions and fixtures when a returned object gains a
+  deliberate field; the full client suite caught stale `upNext` assertions after
+  the mobile timeline added its linked-reservation context.
+- Trace reservation links through REST/MCP writes, WebSocket and offline
+  hydration, reload, and explicit null-unlink paths. Verify same-day reuse does
+  not immediately reattach an explicit unlink.
+- Use one mobile time-resolution helper for place rows and the Go/up-next card:
+  an explicit assignment slot wins, otherwise the linked reservation range is
+  used, and shared place defaults are not mistaken for assignment overrides.
+- Treat an empty externally supplied member roster as loading, not as proof of
+  a solo trip; verify companion-only packing and collaboration controls after
+  the roster resolves.
+- Keep Obsidian filesystem reconciliation behind the authenticated sync
+  operation, make it transactional, and prove `getEntries` performs no file
+  traversal or database mutation.
+
+Record any new recurring decision in `FORK_CUSTOMIZATIONS.md` before review.
+
+## 5. Verify locally
 
 Run the gates relevant to the changed areas. For a broad upstream integration,
 use the full set:
@@ -67,11 +91,21 @@ npm test
 node shared/scripts/i18n-parity.mjs --strict
 ```
 
-Also run focused regression tests for every preserved customization. If a test
-cannot be run locally, state that explicitly in the PR and rely on the named CI
-gate rather than implying it passed.
+Run focused regression tests before the broad suite for every preserved
+customization. Client Vitest paths must be workspace-relative. If shared
+schemas or translations changed, build `shared` before client tests consume
+`shared/dist`:
 
-## 5. Commit, push, and review
+```bash
+npm run build --workspace=shared
+npm run test --workspace=client -- src/...
+```
+
+If a test cannot be run locally, state that explicitly in the PR and rely on a
+named CI gate rather than implying it passed. Keep known unrelated failures
+separate from regressions in the changed preservation slice.
+
+## 6. Commit, push, and review
 
 ```bash
 git add <intentional-files>
@@ -91,29 +125,39 @@ The PR description should list:
 Require all repository checks to pass. Address failures through additional PR
 commits; do not bypass branch protection or silently weaken a gate.
 
-## 6. Release and deploy
+## 7. Release and deploy
 
 After merging:
 
-1. Monitor main CI and the security scan for the merge commit.
+1. Monitor main CI and the security scan for the exact merge commit.
 2. Confirm `Build & Push Docker Image` publishes a stable release and a
    multi-architecture immutable digest.
-3. If Docker Scout fails, update the vulnerable dependencies through a separate
-   protected PR, then allow the release to rebuild from the fixed main commit.
-4. Generate `promotion.json` from the published release provenance, including
-   the exact immutable image digest and Compose hashes.
-5. Review, SSH-sign, and fast-forward-push the promotion commit to the
-   protected `deploy/production` branch.
-6. Confirm the production poller verifies the promotion and deploys the exact
+3. If CI is still running when the release verifier times out, wait for the
+   exact commit's conclusion; do not treat a timeout as permission to deploy.
+   Rerun the release workflow only after required workflows pass.
+4. If Docker Scout fails before scanning because of transient infrastructure
+   (for example, an action-download 403), rerun only that failed scan. If it
+   reports fixed high/critical CVEs, fix dependencies in a protected change
+   and rebuild; never bypass the security gate.
+5. Compare the published `trek-<version>-release.json` provenance asset with
+   the gated source SHA, release SHA, immutable digest, and local Compose file
+   hashes before generating `promotion.json`.
+6. Review, SSH-sign, and fast-forward-push the promotion commit to the
+   protected `deploy/production` branch. Verify the signer against the
+   deployment agent's allowed-signers file; the promotion branch contains only
+   the declarative record and no credentials.
+7. Confirm the production poller verifies the promotion and deploys the exact
    digest through the restricted local executor.
-7. Confirm poller state, container identity, and `/api/health` agree.
+8. Confirm poller state, container `RepoDigests`/image ID, and `/api/health`
+   agree. Redundant local workflow watchers may be stopped, but never stop the
+   poller or claim deployment complete from watcher state alone.
 
 `deploy-production.yml` is a restricted break-glass path while the poller
 completes its soak and rollback gates; it is not the normal release path.
 
 Do not deploy an image from an earlier commit merely because it already exists.
 
-## 7. Post-deployment verification
+## 8. Post-deployment verification
 
 Record the following in the session or release report:
 
@@ -140,3 +184,8 @@ Yearly Glance custom event (for example a flight) is not imported as PTO.
   performed by an authorized GitHub user.
 - A successful deployment is not complete until the exact image digest and
   private production health response are recorded.
+- The client coverage gate can outlast the release verifier timeout; wait for
+  CI rather than pushing a no-op commit or promoting a mutable tag.
+- The release artifact, signed promotion SHA, poller state, running
+  `RepoDigests`, and health response form one evidence chain; record all of
+  them together.
