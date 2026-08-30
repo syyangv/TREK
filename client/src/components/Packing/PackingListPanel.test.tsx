@@ -1748,4 +1748,57 @@ describe('PackingListPanel', () => {
     // No assignee button (UserPlus icon) in the category header.
     expect(container.querySelector('svg.lucide-user-plus')).toBeNull();
   });
+
+  it('FE-COMP-PACKING-086: keeps shared controls while the page roster is still empty', () => {
+    const items = [
+      buildPackingItem({ name: 'Group tent', is_private: 0 }),
+      buildPackingItem({ name: 'My diary', is_private: 1 }),
+    ];
+    render(<PackingListPanel tripId={1} items={items} tripMembers={[]} />);
+
+    // An empty page-level roster is the loading state. Do not render it as a
+    // solo trip before the owner/member response has hydrated.
+    expect(screen.getByText('Shared')).toBeInTheDocument();
+    expect(screen.getByText('My list')).toBeInTheDocument();
+    expect(screen.getByText('My diary')).toBeInTheDocument();
+    expect(screen.queryByText('Group tent')).not.toBeInTheDocument();
+  });
+
+  it('FE-COMP-PACKING-087: owner-only roster hides shared controls and keeps all items', async () => {
+    const items = [
+      buildPackingItem({ name: 'Group tent', is_private: 0 }),
+      buildPackingItem({ name: 'My diary', is_private: 1 }),
+    ];
+    const { container } = render(
+      <PackingListPanel tripId={1} items={items} tripMembers={[{ id: 1, username: 'owner' }]} />
+    );
+
+    expect(screen.queryByText('Shared')).not.toBeInTheDocument();
+    expect(screen.queryByText('My list')).not.toBeInTheDocument();
+    expect(await screen.findByText('Group tent')).toBeInTheDocument();
+    expect(screen.getByText('My diary')).toBeInTheDocument();
+    expect(container.querySelector('svg.lucide-share-2')).toBeNull();
+    expect(container.querySelector('svg.lucide-user-plus')).toBeNull();
+  });
+
+  it('FE-COMP-PACKING-088: companion roster retains shared and personal views', async () => {
+    const items = [
+      buildPackingItem({ name: 'Group tent', is_private: 0 }),
+      buildPackingItem({ name: 'My diary', is_private: 1 }),
+    ];
+    const user = userEvent.setup();
+    render(
+      <PackingListPanel
+        tripId={1}
+        items={items}
+        tripMembers={[{ id: 1, username: 'owner' }, { id: 2, username: 'friend' }]}
+      />
+    );
+
+    expect(await screen.findByText('My diary')).toBeInTheDocument();
+    expect(screen.queryByText('Group tent')).not.toBeInTheDocument();
+    await user.click(screen.getByText('Shared'));
+    expect(await screen.findByText('Group tent')).toBeInTheDocument();
+    expect(screen.queryByText('My diary')).not.toBeInTheDocument();
+  });
 });

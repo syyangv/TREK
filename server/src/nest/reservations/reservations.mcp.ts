@@ -409,7 +409,7 @@ export class ReservationsMcp {
 
   @Tool({
     name: 'update_reservation',
-    description: 'Update an existing reservation in a trip. Use status "confirmed" to confirm a pending recommendation, or "pending" to revert it. For anything travelled ON (flight, train, bus, car, taxi, bicycle, cruise, ferry, transport_other) use update_transport instead. Linking: hotel → use place_id to link to an accommodation place; restaurant/event/tour/activity/parking/other → use assignment_id to link to a day assignment.',
+    description: 'Update an existing reservation in a trip. Use status "confirmed" to confirm a pending recommendation, or "pending" to revert it. For anything travelled ON (flight, train, bus, car, taxi, bicycle, cruise, ferry, transport_other) use update_transport instead. Linking: hotel → use place_id to link to an accommodation place; restaurant/event/tour/activity/parking/other → use assignment_id to link to a day assignment, or null to unlink it.',
     inputSchema: {
       tripId: z.number().int().positive(),
       reservationId: z.number().int().positive(),
@@ -450,8 +450,8 @@ export class ReservationsMcp {
 
     const { reservation } = this.reservations.update(reservationId, tripId, {
       title, type, reservation_time, reservation_end_time, url, location, confirmation_number, notes, status,
-      place_id: place_id !== undefined ? place_id ?? undefined : undefined,
-      assignment_id: assignment_id !== undefined ? assignment_id ?? undefined : undefined,
+      place_id: place_id !== undefined ? place_id : undefined,
+      assignment_id: assignment_id !== undefined ? assignment_id : undefined,
     }, existing);
     this.guards.safeBroadcast(tripId, 'reservation:updated', { reservation });
     return ok({ reservation });

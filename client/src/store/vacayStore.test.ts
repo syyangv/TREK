@@ -168,6 +168,43 @@ describe('vacayStore optimistic updates', () => {
 });
 
 describe('vacayStore leave-year window', () => {
+  it('explicitly syncs Obsidian before reading entries', async () => {
+    const calls: string[] = []
+    server.use(
+      http.post('/api/addons/vacay/entries/sync-obsidian/:year', ({ params }) => {
+        calls.push(`sync:${params.year as string}`)
+        return HttpResponse.json({ success: true })
+      }),
+      http.get('/api/addons/vacay/entries/:year', ({ params }) => {
+        calls.push(`entries:${params.year as string}`)
+        return HttpResponse.json({ entries: [], companyHolidays: [] })
+      }),
+    )
+
+    await useVacayStore.getState().loadEntries(2026)
+
+    expect(calls).toEqual(['sync:2026', 'entries:2026'])
+  })
+
+  it('still reads entries when the optional Obsidian sync fails', async () => {
+    const calls: string[] = []
+    server.use(
+      http.post('/api/addons/vacay/entries/sync-obsidian/:year', ({ params }) => {
+        calls.push(`sync:${params.year as string}`)
+        return HttpResponse.json({ error: 'sync unavailable' }, { status: 503 })
+      }),
+      http.get('/api/addons/vacay/entries/:year', ({ params }) => {
+        calls.push(`entries:${params.year as string}`)
+        return HttpResponse.json({ entries: [{ date: '2026-06-01', user_id: 1 }], companyHolidays: [] })
+      }),
+    )
+
+    await useVacayStore.getState().loadEntries(2026)
+
+    expect(calls).toEqual(['sync:2026', 'entries:2026'])
+    expect(useVacayStore.getState().entries).toEqual([{ date: '2026-06-01', user_id: 1 }])
+  })
+
   it('FE-STORE-VCY-009: an empty year list falls back to the current period', async () => {
     useVacayStore.setState({ yearSettings: FISCAL_JULY });
     server.use(http.get('/api/addons/vacay/years', () => HttpResponse.json({ years: [] })));

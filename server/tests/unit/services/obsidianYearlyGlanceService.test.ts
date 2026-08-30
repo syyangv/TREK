@@ -42,12 +42,15 @@ const { vaultPath } = vi.hoisted(() => {
   fs.writeFileSync(path.join(dailyDir, '2025-01-01.md'), '---\n假期: [[放假/公共假期]]\n---\n');
   fs.writeFileSync(path.join(dailyDir, '2025-05-01.md'), '---\n"假期": ["#放假/PTO"]\n---\n');
   fs.writeFileSync(path.join(dailyDir, '2025-05-02.md'), '---\n假期:\n  - 放假/病假\n---\n');
+  fs.writeFileSync(path.join(dailyDir, '2025-08-27.md'), '---\n假期: 公共假期\n---\n');
   fs.writeFileSync(path.join(dailyDir, '2025-05-03.md'), '---\n假期: false\n---\n');
   fs.writeFileSync(path.join(root, '请假计划.md'), [
     '| Date | Type | Note |',
     '| --- | --- | --- |',
     '| 2025-08-27 | PTO | planned |',
     '| 2025-09-07 | 公共假期 | holiday |',
+    '| 2025-09-08 | 病假 | sick leave |',
+    '| 2025-09-09 | sick | english sick leave |',
     '| 2025-10-01 | Meeting | ignored |',
   ].join('\n'));
   return { vaultPath: root };
@@ -69,16 +72,12 @@ import {
 afterAll(() => require('node:fs').rmSync(vaultPath, { recursive: true, force: true }));
 
 describe('loadObsidianPublicHolidaysForYear', () => {
-  it('preserves each Yearly Glance 假期 category using root-level Periodic Notes settings', () => {
+  it('uses the leave-plan table as authority over daily notes and Yearly Glance events', () => {
     expect(loadObsidianPublicHolidaysForYear(2025)).toEqual([
-      { date: '2025-01-01', note: getObsidianPublicHolidayNote() },
-      { date: '2025-05-01', note: 'Obsidian PTO' },
-      { date: '2025-05-02', note: 'Obsidian 病假' },
       { date: '2025-08-27', note: 'Obsidian PTO' },
       { date: '2025-09-07', note: 'Obsidian 公共假期' },
-      { date: '2025-12-20', note: 'Obsidian PTO' },
-      { date: '2025-12-21', note: 'Obsidian PTO' },
-      { date: '2025-12-22', note: 'Obsidian PTO' },
+      { date: '2025-09-08', note: 'Obsidian 病假' },
+      { date: '2025-09-09', note: 'Obsidian 病假' },
     ]);
     expect(getObsidianHolidayNotes()).toEqual([
       'Obsidian PTO',
@@ -87,7 +86,7 @@ describe('loadObsidianPublicHolidaysForYear', () => {
     ]);
   });
 
-  it('uses explicit Yearly Glance daily-note settings and parses a non-periodic note', () => {
+  it('does not classify a daily note when Yearly Glance has explicit daily-note settings', () => {
     const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
     const originalYearly = fs.readFileSync(yearlyPath, 'utf8');
     const notePath = path.join(vaultPath, 'Daily/Explicit/2025/04/05.md');
@@ -103,14 +102,14 @@ describe('loadObsidianPublicHolidaysForYear', () => {
     }));
 
     try {
-      expect(loadObsidianPublicHolidaysForYear(2025)).toContainEqual({ date: '2025-04-05', note: 'Obsidian PTO' });
+      expect(loadObsidianPublicHolidaysForYear(2025)).not.toContainEqual({ date: '2025-04-05', note: 'Obsidian PTO' });
     } finally {
       fs.writeFileSync(yearlyPath, originalYearly);
       fs.rmSync(path.join(vaultPath, 'Daily/Explicit'), { recursive: true, force: true });
     }
   });
 
-  it('falls back to Obsidian Daily Notes settings and tolerates malformed frontmatter', () => {
+  it('does not classify daily-note frontmatter, including malformed frontmatter', () => {
     const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
     const originalYearly = fs.readFileSync(yearlyPath, 'utf8');
     const noteDir = path.join(vaultPath, 'Daily/Other');
@@ -121,14 +120,14 @@ describe('loadObsidianPublicHolidaysForYear', () => {
     fs.writeFileSync(yearlyPath, JSON.stringify({ config: { dailyNoteSource: 'daily-notes' }, data: { customEvents: [] } }));
 
     try {
-      expect(loadObsidianPublicHolidaysForYear(2025)).toContainEqual({ date: '2025-03-06', note: 'Obsidian PTO' });
+      expect(loadObsidianPublicHolidaysForYear(2025)).not.toContainEqual({ date: '2025-03-06', note: 'Obsidian PTO' });
     } finally {
       fs.writeFileSync(yearlyPath, originalYearly);
       fs.rmSync(noteDir, { recursive: true, force: true });
     }
   });
 
-  it('reads nested Periodic Notes settings when the root daily section is absent', () => {
+  it('does not read nested Periodic Notes daily-note settings', () => {
     const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
     const periodicPath = path.join(vaultPath, '.obsidian/plugins/periodic-notes/data.json');
     const originalYearly = fs.readFileSync(yearlyPath, 'utf8');
@@ -140,7 +139,7 @@ describe('loadObsidianPublicHolidaysForYear', () => {
     fs.writeFileSync(periodicPath, JSON.stringify({ settings: { daily: { folder: 'Daily/Nested', format: 'YYYY-MM-DD' } } }));
 
     try {
-      expect(loadObsidianPublicHolidaysForYear(2025)).toContainEqual({ date: '2025-06-01', note: 'Obsidian 公共假期' });
+      expect(loadObsidianPublicHolidaysForYear(2025)).not.toContainEqual({ date: '2025-06-01', note: 'Obsidian 公共假期' });
     } finally {
       fs.writeFileSync(yearlyPath, originalYearly);
       fs.writeFileSync(periodicPath, originalPeriodic);
@@ -148,7 +147,7 @@ describe('loadObsidianPublicHolidaysForYear', () => {
     }
   });
 
-  it('maps only leave-related Yearly Glance UI events, expands dates, and skips malformed events', () => {
+  it('ignores Yearly Glance custom events, including leave-like and unrelated events', () => {
     const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
     const originalYearly = fs.readFileSync(yearlyPath, 'utf8');
     fs.writeFileSync(yearlyPath, JSON.stringify({
@@ -169,15 +168,12 @@ describe('loadObsidianPublicHolidaysForYear', () => {
     }));
 
     try {
-      expect(loadObsidianPublicHolidaysForYear(2025)).toEqual(expect.arrayContaining([
-        { date: '2025-06-01', note: 'Obsidian 病假' },
-        { date: '2025-06-02', note: 'Obsidian 公共假期' },
-        { date: '2025-06-03', note: 'Obsidian PTO' },
-        { date: '2025-06-05', note: 'Obsidian PTO' },
-        { date: '2025-01-01', note: 'Obsidian PTO' },
-        { date: '2025-06-10', note: 'Obsidian PTO' },
-        { date: '2025-06-11', note: 'Obsidian PTO' },
-      ]));
+      expect(loadObsidianPublicHolidaysForYear(2025)).toEqual([
+        { date: '2025-08-27', note: 'Obsidian PTO' },
+        { date: '2025-09-07', note: 'Obsidian 公共假期' },
+        { date: '2025-09-08', note: 'Obsidian 病假' },
+        { date: '2025-09-09', note: 'Obsidian 病假' },
+      ]);
     } finally {
       fs.writeFileSync(yearlyPath, originalYearly);
     }
@@ -238,7 +234,7 @@ describe('loadObsidianPublicHolidaysForYear', () => {
     }
   });
 
-  it('uses default formats for incomplete Periodic Notes and Daily Notes settings', () => {
+  it('does not classify daily notes when plugin settings are incomplete', () => {
     const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
     const periodicPath = path.join(vaultPath, '.obsidian/plugins/periodic-notes/data.json');
     const dailyNotesPath = path.join(vaultPath, '.obsidian/daily-notes.json');
@@ -252,12 +248,12 @@ describe('loadObsidianPublicHolidaysForYear', () => {
     try {
       fs.writeFileSync(periodicPath, JSON.stringify({ daily: {} }));
       fs.writeFileSync(firstNote, '---\n假期: 公共假期\n---\n');
-      expect(loadObsidianPublicHolidaysForYear(2025)).toContainEqual({ date: '2025-11-05', note: 'Obsidian 公共假期' });
+      expect(loadObsidianPublicHolidaysForYear(2025)).not.toContainEqual({ date: '2025-11-05', note: 'Obsidian 公共假期' });
 
       fs.writeFileSync(periodicPath, JSON.stringify({ settings: {} }));
       fs.writeFileSync(dailyNotesPath, JSON.stringify({}));
       fs.writeFileSync(secondNote, '---\n假期: PTO\n---\n');
-      expect(loadObsidianPublicHolidaysForYear(2025)).toContainEqual({ date: '2025-11-06', note: 'Obsidian PTO' });
+      expect(loadObsidianPublicHolidaysForYear(2025)).not.toContainEqual({ date: '2025-11-06', note: 'Obsidian PTO' });
     } finally {
       fs.writeFileSync(yearlyPath, originalYearly);
       fs.writeFileSync(periodicPath, originalPeriodic);
@@ -267,7 +263,7 @@ describe('loadObsidianPublicHolidaysForYear', () => {
     }
   });
 
-  it('supports concise Yearly Glance settings and leap-year scanning', () => {
+  it('does not classify a daily note from concise Yearly Glance settings', () => {
     const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
     const originalYearly = fs.readFileSync(yearlyPath, 'utf8');
     const notePath = path.join(vaultPath, 'Daily/Short/2025-11-07.md');
@@ -279,7 +275,7 @@ describe('loadObsidianPublicHolidaysForYear', () => {
     }));
 
     try {
-      expect(loadObsidianPublicHolidaysForYear(2025)).toContainEqual({ date: '2025-11-07', note: 'Obsidian 公共假期' });
+      expect(loadObsidianPublicHolidaysForYear(2025)).not.toContainEqual({ date: '2025-11-07', note: 'Obsidian 公共假期' });
       expect(loadObsidianPublicHolidaysForYear(2024)).toEqual([]);
     } finally {
       fs.writeFileSync(yearlyPath, originalYearly);
@@ -287,7 +283,7 @@ describe('loadObsidianPublicHolidaysForYear', () => {
     }
   });
 
-  it('supports a concise format-only setting with the default empty folder', () => {
+  it('does not classify a daily note from a concise format-only setting', () => {
     const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
     const originalYearly = fs.readFileSync(yearlyPath, 'utf8');
     const notePath = path.join(vaultPath, '2025/11/08.md');
@@ -299,7 +295,7 @@ describe('loadObsidianPublicHolidaysForYear', () => {
     }));
 
     try {
-      expect(loadObsidianPublicHolidaysForYear(2025)).toContainEqual({ date: '2025-11-08', note: 'Obsidian PTO' });
+      expect(loadObsidianPublicHolidaysForYear(2025)).not.toContainEqual({ date: '2025-11-08', note: 'Obsidian PTO' });
     } finally {
       fs.writeFileSync(yearlyPath, originalYearly);
       fs.rmSync(path.join(vaultPath, '2025'), { recursive: true, force: true });

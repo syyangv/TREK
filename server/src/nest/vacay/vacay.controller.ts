@@ -213,6 +213,20 @@ export class VacayController {
     return this.vacay.getEntries(planId, year, user.id);
   }
 
+  @Post('entries/sync-obsidian/:year')
+  @HttpCode(200)
+  syncObsidianEntries(@CurrentUser() user: User, @Param('year') yearParam: string) {
+    const year = Number.parseInt(yearParam, 10);
+    if (!Number.isInteger(year)) {
+      throw new HttpException({ error: 'Year required' }, 400);
+    }
+    // The active plan is the caller's own plan or an accepted membership plan,
+    // matching the permission boundary used by the other Vacay entry writes.
+    const planId = this.vacay.getActivePlanId(user.id);
+    this.vacay.reconcileObsidianCompanyHolidays(planId, year);
+    return { success: true };
+  }
+
   @Post('entries/toggle')
   @HttpCode(200)
   toggleEntry(

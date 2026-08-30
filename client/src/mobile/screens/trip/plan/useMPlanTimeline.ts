@@ -43,8 +43,11 @@ export function useMPlanTimeline(planner: TripPlanner) {
     setTimeSlotEdit({
       dayId: assignment.day_id,
       assignmentId: assignment.id,
-      place_time: assignment.place?.place_time?.slice(0, 5) || '',
-      end_time: assignment.place?.end_time?.slice(0, 5) || '',
+      // The embedded place carries effective values (including shared place
+      // defaults). The modal edits only this assignment's override, so seed it
+      // from the raw assignment fields instead.
+      place_time: assignment.assignment_time?.slice(0, 5) || '',
+      end_time: assignment.assignment_end_time?.slice(0, 5) || '',
     })
   }, [])
 
@@ -125,7 +128,29 @@ export function useMPlanTimeline(planner: TripPlanner) {
     const timer = window.setInterval(() => setNow(new Date()), 30_000)
     return () => window.clearInterval(timer)
   }, [])
-  const upNext = useMemo(() => findUpNext(day, dayAssignments, now), [day, dayAssignments, now])
+  const upNext = useMemo(() => {
+    if (!day) return null
+
+    // `findUpNext` reads the assignment's effective place time. Replace that
+    // value only for assignments without a raw override so a linked booking is
+    // the source of truth instead of a shared place default. Keep the original
+    // assignment in the result for row/card actions.
+    const assignmentsForUpNext = dayAssignments.map(assignment => {
+      if (assignment.assignment_time || assignment.assignment_end_time) return assignment
+      const linkedRes = reservations.find(r => r.assignment_id === assignment.id)
+      const reservationTime = linkedRes ? getDisplayTimeForDay(linkedRes, day.id) : null
+      if (!linkedRes) return assignment
+      return { ...assignment, place: { ...assignment.place, place_time: reservationTime } }
+    })
+    const next = findUpNext(day, assignmentsForUpNext, now)
+    if (!next) return null
+    const assignment = dayAssignments.find(a => a.id === next.assignment.id) ?? next.assignment
+    return {
+      ...next,
+      assignment,
+      linkedRes: reservations.find(r => r.assignment_id === assignment.id) ?? null,
+    }
+  }, [day, dayAssignments, reservations, now])
 
   // ── Weather chip — anchored to the day's first located stop, else its hotel ──
   const weatherCoords = useMemo<{ lat: number; lng: number } | null>(() => {

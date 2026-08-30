@@ -5,6 +5,10 @@
 **Current integration:** [PR #58](https://github.com/syyangv/TREK/pull/58), merge
 commit `fae97028`
 
+The post-merge follow-up audit after `fdc451a4` covers explicit Obsidian
+reconciliation, reservation-link unlink semantics, mobile reservation-time
+fallbacks, complete mobile time ranges, and roster-loading protection.
+
 This review decides, one behavior at a time, when upstream v4 may replace fork
 code and where a documented fork delta must remain. A clean textual merge is
 not evidence that a behavioral replacement is safe. This revision records the
@@ -57,7 +61,7 @@ graph impact data.
 | 18 | Compact v4 dashboard cards | **Upstream base + thin fork delta** | Keep the compact CSS override without forking dashboard JSX; require visual smoke coverage after upstream layout changes. |
 | 19 | Simplified Chinese `个人清单` terminology | **Conflict — preserve fork policy** | Preserve `packing.viewPersonal` and `packing.cloneToMine`, plus the focused terminology test. Do not replace them with upstream `我的清单`. |
 | 20 | Vacay entitlement inheritance and carry-over | **Upstream base + behavior-critical fork delta** | Inherit the preceding year's configured `vacation_days`; calculate `carried_over` independently and never overwrite the new year's base entitlement. |
-| 21 | Obsidian Vacay import | **Fork-only — redesign required** | Preserve the read-only integration intent, but resolve the authority and read-path conflicts below before expanding or declaring it compliant. |
+| 21 | Obsidian Vacay import | **Fork-only — follow-up fixed** | `请假计划.md` is authoritative; reconciliation is transactional and explicit, while Vacay reads remain database-only. |
 | 22 | CI, release, promotion, and Tailscale deployment | **Conflict / fork-only security boundary** | Never wholesale-replace workflows. Preserve repository identity, `thvysy44/trek-fork`, immutable digests, environment approval, signed promotion, restricted deploy agent, poller verification, and health evidence. |
 
 ## v4.1.0 sync outcome
@@ -106,20 +110,18 @@ period, and empty-plan behavior.
 
 ## Highest-priority conflicts
 
-### P0 — Obsidian authority contradicts the preservation contract
+### Resolved — Obsidian authority follows the preservation contract
 
-`FORK_CUSTOMIZATIONS.md` defines `请假计划.md` rows (`Date | Type | Note`) as
-the planned-leave source. The current integration also reads Yearly Glance and
-Daily/Periodic Notes configuration and can infer leave from event text. That
-creates competing authorities. Make `请假计划.md` authoritative, or explicitly
-document precedence and add conflict tests before retaining the broader import.
+`请假计划.md` rows (`Date | Type | Note`) are now the sole planned-leave
+source. Yearly Glance custom events and Daily/Periodic Notes are ignored for
+leave classification. The explicit
+`POST /api/addons/vacay/entries/sync-obsidian/:year` path performs the import.
 
-### P0 — Obsidian reconciliation performs writes on a read path
+### Resolved — Obsidian reconciliation is isolated from reads
 
-`VacayService.getEntries()` can trigger synchronous filesystem traversal and
-non-transactional delete/reinsert reconciliation. Move this work to an explicit
-background or cached adapter, make `getEntries()` database-read-only, and wrap
-reconciliation writes in a transaction.
+`VacayService.getEntries()` is database-read-only. The explicit reconciliation
+operation wraps its delete/reinsert work in a transaction, and client entry
+loads trigger it best-effort before the normal read.
 
 ### Resolved — Runtime Maps credential and Compose wiring
 
@@ -137,9 +139,9 @@ server-side Places request path.
 ### P1 — Integration hotspots that remain open
 
 1. Extract a shared Assignment Time Slot editing hook.
-2. Represent roster state as loading, solo, or collaborative.
+2. Finish propagating loading/solo/collaborative roster state to every
+   companion-dependent surface; packing now protects the initial loading state.
 3. Isolate past-day expansion persistence from `DayPlanSidebar`.
-4. Isolate Obsidian filesystem access from Vacay domain reads.
 
 ## Rules for future upstream syncs
 
@@ -187,6 +189,14 @@ Result: passed; informational icon recommendation only
 Focused regression suites covered booking day stops, desktop and mobile
 reservation surfaces, migrations, storage administration, Vacay, PWA behavior,
 book schemas, packing terminology, and shared locale changes.
+
+The post-merge preservation follow-up passed the focused Vacay/Obsidian,
+reservation-link, mobile itinerary, packing, client store, and full client test
+suites, plus build, typecheck, lint, strict i18n parity, and diff checks. The
+full server suite still has two unrelated collaboration failures:
+`tests/e2e/collab.e2e.test.ts` receives 404 instead of the expected 429, and
+`tests/integration/collab.test.ts` fails in `COLLAB-011` while reading an
+undefined poll id. They are outside this preservation fix.
 
 Production acceptance is not part of this local review. After the PR merges,
 the protected release process must still provide green CI and Security Scan, a

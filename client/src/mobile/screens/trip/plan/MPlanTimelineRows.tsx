@@ -117,6 +117,38 @@ function AvatarRing({ children, className = '', style }: { children: ReactNode; 
 
 const TIME_CHIP = 'flex-none whitespace-nowrap rounded-[6px] bg-[color:var(--m-ic)] px-[6px] py-px font-geist text-[0.65625rem] font-semibold'
 
+/**
+ * Resolve the time shown for an assigned place without mistaking the effective
+ * place projection for an assignment override. The API projects shared place
+ * defaults into `place_time`/`end_time`, while the raw assignment fields tell us
+ * whether that assignment has its own planned slot.
+ *
+ * A linked reservation is the fallback when there is no explicit assignment
+ * slot. Its span is intentionally resolved for the current day so a start-day
+ * reservation does not leak its end time (and middle days stay untimed).
+ */
+export function getAssignmentTimeRange(assignment: Assignment, linkedRes: Reservation | null | undefined): {
+  start: string | null | undefined
+  end: string | null | undefined
+} {
+  const place = assignment.place
+  if (assignment.assignment_time || assignment.assignment_end_time) {
+    return { start: place?.place_time, end: place?.end_time }
+  }
+
+  if (linkedRes) {
+    const phase = getSpanPhase(linkedRes, assignment.day_id)
+    return {
+      start: splitReservationDateTime(getDisplayTimeForDay(linkedRes, assignment.day_id)).time,
+      end: phase === 'single' ? splitReservationDateTime(linkedRes.reservation_end_time).time : null,
+    }
+  }
+
+  // No reservation means the effective projection is the shared place's own
+  // default, which remains useful to show on an otherwise unplanned stop.
+  return { start: place?.place_time, end: place?.end_time }
+}
+
 // ── b3) Place row ────────────────────────────────────────────────────────────
 
 export function PlaceRow({ assignment, fullPlace, linkedRes, chrome, reorder, drag, onOpen, onEdit, onRemove, onTimeSlot }: {
@@ -134,19 +166,9 @@ export function PlaceRow({ assignment, fullPlace, linkedRes, chrome, reorder, dr
   const { t } = chrome
   const place = assignment.place
   const CatIcon = getCategoryIcon(place?.category?.icon)
-  // A planned assignment slot wins over the linked booking time (e.g. a
-  // reservation may be 11:00–13:00 while the itinerary slot is 12:00–12:30).
-  // If no planned slot exists, show the linked reservation's time instead.
-  const hasPlannedTime = Boolean(place?.place_time || place?.end_time)
-  const reservationPhase = linkedRes ? getSpanPhase(linkedRes, assignment.day_id) : 'single'
-  const reservationStart = linkedRes
-    ? splitReservationDateTime(getDisplayTimeForDay(linkedRes, assignment.day_id)).time
-    : null
-  const reservationEnd = linkedRes && reservationPhase === 'single'
-    ? splitReservationDateTime(linkedRes.reservation_end_time).time
-    : null
-  const startTime = fmtTime(hasPlannedTime ? place?.place_time : reservationStart, chrome)
-  const endTime = fmtTime(hasPlannedTime ? place?.end_time : reservationEnd, chrome)
+  const { start, end } = getAssignmentTimeRange(assignment, linkedRes)
+  const startTime = fmtTime(start, chrome)
+  const endTime = fmtTime(end, chrome)
   const time = startTime ? `${startTime}${endTime ? ` – ${endTime}` : ''}` : endTime
   const sub = linkedRes
     ? [

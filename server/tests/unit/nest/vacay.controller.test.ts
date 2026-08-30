@@ -161,6 +161,17 @@ describe('VacayController (parity with the legacy /api/addons/vacay route)', () 
       makeController({ ...planBase, getEntries }).entries(user, '2026');
       expect(getEntries).toHaveBeenCalledWith(10, '2026', 1);
     });
+
+    it('POST explicitly reconciles Obsidian entries for the caller active plan', () => {
+      const reconcileObsidianCompanyHolidays = vi.fn();
+      expect(makeController({ ...planBase, reconcileObsidianCompanyHolidays }).syncObsidianEntries(user, '2026')).toEqual({ success: true });
+      expect(reconcileObsidianCompanyHolidays).toHaveBeenCalledWith(10, 2026);
+    });
+
+    it('POST rejects a malformed reconciliation year', () => {
+      return thrown(() => makeController({ ...planBase }).syncObsidianEntries(user, 'not-a-year')).then((r) =>
+        expect(r).toEqual({ status: 400, body: { error: 'Year required' } }));
+    });
   });
 
   describe('year settings (#737)', () => {

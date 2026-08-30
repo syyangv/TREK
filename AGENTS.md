@@ -12,6 +12,17 @@ Use the five default triage labels. See `docs/agents/triage-labels.md`.
 
 Use a multi-context layout for `client`, `server`, and `shared`. See `docs/agents/domain.md`.
 
+### Upstream synchronization
+
+Before syncing or updating from upstream, follow
+`docs/UPSTREAM_SYNC_WORKFLOW.md` and review `docs/FORK_CUSTOMIZATIONS.md`.
+The checklist is authoritative for fork-only designs and invariants, including
+assignment time slots, reservation-linked assignment persistence, mobile
+planned-slot-first/reservation-time-fallback display, and release safeguards.
+After conflicts or upstream rewrites, reapply those documented deltas and run
+the focused regression tests named by the checklist before declaring the sync
+complete.
+
 ### Validation
 
 Client Vitest paths must be workspace-relative: `npm run test --workspace=client -- src/...`.

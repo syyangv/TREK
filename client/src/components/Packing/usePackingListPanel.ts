@@ -73,16 +73,24 @@ export function usePackingList({ tripId, items, openImportSignal = 0, clearCheck
   // truth when provided (it refreshes after a member/guest is added); the panel
   // only fetches its own copy when rendered standalone.
   const [internalMembers, setInternalMembers] = useState<TripMember[]>([])
+  const [internalMembersLoaded, setInternalMembersLoaded] = useState(false)
   const [categoryAssignees, setCategoryAssignees] = useState<Record<string, CategoryAssignee[]>>({})
 
   useEffect(() => {
-    if (tripMembersProp) return
+    if (tripMembersProp !== undefined) return
+    let active = true
+    setInternalMembersLoaded(false)
     tripsApi.getMembers(tripId).then(data => {
+      if (!active) return
       const all: TripMember[] = []
       if (data.owner) all.push({ id: data.owner.id, username: data.owner.username, avatar: data.owner.avatar_url, is_guest: false })
       if (data.members) all.push(...data.members.map((m: any) => ({ id: m.id, username: m.username, avatar: m.avatar_url, is_guest: !!m.is_guest })))
       setInternalMembers(all)
-    }).catch(() => {})
+      setInternalMembersLoaded(true)
+    }).catch(() => {
+      if (active) setInternalMembersLoaded(true)
+    })
+    return () => { active = false }
   }, [tripId, tripMembersProp])
 
   useEffect(() => {
@@ -92,9 +100,16 @@ export function usePackingList({ tripId, items, openImportSignal = 0, clearCheck
   }, [tripId])
 
   const tripMembers = tripMembersProp ?? internalMembers
+  // An externally supplied empty roster is the page's initial/unhydrated state,
+  // not proof of a solo trip. Standalone panels keep their existing behavior by
+  // using the completed local request to distinguish an empty result from load.
+  const membersLoading = tripMembersProp !== undefined
+    ? tripMembersProp.length === 0
+    : !internalMembersLoaded
   // Without a travel companion the shared/personal split is meaningless: pin the
   // view to the user's own list (the default) and hide the sharing UI entirely.
   const hasCompanions = tripMembers.length > 1
+    || (membersLoading && tripMembersProp !== undefined)
   const view = hasCompanions ? (viewProp ?? ownView) : 'personal'
 
   const handleSetAssignees = async (category: string, userIds: number[]) => {
@@ -417,7 +432,7 @@ export function usePackingList({ tripId, items, openImportSignal = 0, clearCheck
   const handleLeaveItem = (id: number, userId: number) => removePackingContributor(tripId, id, userId)
 
   return {
-    view, setView, currentUserId, hasCompanions,
+    view, setView, currentUserId, hasCompanions, membersLoading,
     handleSetSharing, handleCloneItem, handleJoinItem, handleLeaveItem,
     tripId, items, inlineHeader, t, canEdit, isAdmin, font, reorderPackingItems,
     filter, setFilter, addingCategory, setAddingCategory, newCatName, setNewCatName,

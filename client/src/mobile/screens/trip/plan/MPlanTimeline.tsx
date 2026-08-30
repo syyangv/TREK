@@ -14,7 +14,7 @@ import type { PlanRow } from './planTimelineModel'
 import { useMPlanDragReorder } from './useMPlanDragReorder'
 import { useTouchDragBridge } from '../../../../hooks/useTouchDragBridge'
 import { useIsTouch } from '../../../../hooks/useIsTouch'
-import { ConnRow, HotelConnRow, NoteRow, PlaceRow, PlanScheduleRow, ReorderStack, TransitRow, TransportRow } from './MPlanTimelineRows'
+import { ConnRow, getAssignmentTimeRange, HotelConnRow, NoteRow, PlaceRow, PlanScheduleRow, ReorderStack, TransitRow, TransportRow } from './MPlanTimelineRows'
 import type { RowDrag } from './MPlanTimelineRows'
 import { usePluginDaySchedule } from '../../../../components/Plugins/PluginDaySchedule'
 import { Fragment } from 'react'
@@ -274,7 +274,7 @@ export default function MPlanTimeline({ planner, shell }: MPlanTimelineProps) {
 }
 
 /** Go mode: the next stop with a live countdown (only counting down on today's day). */
-function UpNextCard({ tl, t, onOpen }: {
+export function UpNextCard({ tl, t, onOpen }: {
   tl: MPlanTimelineController
   t: MPlanTimelineProps['planner']['t']
   onOpen: (assignment: Assignment) => void
@@ -282,7 +282,10 @@ function UpNextCard({ tl, t, onOpen }: {
   const upNext = tl.upNext
   if (!upNext) return null
   const place = upNext.assignment.place
-  const time = place?.place_time ? formatTime(place.place_time.slice(0, 5), tl.language, tl.timeFormat) : ''
+  const { start, end } = getAssignmentTimeRange(upNext.assignment, upNext.linkedRes)
+  const startTime = start ? formatTime(start.slice(0, 5), tl.language, tl.timeFormat) : ''
+  const endTime = end ? formatTime(end.slice(0, 5), tl.language, tl.timeFormat) : ''
+  const time = startTime ? `${startTime}${endTime ? ` – ${endTime}` : ''}` : endTime
   const sub = place?.address || place?.description || ''
 
   return (

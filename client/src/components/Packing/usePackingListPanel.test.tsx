@@ -53,6 +53,58 @@ afterEach(() => {
 })
 
 describe('usePackingList — members & assignees', () => {
+  it('FE-W5HOOK-059: treats an externally supplied empty roster as loading, not solo', () => {
+    const { result } = renderPanel({
+      items: [buildPackingItem({ name: 'Group tent', is_private: 0 })],
+      tripMembers: [],
+    })
+
+    expect(result.current.membersLoading).toBe(true)
+    expect(result.current.hasCompanions).toBe(true)
+    expect(result.current.view).toBe('personal')
+    expect(result.current.gruppiert).toEqual({})
+  })
+
+  it('FE-W5HOOK-060: switches to solo behavior once the roster resolves to the owner only', () => {
+    const { result, rerender } = renderPanel({
+      items: [
+        buildPackingItem({ name: 'Group tent', category: 'Gear', is_private: 0 }),
+        buildPackingItem({ name: 'My diary', category: 'Gear', is_private: 1 }),
+      ],
+      tripMembers: [],
+    })
+
+    rerender({
+      tripId: 1,
+      items: [
+        buildPackingItem({ name: 'Group tent', category: 'Gear', is_private: 0 }),
+        buildPackingItem({ name: 'My diary', category: 'Gear', is_private: 1 }),
+      ],
+      tripMembers: [{ id: 1, username: 'owner' }],
+    })
+
+    expect(result.current.membersLoading).toBe(false)
+    expect(result.current.hasCompanions).toBe(false)
+    expect(result.current.view).toBe('personal')
+    expect(result.current.gruppiert.Gear.map(i => i.name)).toEqual(['Group tent', 'My diary'])
+  })
+
+  it('FE-W5HOOK-061: keeps the shared/personal split for a companion roster', () => {
+    const items = [
+      buildPackingItem({ name: 'Group tent', category: 'Gear', is_private: 0 }),
+      buildPackingItem({ name: 'My diary', category: 'Gear', is_private: 1 }),
+    ]
+    const { result } = renderPanel({ items, tripMembers: [{ id: 1, username: 'owner' }, { id: 2, username: 'friend' }] })
+
+    expect(result.current.membersLoading).toBe(false)
+    expect(result.current.hasCompanions).toBe(true)
+    expect(result.current.view).toBe('personal')
+    expect(result.current.gruppiert.Gear.map(i => i.name)).toEqual(['My diary'])
+
+    act(() => result.current.setView('common'))
+    expect(result.current.gruppiert.Gear.map(i => i.name)).toEqual(['Group tent'])
+  })
+
   it('FE-W5HOOK-001: merges the owner and the members into one member list', async () => {
     server.use(
       http.get('/api/trips/:id/members', () =>

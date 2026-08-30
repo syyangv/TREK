@@ -31,12 +31,16 @@ const obsidianState = vi.hoisted(() => ({
   available: false,
   notes: ['Obsidian PTO', 'Obsidian 病假', 'Obsidian 公共假期'],
   holidays: [] as { date: string; note: string }[],
+  loadCalls: 0,
 }));
 
 vi.mock('../../../src/nest/common/obsidianYearlyGlanceService', () => ({
   getObsidianHolidayNotes: () => obsidianState.notes,
   isObsidianPublicHolidaySourceAvailable: () => obsidianState.available,
-  loadObsidianPublicHolidaysForYear: () => obsidianState.holidays,
+  loadObsidianPublicHolidaysForYear: () => {
+    obsidianState.loadCalls += 1;
+    return obsidianState.holidays;
+  },
 }));
 // Mock websocket so notifyPlanUsers doesn't throw
 vi.mock('../../../src/websocket', () => ({ broadcastToUser: vi.fn() }));
@@ -72,6 +76,7 @@ beforeEach(() => {
   obsidianState.available = false;
   obsidianState.notes = ['Obsidian PTO', 'Obsidian 病假', 'Obsidian 公共假期'];
   obsidianState.holidays = [];
+  obsidianState.loadCalls = 0;
   // Stub fetch with empty holiday list by default so updatePlan / applyHolidayCalendars
   // never makes real network calls.
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -517,7 +522,7 @@ describe('getEntries', () => {
     expect(result.companyHolidays).toEqual([]);
   });
 
-  it('mirrors read-only Obsidian public holidays and clears overlapping entries', () => {
+  it('does not reconcile Obsidian files or mutate rows while reading entries', () => {
     const { user, plan } = setupUserWithPlan();
     const date = '2026-05-01';
     const note = 'Obsidian 公共假期';
@@ -526,10 +531,27 @@ describe('getEntries', () => {
     svc.toggleEntry(user.id, plan.id, date, 1, 'vacation');
 
     const result = svc.getEntries(plan.id, '2026', user.id);
-    expect(result.entries).toEqual([]);
-    expect(result.companyHolidays).toEqual(expect.arrayContaining([
-      expect.objectContaining({ date, note }),
+    expect(result.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ date, user_id: user.id }),
     ]));
+    expect(result.companyHolidays).toEqual([]);
+    expect(obsidianState.loadCalls).toBe(0);
+  });
+
+  it('reconciles Obsidian-derived holidays through an explicit write operation', () => {
+    const { user, plan } = setupUserWithPlan();
+    const date = '2026-05-01';
+    const note = 'Obsidian 公共假期';
+    obsidianState.available = true;
+    obsidianState.holidays = [{ date, note }];
+    svc.toggleEntry(user.id, plan.id, date, 1, 'vacation');
+
+    svc.reconcileObsidianCompanyHolidays(plan.id, 2026);
+
+    expect(testDb.prepare('SELECT * FROM vacay_entries WHERE plan_id = ? AND date = ?').all(plan.id, date)).toEqual([]);
+    expect(testDb.prepare('SELECT date, note FROM vacay_company_holidays WHERE plan_id = ?').all(plan.id)).toEqual([
+      { date, note },
+    ]);
   });
 
   it('does not build a holiday query when the Obsidian note set is empty', () => {
@@ -1580,6 +1602,31 @@ describe('quirk fixes', () => {
 
     expect(testDb.prepare('SELECT id FROM vacay_years WHERE plan_id = ? AND year = ?').get(plan.id, year)).toBeDefined();
     expect(testDb.prepare('SELECT id FROM vacay_entries WHERE plan_id = ?').get(plan.id)).toBeDefined();
+  });
+
+  it('VACAY-SVC-069a: Obsidian reconciliation is atomic — a failed insert rolls back cleanup', () => {
+    const { user, plan } = setupUserWithPlan();
+    const previousDate = '2026-01-02';
+    const holidayDate = '2026-05-01';
+    const note = 'Obsidian 公共假期';
+    testDb.prepare(
+      'INSERT INTO vacay_company_holidays (plan_id, date, note) VALUES (?, ?, ?)',
+    ).run(plan.id, previousDate, 'Obsidian PTO');
+    testDb.prepare(
+      'INSERT INTO vacay_entries (plan_id, user_id, date, note) VALUES (?, ?, ?, ?)',
+    ).run(plan.id, user.id, holidayDate, '');
+    obsidianState.available = true;
+    obsidianState.holidays = [{ date: holidayDate, note }];
+
+    const broken = failingService('INSERT OR IGNORE INTO vacay_company_holidays');
+    expect(() => broken.reconcileObsidianCompanyHolidays(plan.id, 2026)).toThrow('boom');
+
+    expect(testDb.prepare('SELECT date, note FROM vacay_company_holidays WHERE plan_id = ? ORDER BY date').all(plan.id)).toEqual([
+      { date: previousDate, note: 'Obsidian PTO' },
+    ]);
+    expect(testDb.prepare('SELECT date FROM vacay_entries WHERE plan_id = ?').all(plan.id)).toEqual([
+      { date: holidayDate },
+    ]);
   });
 
   it('VACAY-SVC-070: getCountries surfaces an upstream non-2xx as the fetch error and caches nothing', async () => {

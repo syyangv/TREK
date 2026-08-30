@@ -44,6 +44,12 @@ For every conflict or upstream rewrite:
 4. Keep workflow repository guards, private image coordinates, Tailscale agent
    deployment, Vacay/Obsidian behavior, and PWA cache semantics intact.
 5. Record any new recurring merge decision in the preservation document.
+6. For mobile trip-plan or reservation changes, verify that assignment-linked
+   reservations still persist `assignment_id`, and that mobile place rows keep
+   the planned-slot-first / reservation-time-fallback display rule.
+7. For Vacay/Obsidian changes, verify that `请假计划.md` remains authoritative,
+   reconciliation stays behind the explicit sync operation, and `getEntries`
+   remains database-read-only.
 
 Pay special attention to `.github/workflows`, `client/src/App.tsx`,
 `client/vite.config.js`, Vacay client/server code, locale files, deployment

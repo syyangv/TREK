@@ -896,6 +896,7 @@ export class ReservationsService {
     let resolvedAssignmentId: number | null = assignment_id !== undefined
       ? (assignment_id || null)
       : (current.assignment_id ?? null);
+    const assignmentUnlinkRequested = assignment_id === null;
     let assignmentCreated: CreatedReservationAssignment = null;
     const currentAssignment = this.getReservationAssignment(tripId, current.assignment_id);
     const requestedAssignment = this.getReservationAssignment(tripId, resolvedAssignmentId);
@@ -924,7 +925,7 @@ export class ReservationsService {
       // A linked place with an exact booking day can be repaired or scheduled
       // during an edit. `false` is an explicit user opt-out from the dialog;
       // omitted flags retain the server's backwards-compatible reuse behavior.
-      if (resolvedAssignmentId == null && resolvedPlaceId != null && create_assignment !== false) {
+      if (!assignmentUnlinkRequested && resolvedAssignmentId == null && resolvedPlaceId != null && create_assignment !== false) {
         const assignmentDayId = nextReservationTime
           ? this.resolveDayIdFromTime(tripId, nextReservationTime, false)
           : (nextDayId != null && this.assignments.dayExists(nextDayId, tripId) ? nextDayId : null);

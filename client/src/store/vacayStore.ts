@@ -76,6 +76,7 @@ interface VacayApi {
   addYear: (year: number) => Promise<VacayYearsResponse>
   removeYear: (year: number) => Promise<VacayYearsResponse>
   getEntries: (year: number) => Promise<VacayEntriesResponse>
+  syncObsidianHolidays: (year: number) => Promise<unknown>
   toggleEntry: (date: string, targetUserId?: number, fraction?: 0.5 | 1, kind?: 'vacation' | 'comp') => Promise<unknown>
   toggleCompanyHoliday: (date: string) => Promise<unknown>
   getStats: (year: number) => Promise<VacayStatsResponse>
@@ -107,6 +108,7 @@ const api: VacayApi = {
   addYear: (year) => ax.post('/addons/vacay/years', { year } satisfies VacayAddYearRequest).then((r: AxiosResponse) => r.data),
   removeYear: (year) => ax.delete(`/addons/vacay/years/${year}`).then((r: AxiosResponse) => r.data),
   getEntries: (year) => ax.get(`/addons/vacay/entries/${year}`).then((r: AxiosResponse) => r.data),
+  syncObsidianHolidays: (year) => ax.post(`/addons/vacay/entries/sync-obsidian/${year}`).then((r: AxiosResponse) => r.data),
   toggleEntry: (date, targetUserId, fraction, kind) => ax.post('/addons/vacay/entries/toggle', { date, target_user_id: targetUserId, fraction, kind } satisfies VacayToggleEntryRequest).then((r: AxiosResponse) => r.data),
   toggleCompanyHoliday: (date) => ax.post('/addons/vacay/entries/company-holiday', { date } satisfies VacayCompanyHolidayRequest).then((r: AxiosResponse) => r.data),
   getStats: (year) => ax.get(`/addons/vacay/stats/${year}`).then((r: AxiosResponse) => r.data),
@@ -208,6 +210,7 @@ interface VacayState {
   addYear: (year: number) => Promise<void>
   removeYear: (year: number) => Promise<void>
   loadEntries: (year?: number) => Promise<void>
+  syncObsidianHolidays: (year?: number) => Promise<void>
   toggleEntry: (date: string, targetUserId?: number, fraction?: 0.5 | 1, kind?: 'vacation' | 'comp') => Promise<void>
   toggleCompanyHoliday: (date: string) => Promise<void>
   loadStats: (year?: number) => Promise<void>
@@ -331,8 +334,19 @@ export const useVacayStore = create<VacayState>((set, get) => ({
 
   loadEntries: async (year?: number) => {
     const y = year || get().selectedYear
+    // Keep the filesystem import explicit: the server GET remains a pure DB
+    // read, while the UI deliberately requests reconciliation before loading
+    // the grid (preserving the previous visible behavior).
+    try {
+      await get().syncObsidianHolidays(y)
+    } catch { /* optional sync failure must not block the database read */ }
     const data = await api.getEntries(y)
     set({ entries: data.entries, companyHolidays: data.companyHolidays })
+  },
+
+  syncObsidianHolidays: async (year?: number) => {
+    const y = year || get().selectedYear
+    await api.syncObsidianHolidays(y)
   },
 
   toggleEntry: async (date: string, targetUserId?: number, fraction: 0.5 | 1 = 1, kind: 'vacation' | 'comp' = 'vacation') => {

@@ -404,10 +404,14 @@ for full third-party attributions.
 
 ## Fork maintenance
 
-Maintainers of `syyangv/TREK` should use the [fork customization checklist](docs/FORK_CUSTOMIZATIONS.md)
-and [upstream synchronization workflow](docs/UPSTREAM_SYNC_WORKFLOW.md) when integrating upstream
-releases. These documents record fork-only behavior—including the read-only Obsidian Yearly Glance
-Vacay import and deployment safeguards—that must survive updates.
+Before any upstream update, maintainers of `syyangv/TREK` must follow the
+[upstream synchronization workflow](docs/UPSTREAM_SYNC_WORKFLOW.md) and review
+the [fork customization checklist](docs/FORK_CUSTOMIZATIONS.md). The workflow
+requires checking the preservation list before merging, reapplying documented
+fork deltas after conflicts or upstream rewrites, and running focused tests for
+each preserved behavior. The checklist records fork-only behavior—including
+mobile reservation/time-slot rules, read-only Obsidian Yearly Glance Vacay
+import, and deployment safeguards—that must survive future upstream releases.
 
 ## License
 

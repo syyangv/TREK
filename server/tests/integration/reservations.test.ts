@@ -49,6 +49,7 @@ import { runMigrations } from '../../src/db/migrations';
 import { resetTestDb, resetRateLimits } from '../helpers/test-db';
 import { createUser, createTrip, createDay, createPlace, createReservation, addTripMember } from '../helpers/factories';
 import { authCookie } from '../helpers/auth';
+import { createMcpHarness, parseToolResult } from '../helpers/mcp-harness';
 import { invalidatePermissionsCache } from '../../src/nest/permissions/permissions-cache';
 
 let nestApp: INestApplication;
@@ -522,6 +523,62 @@ describe('Update reservation', () => {
     const stop = testDb.prepare('SELECT id, day_id, place_id FROM day_assignments WHERE day_id = ? AND place_id = ?').get(day.id, place.id) as { id: number; day_id: number; place_id: number };
     expect(response.body.reservation.assignment_id).toBe(stop.id);
     expect(response.body.reservation).toMatchObject({ day_id: day.id, place_id: place.id });
+  });
+
+  it('RESV-004f — MCP assignment_id null unlinks without reusing the same-day stop', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day = createDay(testDb, trip.id, { date: '2025-08-02' });
+    const place = createPlace(testDb, trip.id, { name: 'Dinner place' });
+    const assignment = testDb.prepare(
+      'INSERT INTO day_assignments (day_id, place_id, order_index) VALUES (?, ?, 0)',
+    ).run(day.id, place.id);
+    const reservation = createReservation(testDb, trip.id, { title: 'Dinner', type: 'restaurant' });
+    testDb.prepare(
+      'UPDATE reservations SET day_id = ?, place_id = ?, assignment_id = ?, reservation_time = ? WHERE id = ?',
+    ).run(day.id, place.id, assignment.lastInsertRowid, '2025-08-02T19:00', reservation.id);
+
+    const harness = await createMcpHarness({ userId: user.id });
+    try {
+      const result = await harness.client.callTool({
+        name: 'update_reservation',
+        arguments: { tripId: trip.id, reservationId: reservation.id, assignment_id: null },
+      });
+      expect(result.isError).not.toBe(true);
+      const data = parseToolResult(result) as { reservation: { assignment_id: number | null; place_id: number; day_id: number } };
+      expect(data.reservation).toMatchObject({ assignment_id: null, place_id: place.id, day_id: day.id });
+      expect(testDb.prepare('SELECT COUNT(*) AS c FROM day_assignments WHERE day_id = ? AND place_id = ?').get(day.id, place.id)).toEqual({ c: 1 });
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it('RESV-004g — MCP place_id null unlinks the canonical place and assignment', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day = createDay(testDb, trip.id, { date: '2025-08-02' });
+    const place = createPlace(testDb, trip.id, { name: 'Dinner place' });
+    const assignment = testDb.prepare(
+      'INSERT INTO day_assignments (day_id, place_id, order_index) VALUES (?, ?, 0)',
+    ).run(day.id, place.id);
+    const reservation = createReservation(testDb, trip.id, { title: 'Dinner', type: 'restaurant' });
+    testDb.prepare(
+      'UPDATE reservations SET day_id = ?, place_id = ?, assignment_id = ?, reservation_time = ? WHERE id = ?',
+    ).run(day.id, place.id, assignment.lastInsertRowid, '2025-08-02T19:00', reservation.id);
+
+    const harness = await createMcpHarness({ userId: user.id });
+    try {
+      const result = await harness.client.callTool({
+        name: 'update_reservation',
+        arguments: { tripId: trip.id, reservationId: reservation.id, place_id: null },
+      });
+      expect(result.isError).not.toBe(true);
+      const data = parseToolResult(result) as { reservation: { assignment_id: number | null; place_id: number | null; day_id: number } };
+      expect(data.reservation).toMatchObject({ assignment_id: null, place_id: null, day_id: day.id });
+      expect(testDb.prepare('SELECT COUNT(*) AS c FROM day_assignments WHERE day_id = ? AND place_id = ?').get(day.id, place.id)).toEqual({ c: 1 });
+    } finally {
+      await harness.cleanup();
+    }
   });
 });
 

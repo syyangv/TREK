@@ -51,6 +51,7 @@ import { createUser, createTrip, createReservation, createBudgetItem, createPlac
 import { DatabaseService } from '../../../src/nest/database/database.service';
 import type { PermissionsService } from '../../../src/nest/permissions/permissions.service';
 import { ReservationsService } from '../../../src/nest/reservations/reservations.service';
+import { ReservationsMcp } from '../../../src/nest/reservations/reservations.mcp';
 import { ReservationsReadRepository } from '../../../src/nest/reservations/reservations-read.repository';
 import type { BudgetService } from '../../../src/nest/budget/budget.service';
 import type { AssignmentsService } from '../../../src/nest/assignments/assignments.service';
@@ -257,6 +258,50 @@ describe('ReservationsService (DI-native, real SQL)', () => {
         assignment_id: Number(assignment.lastInsertRowid),
         day_id: days[0].id,
       });
+    });
+
+    it('RESV-SVC-010c: explicit assignment unlink stays unlinked even when same-day reuse is enabled', async () => {
+      const { user, trip } = ownerTrip({ start_date: '2030-05-01', end_date: '2030-05-02' });
+      const days = testDb.prepare('SELECT id FROM days WHERE trip_id = ? ORDER BY day_number').all(trip.id) as { id: number }[];
+      const place = createPlace(testDb, trip.id, { name: 'Dinner place' });
+      const assignment = testDb.prepare(
+        'INSERT INTO day_assignments (day_id, place_id, order_index) VALUES (?, ?, 0)',
+      ).run(days[0].id, place.id);
+      const res = createReservation(testDb, trip.id, { title: 'Dinner', type: 'restaurant' });
+      testDb.prepare(
+        'UPDATE reservations SET day_id = ?, place_id = ?, assignment_id = ?, reservation_time = ? WHERE id = ?',
+      ).run(days[0].id, place.id, assignment.lastInsertRowid, '2030-05-01T19:00', res.id);
+
+      const current = svc.getReservation(String(res.id), String(trip.id))!;
+      const reservationsUpdate = vi.spyOn(svc, 'update');
+      const mcp = new ReservationsMcp(
+        svc,
+        { getDay: vi.fn() } as never,
+        budget as never,
+        { isDemoUser: () => false } as never,
+        { placeExists: vi.fn(), getAssignmentForTrip: vi.fn() } as never,
+        { hasTripPermission: vi.fn(() => true), safeBroadcast: vi.fn() } as never,
+      );
+
+      const result = await mcp.updateReservation(
+        { tripId: trip.id, reservationId: res.id, assignment_id: null },
+        { userId: user.id, scopes: null, isStaticToken: false },
+      );
+
+      expect(result).toBeTruthy();
+      expect(reservationsUpdate).toHaveBeenCalledWith(
+        res.id,
+        trip.id,
+        expect.objectContaining({ assignment_id: null }),
+        expect.objectContaining({ id: res.id }),
+      );
+      expect(testDb.prepare('SELECT assignment_id, place_id, day_id FROM reservations WHERE id = ?').get(res.id)).toEqual({
+        assignment_id: null,
+        place_id: place.id,
+        day_id: days[0].id,
+      });
+      expect(testDb.prepare('SELECT COUNT(*) AS c FROM day_assignments WHERE day_id = ? AND place_id = ?').get(days[0].id, place.id)).toEqual({ c: 1 });
+      reservationsUpdate.mockRestore();
     });
   });
 

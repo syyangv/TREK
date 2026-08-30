@@ -59,6 +59,10 @@ export const vacayHandlers = [
     return HttpResponse.json({ years: [2025] });
   }),
 
+  http.post('/api/addons/vacay/entries/sync-obsidian/:year', () => {
+    return HttpResponse.json({ success: true });
+  }),
+
   http.get('/api/addons/vacay/entries/:year', () => {
     return HttpResponse.json({
       entries: [

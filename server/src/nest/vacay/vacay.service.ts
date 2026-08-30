@@ -1080,30 +1080,39 @@ export class VacayService {
   // Entries
   // -------------------------------------------------------------------------
 
-  /** Mirror only read-only Obsidian-derived rows; manual company holidays stay intact. */
-  private syncObsidianCompanyHolidays(planId: number, year: number): void {
+  /**
+   * Reconcile Obsidian-derived rows for a year. This is an explicit write
+   * operation; callers must not invoke it from a database read path.
+   * Manual company holidays stay intact because only rows carrying a supported
+   * Obsidian note are replaced.
+   */
+  reconcileObsidianCompanyHolidays(planId: number, year: number): void {
+    if (!Number.isInteger(year)) return;
     if (!isObsidianPublicHolidaySourceAvailable()) return;
 
     const notes = getObsidianHolidayNotes();
     const holidays = loadObsidianPublicHolidaysForYear(year);
     if (notes.length === 0) return;
 
-    this.db.run(
-      `DELETE FROM vacay_company_holidays
-       WHERE plan_id = ? AND date LIKE ? AND note IN (${notes.map(() => '?').join(', ')})`,
-      planId,
-      `${year}-%`,
-      ...notes,
-    );
+    this.db.transaction(() => {
+      this.db.run(
+        `DELETE FROM vacay_company_holidays
+         WHERE plan_id = ? AND date LIKE ? AND note IN (${notes.map(() => '?').join(', ')})`,
+        planId,
+        `${year}-%`,
+        ...notes,
+      );
 
-    const insert = this.db.prepare(
-      'INSERT OR IGNORE INTO vacay_company_holidays (plan_id, date, note) VALUES (?, ?, ?)',
-    );
-    const clearEntries = this.db.prepare('DELETE FROM vacay_entries WHERE plan_id = ? AND date = ?');
-    for (const holiday of holidays) {
-      insert.run(planId, holiday.date, holiday.note);
-      clearEntries.run(planId, holiday.date);
-    }
+      for (const holiday of holidays) {
+        this.db.run(
+          'INSERT OR IGNORE INTO vacay_company_holidays (plan_id, date, note) VALUES (?, ?, ?)',
+          planId,
+          holiday.date,
+          holiday.note,
+        );
+        this.db.run('DELETE FROM vacay_entries WHERE plan_id = ? AND date = ?', planId, holiday.date);
+      }
+    });
   }
 
   /**
@@ -1112,7 +1121,6 @@ export class VacayService {
    * would drop the second half. For 'calendar' the range is Jan 1 – Dec 31 again.
    */
   getEntries(planId: number, year: string, viewerId?: number) {
-    this.syncObsidianCompanyHolidays(planId, Number.parseInt(year, 10));
     const { start, end } = this.viewerGridWindow(year, viewerId);
     const entries = this.db.all(`
     SELECT e.*, u.username as person_name, COALESCE(c.color, '#6366f1') as person_color

@@ -21,10 +21,7 @@ beforeAll(() => fs.writeFileSync(`${vaultPath}/2025-02-04.md`, '---\n假期: PTO
 afterAll(() => fs.rmSync(vaultPath, { recursive: true, force: true }));
 
 describe('Obsidian config fallbacks', () => {
-  it('uses the configured format and empty folder path', () => {
-    expect(loadObsidianPublicHolidaysForYear(2025)).toContainEqual({
-      date: '2025-02-04',
-      note: 'Obsidian PTO',
-    });
+  it('does not treat a daily note as a planned leave row', () => {
+    expect(loadObsidianPublicHolidaysForYear(2025)).toEqual([]);
   });
 });

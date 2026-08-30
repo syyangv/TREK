@@ -62,7 +62,8 @@ See [CI/CD deployment](ci-cd-phase-3-4-deployment.md) and
 
 ## Vacay and Obsidian
 
-- Preserve the Vacay addon and its read-only Obsidian Yearly Glance import.
+- Preserve the Vacay addon and its read-only Obsidian leave-plan import. Yearly
+  Glance may render that source, but it is not a runtime leave authority.
 - Planned leave is imported directly from the vault's `请假计划.md` Markdown
   table (`Date | Type | Note`). Yearly Glance renders this source but is not a
   runtime dependency for Vacay. Treat `Type`, never title, color, or emoji, as
@@ -78,9 +79,9 @@ See [CI/CD deployment](ci-cd-phase-3-4-deployment.md) and
   `carried_over`; use 30 only when no preceding user-year configuration exists.
 - Carry-over recalculation may update `carried_over` on an existing year, but it
   must not overwrite a base entitlement that the user configured for that year.
-- The compatibility review tracks two open P0s: `请假计划.md` must be the
-  authoritative leave source, and filesystem reconciliation must not run as a
-  write-capable side effect of a read path.
+- `请假计划.md` is the authoritative leave source; Yearly Glance custom events
+  and daily-note text are not inferred as leave. Obsidian reconciliation runs
+  only through the explicit authenticated sync endpoint, never from a read path.
 - Verify imported entries, company holidays, user entitlements, and existing
   persisted data after an upstream sync.
 
@@ -99,9 +100,45 @@ See [CI/CD deployment](ci-cd-phase-3-4-deployment.md) and
   translations, and regression tests as one vertical feature.
 - **Journey location type**: preserve `location_type` from the database
   migration through shared types, Nest service, client store, editor, and tests.
-- **Assignment time slots and day detail**: retain the fork's time-slot editor,
-  collision warnings, accessible actions, and bounded planned-items entry point
-  on top of upstream's v4 planner structure.
+- **Assignment time slots, reservation times, and day detail**: retain the
+  fork's assignment-specific time-slot editor, collision warnings, accessible
+  actions, and bounded planned-items entry point on top of upstream's v4
+  planner structure. On mobile, `旅行` and `计划` must render the complete
+  start/end range. An explicit planned slot wins; when it is absent, a place
+  assignment linked to a reservation falls back to that reservation's
+  `reservation_time` / `reservation_end_time`.
+- **Reservation-linked assignment persistence**: preserve the `assignment_id`
+  relationship on reservation create/edit, REST/MCP writes, WebSocket updates,
+  offline hydration, and reload. Keep the linked `place_id`, day, and
+  assignment synchronized without creating duplicate day stops. This link is
+  data, not a display-only association; losing it removes both the reservation
+  badge and its time fallback from the mobile itinerary.
+
+### Mobile itinerary time and reservation-link invariants
+
+These are fork-only product decisions that must be reapplied if upstream
+rewrites the mobile trip shell, plan timeline, reservation model, or place
+assignment projection:
+
+- `MPlanTimelineRows.PlaceRow` displays an assignment's planned slot first. If
+  the assignment has no planned start/end, it displays the linked reservation's
+  time range instead. Do not render only `place_time` or prefer the booking
+  time over an explicit planned slot.
+- The row-level clock action opens the shared `TimeSlotModal` in both mobile
+  plan modes for users with `day_edit`. Saves go through the assignment-time
+  endpoint, not the shared place default, and refresh the day so server-side
+  chronological sorting remains authoritative.
+- A reservation linked to a place assignment must retain `assignment_id`
+  across server responses, client store hydration, WebSocket reconciliation,
+  offline cache reads, and reservation edits. The mobile row derives its
+  reserved-time fallback from that persisted link.
+- REST/MCP reservation updates must preserve omitted-field semantics while
+  honoring explicit `assignment_id: null` and `place_id: null` unlink requests;
+  explicit unlink must not be immediately reattached by same-day reuse.
+- Preserve the regression coverage in
+  `client/src/mobile/screens/trip/plan/MPlanTimelineRows.test.tsx` and add
+  focused tests whenever the mobile timeline or reservation-linking path is
+  replaced.
 - **Past-day collapse**: retain the versioned desktop/mobile local-storage
   behavior and do not substitute a new upstream default without focused tests.
 - **Dashboard layout**: retain the compact card CSS adjustment without forking
@@ -109,6 +146,8 @@ See [CI/CD deployment](ci-cd-phase-3-4-deployment.md) and
 
 ## Solo trip UI gating and companion visibility
 
+- An empty member roster is a loading state, not proof of a solo trip. Apply
+  solo behavior only after the roster resolves to the owner alone.
 - When a trip has only the owner (`tripMembers.length <= 1`), sharing controls and
   collaboration elements are hidden:
   - **Packing Lists**: hide the "Shared" and "My list" view pills, per-item
@@ -206,7 +245,9 @@ See [PWA implementation handoff](pwa-template-handoff.md).
 - [ ] Vacay opens on the current year and existing entries remain visible.
 - [ ] `请假计划.md` future PTO and holiday rows import by `Type`, while
       unrelated Yearly Glance events such as flights do not become PTO.
-- [ ] Obsidian/Yearly Glance data imports without destructive writes.
+- [ ] Obsidian import is triggered explicitly and `getEntries` remains a DB-only
+      read; `请假计划.md` Type values are authoritative and the vault is never
+      written.
 - [ ] PWA installs and an update produce the reload banner.
 - [ ] Offline map caches are retained across a PWA update.
 - [ ] A booking created with a place picked still offers the day-stop checkbox,
