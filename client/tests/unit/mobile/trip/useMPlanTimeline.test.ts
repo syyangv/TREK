@@ -244,7 +244,7 @@ describe('useMPlanTimeline', () => {
     vi.setSystemTime(new Date(2026, 4, 2, 10, 15))
     const today = makePlanner({ assignments: { '2': [TIMED_EARLY, TIMED_LATE] } })
     const { result } = renderHook(() => useMPlanTimeline(today))
-    expect(result.current.upNext).toEqual({ assignment: TIMED_LATE, minutesUntil: 45 })
+    expect(result.current.upNext).toEqual({ assignment: TIMED_LATE, minutesUntil: 45, linkedRes: null })
 
     const past = makePlanner({
       assignments: { '2': [TIMED_EARLY, TIMED_LATE] },
@@ -259,7 +259,7 @@ describe('useMPlanTimeline', () => {
     vi.setSystemTime(new Date(2026, 4, 2, 10, 0))
     const planner = makePlanner({ assignments: { '2': [TIMED_EARLY, TIMED_LATE] } })
     const { result } = renderHook(() => useMPlanTimeline(planner))
-    expect(result.current.upNext).toEqual({ assignment: TIMED_LATE, minutesUntil: 60 })
+    expect(result.current.upNext).toEqual({ assignment: TIMED_LATE, minutesUntil: 60, linkedRes: null })
 
     vi.setSystemTime(new Date(2026, 4, 2, 11, 30))
     act(() => { vi.advanceTimersByTime(30_000) })
