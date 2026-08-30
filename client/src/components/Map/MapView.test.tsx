@@ -49,8 +49,8 @@ const thumbCallbacks = vi.hoisted(() => new Map<string, (thumb: string) => void>
 
 vi.mock('react-leaflet', () => ({
   // center/zoom are surfaced so tests can assert the camera the map is built with.
-  MapContainer: ({ children, center, zoom }: any) => (
-    <div data-testid="map-container" data-center={JSON.stringify(center)} data-zoom={zoom}>{children}</div>
+  MapContainer: ({ children, center, zoom, maxZoom }: any) => (
+    <div data-testid="map-container" data-center={JSON.stringify(center)} data-zoom={zoom} data-max-zoom={maxZoom}>{children}</div>
   ),
   TileLayer: () => <div data-testid="tile-layer" />,
   Marker: ({ children, eventHandlers, position, icon, zIndexOffset }: any) => (
@@ -174,7 +174,7 @@ afterEach(() => {
 describe('MapView', () => {
   it('FE-COMP-MAPVIEW-001: renders map container', () => {
     render(<MapView />)
-    expect(screen.getByTestId('map-container')).toBeTruthy()
+    expect(screen.getByTestId('map-container')).toHaveAttribute('data-max-zoom', '19')
   })
 
   it('FE-COMP-MAPVIEW-002: renders one marker per place', () => {

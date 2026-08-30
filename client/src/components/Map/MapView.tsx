@@ -831,6 +831,9 @@ export const MapView = memo(function MapView({
       id="trek-map"
       center={initialView.center}
       zoom={initialView.zoom}
+      // React-Leaflet requires an explicit bound; keep it aligned with the
+      // raster tile layers and the map viewport's maximum zoom.
+      maxZoom={19}
       zoomControl={false}
       className="w-full h-full bg-[#e5e7eb]"
     >
