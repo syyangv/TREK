@@ -24,6 +24,7 @@ import type { MergedItem } from '../../../../utils/dayMerge'
 import type { Assignment } from '../../../../types'
 import type { ComponentType, ReactNode } from 'react'
 import GoogleMapsIcon from '../../../../components/shared/GoogleMapsIcon'
+import { TimeSlotModal } from '../../../../components/Planner/TimeSlotModal'
 import { isRtlLanguage } from '../../../../i18n'
 import { useMPlanDaySwipe } from './useMPlanDaySwipe'
 
@@ -177,6 +178,7 @@ export default function MPlanTimeline({ planner, shell }: MPlanTimelineProps) {
                     onOpen={() => openPlace(row.assignment)}
                     onEdit={() => tl.editAssignment(row.assignment)}
                     onRemove={() => tl.removeAssignment(row.assignment)}
+                    onTimeSlot={canEdit ? () => tl.openTimeSlot(row.assignment) : undefined}
                   />
                   {dayScheduleFor('assignment', row.assignment.id)}
                 </Fragment>
@@ -259,6 +261,14 @@ export default function MPlanTimeline({ planner, shell }: MPlanTimelineProps) {
           </div>
         )}
       </div>
+      <TimeSlotModal
+        timeSlotEdit={tl.timeSlotEdit}
+        setTimeSlotEdit={tl.setTimeSlotEdit}
+        dayAssignments={day ? (planner.assignments[String(day.id)] || []) : []}
+        saveTimeSlot={tl.saveTimeSlot}
+        isSaving={tl.isSavingTimeSlot}
+        t={t}
+      />
     </div>
   )
 }

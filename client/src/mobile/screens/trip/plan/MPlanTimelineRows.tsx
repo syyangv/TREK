@@ -119,7 +119,7 @@ const TIME_CHIP = 'flex-none whitespace-nowrap rounded-[6px] bg-[color:var(--m-i
 
 // ── b3) Place row ────────────────────────────────────────────────────────────
 
-export function PlaceRow({ assignment, fullPlace, linkedRes, chrome, reorder, drag, onOpen, onEdit, onRemove }: {
+export function PlaceRow({ assignment, fullPlace, linkedRes, chrome, reorder, drag, onOpen, onEdit, onRemove, onTimeSlot }: {
   assignment: Assignment
   fullPlace: Place | undefined
   linkedRes: Reservation | null
@@ -129,11 +129,14 @@ export function PlaceRow({ assignment, fullPlace, linkedRes, chrome, reorder, dr
   onOpen: () => void
   onEdit: () => void
   onRemove: () => void
+  onTimeSlot?: () => void
 }) {
   const { t } = chrome
   const place = assignment.place
   const CatIcon = getCategoryIcon(place?.category?.icon)
-  const time = fmtTime(place?.place_time, chrome)
+  const startTime = fmtTime(place?.place_time, chrome)
+  const endTime = fmtTime(place?.end_time, chrome)
+  const time = startTime ? `${startTime}${endTime ? ` – ${endTime}` : ''}` : endTime
   const sub = linkedRes
     ? [
         linkedRes.status === 'confirmed' ? t('dayplan.confirmed') : t('dayplan.pendingRes'),
@@ -189,6 +192,11 @@ export function PlaceRow({ assignment, fullPlace, linkedRes, chrome, reorder, dr
           </div>
         )}
       </div>
+      {onTimeSlot && (
+        <ActionCircle label={t('dayplan.timeSlot')} onClick={onTimeSlot}>
+          <Clock size={14} strokeWidth={2} />
+        </ActionCircle>
+      )}
       {chrome.editing && (
         <span className="flex flex-none items-center gap-1.5">
           <ActionCircle label={t('common.edit')} onClick={onEdit}>
