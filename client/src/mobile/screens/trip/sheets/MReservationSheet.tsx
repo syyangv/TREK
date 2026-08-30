@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, FileText, Hotel, Link2, ParkingSquare, Plus, Ticket, Users, Utensils } from 'lucide-react'
 import MSheet from '../../../components/MSheet'
 import { useAddonStore } from '../../../../store/addonStore'
 import { useTranslation } from '../../../../i18n'
 import { resolveDayId } from '../../../../utils/formatters'
 import { resolvePendingStopDay } from '../../../../utils/bookingDayStop'
+import { selectReservationAssignment, selectReservationDate, selectReservationPlace } from '../../../../utils/reservationLinks'
 import { parseReservationMetadata } from '../../../../utils/flightLegs'
 import { typeToCostCategory } from '@trek/shared'
 import CustomSelect from '../../../../components/shared/CustomSelect'
@@ -39,7 +40,7 @@ const TRAVELER_ROW_CLS = 'flex w-full items-center gap-[9px] rounded-[12px] bord
 const EMPTY = {
   title: '', type: 'other', status: 'pending',
   reservation_time: '', reservation_end_time: '', end_date: '', location: '', confirmation_number: '',
-  notes: '', url: '', place_id: '' as string | number, accommodation_id: '' as string | number,
+  notes: '', url: '', assignment_id: '' as string | number, place_id: '' as string | number, accommodation_id: '' as string | number,
   meta_check_in_time: '', meta_check_out_time: '',
   hotel_place_id: '' as string | number, hotel_start_day: '' as string | number, hotel_end_day: '' as string | number,
   hotel_address: '',
@@ -84,9 +85,27 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
     { res: null, assignmentId: null },
   )
 
+  const assignmentOptions = useMemo(() => [
+    { value: '', label: t('reservations.noAssignment') },
+    ...days.flatMap(day => {
+      const dayLabel = day.title || t('dayplan.dayN', { n: day.day_number })
+      return (assignments?.[String(day.id)] || [])
+        .slice()
+        .sort((a, b) => a.order_index - b.order_index)
+        .filter(a => a.place)
+        .map(a => ({
+          value: a.id,
+          label: `${dayLabel} · ${a.place?.name || ''}`,
+        }))
+    }),
+  ], [assignments, days, t])
+
   useEffect(() => {
     if (!showReservationModal) return
-    setSnap({ res: editingReservation, assignmentId: bookingForAssignmentId ?? null })
+    setSnap({
+      res: editingReservation,
+      assignmentId: bookingForAssignmentId ?? editingReservation?.assignment_id ?? null,
+    })
     expenseIntentRef.current = false
     setAlsoAddToDay(true)
     setPendingFiles([])
@@ -100,7 +119,7 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
       if (rawEnd.includes('T')) { endDate = rawEnd.split('T')[0]; endTime = rawEnd.split('T')[1]?.slice(0, 5) || '' }
       else if (/^\d{4}-\d{2}-\d{2}$/.test(rawEnd)) { endDate = rawEnd; endTime = '' }
       const acc = tripAccommodations.find(a => a.id == res.accommodation_id)
-      setForm({
+      const initialForm = {
         ...EMPTY,
         title: res.title || '', type: res.type || 'other', status: res.status || 'pending',
         reservation_time: res.reservation_time ? res.reservation_time.slice(0, 16) : '',
@@ -111,7 +130,9 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
         meta_check_in_time: meta.check_in_time || '', meta_check_out_time: meta.check_out_time || '',
         hotel_place_id: acc?.place_id || '', hotel_start_day: acc?.start_day_id || '', hotel_end_day: acc?.end_day_id || '',
         hotel_address: places.find(p => p.id == acc?.place_id)?.address || res.location || '',
-      })
+        assignment_id: res.assignment_id || '',
+      }
+      setForm(selectReservationAssignment(initialForm, res.assignment_id || '', assignments, days, places))
     } else if (reservationPrefill) {
       const pf = reservationPrefill
       const meta = (pf.metadata && typeof pf.metadata === 'object' ? pf.metadata : {}) as Record<string, string>
@@ -119,7 +140,7 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
       let endDate = '', endTime = rawEnd
       if (rawEnd.includes('T')) { endDate = rawEnd.split('T')[0]; endTime = rawEnd.split('T')[1]?.slice(0, 5) || '' }
       else if (/^\d{4}-\d{2}-\d{2}$/.test(rawEnd)) { endDate = rawEnd; endTime = '' }
-      setForm({
+      const initialForm = {
         ...EMPTY,
         title: pf.title || '', type: pf.type || 'other', status: pf.status || 'pending',
         reservation_time: typeof pf.reservation_time === 'string' ? pf.reservation_time.slice(0, 16) : '',
@@ -130,7 +151,9 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
         hotel_start_day: resolveDayId(days, pf._accommodation?.check_in),
         hotel_end_day: resolveDayId(days, pf._accommodation?.check_out),
         hotel_address: pf._venue?.address || '',
-      })
+        assignment_id: bookingForAssignmentId ?? '',
+      }
+      setForm(selectReservationAssignment(initialForm, bookingForAssignmentId ?? '', assignments, days, places))
       setPendingFiles(pf._sourceFiles ?? [])
     } else {
       // Opened from a day's toolbar: start on that day rather than on a blank
@@ -141,14 +164,15 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
         : undefined
       const ctxDate = ctxDay?.date ? ctxDay.date.slice(0, 10) : ''
       const nextDay = ctxDay ? days[days.indexOf(ctxDay) + 1] : undefined
-      setForm(ctxDate
+      const initialForm = ctxDate
         ? {
             ...EMPTY,
             reservation_time: ctxDate,
             hotel_start_day: ctxDay!.id,
             hotel_end_day: nextDay?.id ?? ctxDay!.id,
           }
-        : EMPTY)
+        : EMPTY
+      setForm(selectReservationAssignment(initialForm, bookingForAssignmentId ?? '', assignments, days, places))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showReservationModal])
@@ -163,7 +187,8 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
     isEditing: !!res,
     type: form.type,
     placeId: form.place_id,
-    assignmentId: snap.assignmentId,
+    assignmentId: form.assignment_id || snap.assignmentId,
+    dayId: res?.day_id,
     reservationTime: form.reservation_time,
     days,
     assignments,
@@ -253,7 +278,7 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
         location: isHotel ? form.hotel_address : form.location,
         confirmation_number: form.confirmation_number,
         notes: form.notes, url: form.url,
-        assignment_id: (isHotel && !form.accommodation_id) ? null : (snap.assignmentId || null),
+        assignment_id: (isHotel && !form.accommodation_id) ? null : (form.assignment_id || snap.assignmentId || null),
         accommodation_id: isHotel ? (form.accommodation_id || null) : null,
         place_id: isHotel ? null : (form.place_id || null),
         // Fork addition. Ask the server to also create the day stop for the linked
@@ -353,12 +378,31 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
 
         {!isHotel && (
           <>
+            {assignmentOptions.length > 1 && (
+              <div className="mt-3">
+                <Eyebrow className="mb-[5px] uppercase">
+                  <Link2 size={10} className="mr-[3px] inline align-[-1px]" />
+                  {t('reservations.linkAssignment')}
+                </Eyebrow>
+                <CustomSelect
+                  value={form.assignment_id}
+                  onChange={value => setForm(prev => selectReservationAssignment(prev, value, assignments, days, places))}
+                  options={assignmentOptions}
+                  placeholder={t('reservations.pickAssignment')}
+                  searchable
+                  size="sm"
+                />
+              </div>
+            )}
             <div className="mt-3 flex gap-2">
               <div className="min-w-0 flex-[1.2]">
                 <Eyebrow className="mb-[5px] uppercase">{t('reservations.date')}</Eyebrow>
                 <CustomDatePicker
                   value={startDate}
-                  onChange={d => set('reservation_time', d ? (startTime ? `${d}T${startTime}` : d) : '')}
+                  onChange={d => {
+                    const nextDate = d ? (startTime ? `${d}T${startTime}` : d) : ''
+                    setForm(prev => selectReservationDate(prev, nextDate, assignments, days))
+                  }}
                   min={tripMinDate}
                   max={tripMaxDate}
                 />
@@ -395,15 +439,7 @@ export default function MReservationSheet({ planner, onOpenExpense }: MReservati
             <CustomSelect
               value={form.place_id}
               onChange={value => {
-                const p = places.find(pl => pl.id === value)
-                setForm(prev => {
-                  const next = { ...prev, place_id: value }
-                  if (value && p) {
-                    if (!prev.title) next.title = p.name
-                    if (!prev.location && p.address) next.location = p.address
-                  }
-                  return next
-                })
+                setForm(prev => selectReservationPlace(prev, value, places, assignments, days))
               }}
               options={placeOptions}
               placeholder={t('reservations.meta.pickPlace')}

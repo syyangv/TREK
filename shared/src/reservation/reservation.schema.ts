@@ -240,6 +240,8 @@ export type ReservationCreateRequest = z.infer<typeof reservationCreateRequestSc
 export const reservationUpdateRequestSchema = open.and(
   z.object({
     url: reservationUrlSchema.nullable().optional(),
+    /** Also create the exact-date day stop for a linked non-hotel place. */
+    create_assignment: z.boolean().optional(),
   }),
 );
 export type ReservationUpdateRequest = z.infer<typeof reservationUpdateRequestSchema>;

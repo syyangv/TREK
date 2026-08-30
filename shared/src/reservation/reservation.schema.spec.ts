@@ -30,6 +30,11 @@ describe('reservationCreateRequestSchema', () => {
     );
   });
 
+  it('accepts the same day-stop flag on update', () => {
+    expect(reservationUpdateRequestSchema.safeParse({ create_assignment: true }).success).toBe(true);
+    expect(reservationUpdateRequestSchema.safeParse({ create_assignment: 'true' }).success).toBe(false);
+  });
+
   it('rejects a booking url that executes instead of navigating, on create and update', () => {
     expect(reservationCreateRequestSchema.safeParse({ title: 'Hotel', url: 'javascript:alert(1)' }).success).toBe(
       false,

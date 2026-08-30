@@ -1348,7 +1348,7 @@ describe('ReservationModal', () => {
     await waitFor(() => expect(onSave).not.toHaveBeenCalled());
   });
 
-  it('FE-PLANNER-RESMODAL-083: linking an assignment leaves an already-chosen date alone', async () => {
+  it('FE-PLANNER-RESMODAL-083: linking an assignment synchronizes the booking date and place', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const day = buildDay({ id: 1, trip_id: 1, date: '2026-05-01', title: 'Arrival' });
     const museum = buildPlace({ id: 11, name: 'Museum' });
@@ -1368,7 +1368,8 @@ describe('ReservationModal', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^Add$/i }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0][0].reservation_time).toBe('2026-05-02');
+    expect(onSave.mock.calls[0][0].reservation_time).toBe('2026-05-01');
+    expect(onSave.mock.calls[0][0].place_id).toBe(11);
   });
 
   it('FE-PLANNER-RESMODAL-084: the status picker switches the booking to confirmed', async () => {
@@ -1609,7 +1610,7 @@ describe('ReservationModal', () => {
       expect(onSave.mock.calls[0][0].create_assignment).toBe(false);
     });
 
-    it('FE-PLANNER-RESMODAL-093: no offer when editing an existing booking', async () => {
+    it('FE-PLANNER-RESMODAL-093: editing a place-linked booking can repair a missing day stop', async () => {
       render(
         <ReservationModal
           {...defaultProps}
@@ -1619,7 +1620,7 @@ describe('ReservationModal', () => {
         />,
       );
 
-      expect(screen.queryByLabelText(/Also add this place to/i)).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/Also add this place to Day 7/i)).toBeChecked();
     });
   });
 });

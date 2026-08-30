@@ -5,7 +5,7 @@
  * save a dated booking with only `reservations.place_id`. Those rows must be
  * repaired on upgrade so Places does not keep presenting them as unplanned.
  */
-import { backfillBookingPlaceStops, runMigrations } from '../../../src/db/migrations';
+import { backfillBookingPlaceStops, runMigrations, synchronizeBookingPlaceAssignments } from '../../../src/db/migrations';
 import { createTables } from '../../../src/db/schema';
 
 import Database from 'better-sqlite3';
@@ -83,7 +83,7 @@ function makeLegacyDb(): Database.Database {
   // slots. Rewind to the slot immediately before the fork backfill so this
   // test still exercises the actual upgrade migration rather than the final
   // upstream token-kind guard.
-  db.prepare('UPDATE schema_version SET version = ?').run(version - 3);
+  db.prepare('UPDATE schema_version SET version = ?').run(version - 4);
 
   return db;
 }
@@ -140,6 +140,38 @@ describe('booking place stop migration', () => {
         { id: 13, assignment_id: null },
         { id: 14, assignment_id: null },
       ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('reruns after the original backfill and repairs rows created later', () => {
+    const db = makeLegacyDb();
+    try {
+      runMigrations(db);
+
+      // Simulate Alice Marble being imported after the first backfill migration
+      // already ran: only the newly appended tail should need to repair it.
+      db.prepare(
+        `INSERT INTO reservations
+          (id, trip_id, day_id, place_id, assignment_id, title, status, type)
+         VALUES (?, ?, ?, ?, NULL, ?, 'confirmed', 'event')`,
+      ).run(15, 1, 7, 24, 'Alice Marble');
+
+      // Also prove an older contradictory pair is normalized to the assignment.
+      db.prepare(
+        `INSERT INTO reservations
+          (id, trip_id, day_id, place_id, assignment_id, title, status, type)
+         VALUES (?, ?, ?, ?, ?, ?, 'confirmed', 'event')`,
+      ).run(16, 1, 9, 25, 1, 'Mismatched stop');
+
+      const { version } = db.prepare('SELECT version FROM schema_version').get() as { version: number };
+      db.prepare('UPDATE schema_version SET version = ?').run(version - 1);
+      runMigrations(db);
+
+      expect(db.prepare('SELECT assignment_id FROM reservations WHERE id = 15').get()).toEqual({ assignment_id: 2 });
+      expect(db.prepare('SELECT place_id, day_id FROM reservations WHERE id = 16').get()).toEqual({ place_id: 26, day_id: 7 });
+      expect(synchronizeBookingPlaceAssignments(db)).toBe(0);
     } finally {
       db.close();
     }

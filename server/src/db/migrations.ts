@@ -131,6 +131,44 @@ export function backfillBookingPlaceStops(db: Database.Database): number {
   return repaired;
 }
 
+/**
+ * Bring legacy non-hotel reservation links back to the assignment invariant.
+ * Assignment rows are authoritative for both place and day; invalid
+ * cross-trip/stale assignment ids are cleared before the normal place-stop
+ * backfill gets a chance to reuse or create a valid row.
+ */
+export function synchronizeBookingPlaceAssignments(db: Database.Database): number {
+  const clearStale = db.prepare(
+    `UPDATE reservations
+        SET assignment_id = NULL
+      WHERE assignment_id IS NOT NULL
+        AND COALESCE(type, 'other') <> 'hotel'
+        AND NOT EXISTS (
+          SELECT 1
+            FROM day_assignments da
+            JOIN days d ON d.id = da.day_id
+           WHERE da.id = reservations.assignment_id
+             AND d.trip_id = reservations.trip_id
+        )`,
+  );
+  const staleCleared = clearStale.run().changes;
+
+  const mismatches = db
+    .prepare(
+      `SELECT r.id, da.place_id, da.day_id
+         FROM reservations r
+         JOIN day_assignments da ON da.id = r.assignment_id
+         JOIN days d ON d.id = da.day_id AND d.trip_id = r.trip_id
+        WHERE COALESCE(r.type, 'other') <> 'hotel'
+          AND (r.place_id IS NOT da.place_id OR r.day_id IS NOT da.day_id)`,
+    )
+    .all() as Array<{ id: number; place_id: number; day_id: number }>;
+  const update = db.prepare('UPDATE reservations SET place_id = ?, day_id = ? WHERE id = ?');
+  for (const row of mismatches) update.run(row.place_id, row.day_id, row.id);
+
+  return staleCleared + mismatches.length + backfillBookingPlaceStops(db);
+}
+
 /** Apply the boundary-leg transport column migration independently in tests. */
 export function migrateIncomingLegTransportMode(db: Database.Database): void {
   try {
@@ -4322,6 +4360,16 @@ function runMigrations(db: Database.Database): void {
       const cols = db.prepare("SELECT name FROM pragma_table_info('mcp_tokens')").all() as Array<{ name: string }>;
       if (!cols.some((c) => c.name === 'kind')) {
         db.exec("ALTER TABLE mcp_tokens ADD COLUMN kind TEXT NOT NULL DEFAULT 'mcp'");
+      }
+    },
+
+    // Fork migration: rerun the booking/assignment repair after the original
+    // backfill slot. That slot may already have run before a reservation was
+    // imported, so the repair must be safe to execute again on upgrade.
+    () => {
+      const repaired = synchronizeBookingPlaceAssignments(db);
+      if (repaired > 0) {
+        console.log(`[DB] Synchronized ${repaired} booking place/assignment link(s)`);
       }
     },
   ];

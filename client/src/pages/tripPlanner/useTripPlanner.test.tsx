@@ -1455,6 +1455,23 @@ describe('useTripPlanner — bookings and transports', () => {
     expect(result.current.editingReservation).toBeNull()
   })
 
+  it('FE-TP-HOOK-078b: an edit that repairs a booking stop refreshes assignments', async () => {
+    const reservation = buildReservation({ id: 6, type: 'event', place_id: 24, day_id: 7 })
+    seedTrip({ selectedDayId: 7, reservations: [reservation] })
+
+    const { result } = await renderPlanner()
+    act(() => { result.current.setEditingReservation(reservation) })
+
+    await act(async () => {
+      await result.current.handleSaveReservation({
+        title: 'Alice Marble', type: 'event', place_id: 24,
+        reservation_time: '2026-08-28T16:30', create_assignment: true,
+      } as never)
+    })
+
+    expect(actions.refreshDays).toHaveBeenCalledWith(42)
+  })
+
   it('FE-TP-HOOK-079: an edited hotel address is written through to the linked place', async () => {
     const place = buildPlace({ id: 1, lat: 1, lng: 2, address: 'Old street 1' })
     seedTrip({ places: [place] })

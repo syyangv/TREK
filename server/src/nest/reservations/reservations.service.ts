@@ -12,6 +12,7 @@ import { AssignmentsService } from '../assignments/assignments.service';
 
 type Trip = TripAccess;
 type BudgetEntry = { total_price?: number; category?: string } | undefined;
+type ReservationAssignmentLink = { id: number; day_id: number; place_id: number };
 
 export interface ReservationEndpoint {
   id?: number;
@@ -74,8 +75,8 @@ export interface CreateReservationData {
   url?: string;
   day_id?: number;
   end_day_id?: number;
-  place_id?: number;
-  assignment_id?: number;
+  place_id?: number | null;
+  assignment_id?: number | null;
   status?: string;
   type?: string;
   accommodation_id?: number;
@@ -101,6 +102,12 @@ export interface CreateReservationResult {
   assignmentCreated: CreatedReservationAssignment;
 }
 
+export interface UpdateReservationResult {
+  reservation: ReservationRow;
+  accommodationChanged: boolean;
+  assignmentCreated: CreatedReservationAssignment;
+}
+
 export interface UpdateReservationData {
   title?: string;
   reservation_time?: string;
@@ -111,13 +118,15 @@ export interface UpdateReservationData {
   url?: string;
   day_id?: number;
   end_day_id?: number | null;
-  place_id?: number;
-  assignment_id?: number;
+  place_id?: number | null;
+  assignment_id?: number | null;
   status?: string;
   type?: string;
   accommodation_id?: number;
   metadata?: unknown;
   create_accommodation?: CreateAccommodation;
+  /** Create/reuse a day stop for a linked non-hotel place when possible. */
+  create_assignment?: boolean;
   endpoints?: EndpointInput[];
   needs_review?: boolean;
 }
@@ -312,6 +321,68 @@ export class ReservationsService {
       tripId, datePart
     );
     return nearest?.id ?? null;
+  }
+
+  /**
+   * Resolve an assignment through its day so a reservation can never borrow a
+   * stop from another trip. The assignment is the canonical source for both
+   * the linked place and the itinerary day.
+   */
+  private getReservationAssignment(
+    tripId: string | number,
+    assignmentId: unknown,
+  ): ReservationAssignmentLink | null {
+    if (assignmentId == null || assignmentId === '') return null;
+    return this.db.get<ReservationAssignmentLink>(
+      `SELECT da.id, da.day_id, da.place_id
+         FROM day_assignments da
+         JOIN days d ON d.id = da.day_id
+        WHERE da.id = ? AND d.trip_id = ?`,
+      assignmentId,
+      tripId,
+    ) ?? null;
+  }
+
+  private findReservationAssignmentForPlace(
+    tripId: string | number,
+    dayId: number | null,
+    placeId: number | null,
+  ): ReservationAssignmentLink | null {
+    if (dayId == null || placeId == null) return null;
+    return this.db.get<ReservationAssignmentLink>(
+      `SELECT da.id, da.day_id, da.place_id
+         FROM day_assignments da
+         JOIN days d ON d.id = da.day_id
+        WHERE da.day_id = ? AND da.place_id = ? AND d.trip_id = ?
+        ORDER BY da.id ASC
+        LIMIT 1`,
+      dayId,
+      placeId,
+      tripId,
+    ) ?? null;
+  }
+
+  /** Reuse the exact same-day stop, or create it when the caller opted in. */
+  private ensureReservationAssignment(
+    tripId: string | number,
+    dayId: number | null,
+    placeId: number | null,
+    create: boolean,
+  ): { link: ReservationAssignmentLink | null; created: CreatedReservationAssignment } {
+    const existing = this.findReservationAssignmentForPlace(tripId, dayId, placeId);
+    if (existing) return { link: existing, created: null };
+    if (!create || dayId == null || placeId == null
+      || !this.assignments.dayExists(dayId, tripId)
+      || !this.assignments.placeExists(placeId, tripId)) {
+      return { link: null, created: null };
+    }
+
+    const created = this.assignments.createAssignment(dayId, placeId);
+    if (!created?.id) return { link: null, created: null };
+    return {
+      link: { id: Number(created.id), day_id: dayId, place_id: placeId },
+      created,
+    };
   }
 
   // After a trip's date range changes, generateDays positionally re-dates the day rows
@@ -614,43 +685,47 @@ export class ReservationsService {
       resolvedEndDayId = this.resolveDayIdFromTime(tripId, reservation_end_time);
     }
 
-    // Fork addition. A booking may link a trip place (`place_id`) without any day
-    // stop, in which case the place stays filed as unplanned, because planned state
-    // derives solely from day_assignments. When the dialog asked to schedule it,
-    // create the stop here and bind the booking to it so the two links agree.
-    // The checkbox is deliberately only a boolean: for this path the server derives
-    // the exact day from the booking date instead of trusting a selected-day hint
-    // supplied by a client or plugin.
-    let assignmentDayId: number | null = null;
-    if (create_assignment && resolvedType !== 'hotel' && reservation_time) {
-      assignmentDayId = this.resolveDayIdFromTime(tripId, reservation_time, false);
-      // Keep the reservation's day and its newly-created stop on the same day even
-      // when an older client included a different selected `day_id` in the body.
-      if (assignmentDayId != null) resolvedDayId = assignmentDayId;
+    // An assignment is the canonical link: it supplies both the place and the
+    // itinerary day. This protects REST/MCP writers that do not use the booking
+    // forms, and prevents a reservation from pointing at one place while its day
+    // stop points at another.
+    let resolvedPlaceId: number | null = place_id || null;
+    let resolvedAssignmentId: number | null = assignment_id || null;
+    let assignmentCreated: CreatedReservationAssignment = null;
+    const selectedAssignment = resolvedType !== 'hotel'
+      ? this.getReservationAssignment(tripId, resolvedAssignmentId)
+      : null;
+    if (resolvedType === 'hotel') resolvedAssignmentId = null;
+    if (resolvedType !== 'hotel' && resolvedAssignmentId != null) {
+      if (selectedAssignment) {
+        resolvedAssignmentId = selectedAssignment.id;
+        resolvedPlaceId = selectedAssignment.place_id;
+        resolvedDayId = selectedAssignment.day_id;
+      } else {
+        // A deleted/stale assignment must not survive the write as a dangling
+        // link. The reservation may still retain its independent place metadata.
+        resolvedAssignmentId = null;
+      }
     }
 
-    let resolvedAssignmentId: number | null = assignment_id ?? null;
-    let assignmentCreated: CreatedReservationAssignment = null;
-    if (resolvedAssignmentId == null && assignmentDayId != null && place_id
-      && this.assignments.dayExists(assignmentDayId, tripId)
-      && this.assignments.placeExists(place_id, tripId)) {
-      const existing = this.db.get<{ id: number }>(
-        `SELECT da.id
-           FROM day_assignments da
-           JOIN days d ON d.id = da.day_id
-          WHERE da.day_id = ? AND da.place_id = ? AND d.trip_id = ?
-          ORDER BY da.id ASC
-          LIMIT 1`,
-        assignmentDayId, place_id, tripId,
+    // Reuse an existing same-day stop even when the optional create flag is off;
+    // only creation remains opt-in for backwards compatibility. When the flag is
+    // on, the exact booking date wins over a stale selected-day hint.
+    if (resolvedType !== 'hotel' && resolvedAssignmentId == null && resolvedPlaceId != null && create_assignment !== false) {
+      const assignmentDayId = reservation_time
+        ? this.resolveDayIdFromTime(tripId, reservation_time, false)
+        : (resolvedDayId != null && this.assignments.dayExists(resolvedDayId, tripId) ? resolvedDayId : null);
+      const ensured = this.ensureReservationAssignment(
+        tripId,
+        assignmentDayId,
+        resolvedPlaceId,
+        create_assignment === true,
       );
-      if (existing) {
-        // A stale/concurrent client may ask to create a stop that appeared after
-        // its dialog opened. Reuse it instead of duplicating the same place/day.
-        resolvedAssignmentId = existing.id;
-      } else {
-        assignmentCreated = this.assignments.createAssignment(assignmentDayId, place_id);
-        resolvedAssignmentId = assignmentCreated?.id ?? null;
+      if (ensured.link) {
+        resolvedAssignmentId = ensured.link.id;
+        resolvedDayId = ensured.link.day_id;
       }
+      assignmentCreated = ensured.created;
     }
 
     const result = this.db.run(`
@@ -660,7 +735,7 @@ export class ReservationsService {
       tripId,
       resolvedDayId,
       resolvedEndDayId,
-      place_id || null,
+      resolvedPlaceId,
       resolvedAssignmentId,
       title,
       reservation_time || null,
@@ -744,16 +819,16 @@ export class ReservationsService {
 
   /** The accommodation upsert, the reservation update, the endpoint replace
    *  and the metadata sync are one logical write — all-or-nothing. */
-  update(id: string | number, tripId: string | number, data: UpdateReservationData, current: Reservation): { reservation: ReservationRow; accommodationChanged: boolean } {
+  update(id: string | number, tripId: string | number, data: UpdateReservationData, current: Reservation): UpdateReservationResult {
     return this.db.transaction(() => this.updateInTx(id, tripId, data, current));
   }
 
-  private updateInTx(id: string | number, tripId: string | number, data: UpdateReservationData, current: Reservation): { reservation: ReservationRow; accommodationChanged: boolean } {
+  private updateInTx(id: string | number, tripId: string | number, data: UpdateReservationData, current: Reservation): UpdateReservationResult {
     const {
       title, reservation_time, reservation_end_time, location,
       confirmation_number, notes, url, day_id, end_day_id, place_id, assignment_id,
       status, type, accommodation_id, metadata, create_accommodation,
-      endpoints, needs_review
+      create_assignment, endpoints, needs_review
     } = data;
 
     let accommodationChanged = false;
@@ -812,6 +887,62 @@ export class ReservationsService {
       nextDayId = null;
     }
 
+    // Keep assignment_id and place_id as one relationship on updates too. An
+    // explicit assignment wins; if an older caller changes only place_id, drop
+    // the stale assignment rather than persisting a contradictory pair.
+    let resolvedPlaceId: number | null = place_id !== undefined
+      ? (place_id || null)
+      : (current.place_id ?? null);
+    let resolvedAssignmentId: number | null = assignment_id !== undefined
+      ? (assignment_id || null)
+      : (current.assignment_id ?? null);
+    let assignmentCreated: CreatedReservationAssignment = null;
+    const currentAssignment = this.getReservationAssignment(tripId, current.assignment_id);
+    const requestedAssignment = this.getReservationAssignment(tripId, resolvedAssignmentId);
+
+    if (resolvedType === 'hotel') {
+      resolvedAssignmentId = null;
+    } else {
+      if (assignment_id !== undefined && resolvedAssignmentId != null) {
+        if (requestedAssignment) {
+          resolvedAssignmentId = requestedAssignment.id;
+          resolvedPlaceId = requestedAssignment.place_id;
+          nextDayId = requestedAssignment.day_id;
+        } else {
+          resolvedAssignmentId = null;
+        }
+      } else if (assignment_id === undefined && currentAssignment) {
+        if (place_id === undefined || Number(resolvedPlaceId) === currentAssignment.place_id) {
+          resolvedAssignmentId = currentAssignment.id;
+          resolvedPlaceId = currentAssignment.place_id;
+          nextDayId = currentAssignment.day_id;
+        } else {
+          resolvedAssignmentId = null;
+        }
+      }
+
+      // A linked place with an exact booking day can be repaired or scheduled
+      // during an edit. `false` is an explicit user opt-out from the dialog;
+      // omitted flags retain the server's backwards-compatible reuse behavior.
+      if (resolvedAssignmentId == null && resolvedPlaceId != null && create_assignment !== false) {
+        const assignmentDayId = nextReservationTime
+          ? this.resolveDayIdFromTime(tripId, nextReservationTime, false)
+          : (nextDayId != null && this.assignments.dayExists(nextDayId, tripId) ? nextDayId : null);
+        const ensured = this.ensureReservationAssignment(
+          tripId,
+          assignmentDayId,
+          resolvedPlaceId,
+          create_assignment === true,
+        );
+        if (ensured.link) {
+          resolvedAssignmentId = ensured.link.id;
+          resolvedPlaceId = ensured.link.place_id;
+          nextDayId = ensured.link.day_id;
+        }
+        assignmentCreated = ensured.created;
+      }
+    }
+
     let nextEndDayId: number | null;
     if (end_day_id !== undefined) {
       nextEndDayId = end_day_id ?? null;
@@ -850,8 +981,8 @@ export class ReservationsService {
       url !== undefined ? (url || null) : (current as Reservation & { url?: string | null }).url,
       nextDayId,
       nextEndDayId,
-      place_id !== undefined ? (place_id || null) : current.place_id,
-      assignment_id !== undefined ? (assignment_id || null) : current.assignment_id,
+      resolvedPlaceId,
+      resolvedAssignmentId,
       status || null,
       type || null,
       resolvedAccId,
@@ -886,7 +1017,7 @@ export class ReservationsService {
     // The caller passed the pre-checked `current` row, so the re-select can't
     // miss (legacy typed this any).
     const reservation = this.getReservationWithJoins(id)!;
-    return { reservation, accommodationChanged };
+    return { reservation, accommodationChanged, assignmentCreated };
   }
 
   /** The accommodation + budget-item + reservation deletes are one logical

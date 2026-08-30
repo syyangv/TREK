@@ -856,6 +856,12 @@ export function useTripPlanner() {
         toast.success(t('trip.toast.reservationUpdated'))
         setShowReservationModal(false)
         setEditingReservation(null)
+        // The reservation request excludes this socket from the assignment
+        // event, so refresh the initiating planner when an edit creates the
+        // repaired day stop too.
+        if ((data as Record<string, unknown>).create_assignment === true) {
+          await tripActions.refreshDays(tripId)
+        }
         if (data.type === 'hotel') {
           accommodationsApi.list(tripId).then(d => setTripAccommodations(d.accommodations || [])).catch(() => {})
         }

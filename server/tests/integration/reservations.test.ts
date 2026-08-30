@@ -475,6 +475,54 @@ describe('Update reservation', () => {
     expect(accom.check_out).toBe('11:00');
     expect(accom.confirmation).toBe('HTL-XYZ-999');
   });
+  it('RESV-004d — an assignment is the canonical place and day on create', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const assignedDay = createDay(testDb, trip.id, { date: '2025-08-02' });
+    const otherDay = createDay(testDb, trip.id, { date: '2025-08-03' });
+    const assignedPlace = createPlace(testDb, trip.id, { name: 'Assigned place' });
+    const conflictingPlace = createPlace(testDb, trip.id, { name: 'Wrong place' });
+    const assignment = testDb.prepare(
+      'INSERT INTO day_assignments (day_id, place_id, order_index) VALUES (?, ?, 0)',
+    ).run(assignedDay.id, assignedPlace.id);
+
+    const response = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({
+        title: 'Dinner', type: 'restaurant', place_id: conflictingPlace.id,
+        assignment_id: Number(assignment.lastInsertRowid), day_id: otherDay.id,
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.reservation).toMatchObject({
+      place_id: assignedPlace.id,
+      assignment_id: Number(assignment.lastInsertRowid),
+      day_id: assignedDay.id,
+    });
+  });
+
+  it('RESV-004e — editing a dated place link can create its missing day stop', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id);
+    const day = createDay(testDb, trip.id, { date: '2025-08-02' });
+    const place = createPlace(testDb, trip.id, { name: 'Alice Marble' });
+    const created = await request(app)
+      .post(`/api/trips/${trip.id}/reservations`)
+      .set('Cookie', authCookie(user.id))
+      .send({ title: 'Alice Marble', type: 'event', place_id: place.id, reservation_time: '2025-08-02T16:30' });
+    const reservationId = created.body.reservation.id;
+
+    const response = await request(app)
+      .put(`/api/trips/${trip.id}/reservations/${reservationId}`)
+      .set('Cookie', authCookie(user.id))
+      .send({ place_id: place.id, reservation_time: '2025-08-02T16:30', create_assignment: true });
+
+    expect(response.status).toBe(200);
+    const stop = testDb.prepare('SELECT id, day_id, place_id FROM day_assignments WHERE day_id = ? AND place_id = ?').get(day.id, place.id) as { id: number; day_id: number; place_id: number };
+    expect(response.body.reservation.assignment_id).toBe(stop.id);
+    expect(response.body.reservation).toMatchObject({ day_id: day.id, place_id: place.id });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

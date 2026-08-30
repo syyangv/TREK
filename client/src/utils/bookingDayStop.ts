@@ -1,11 +1,13 @@
 import type { Assignment, Day } from '../types'
 
 export interface ResolvePendingStopDayInput {
-  /** True when the booking already exists — the offer is create-only. */
+  /** True when the booking already exists — edits can repair a missing stop too. */
   isEditing: boolean
   type: string
   placeId: number | string | null | undefined
   assignmentId: number | string | null | undefined
+  /** Existing reservation day, useful when its time is date-less or legacy. */
+  dayId?: number | string | null
   reservationTime: string | null | undefined
   days: Day[] | undefined
   assignments: { [dayId: string]: Assignment[] } | undefined
@@ -24,15 +26,19 @@ export interface ResolvePendingStopDayInput {
  * two surfaces cannot drift apart.
  */
 export function resolvePendingStopDay({
-  isEditing, type, placeId, assignmentId, reservationTime, days, assignments,
+  isEditing, type, placeId, assignmentId, dayId, reservationTime, days, assignments,
 }: ResolvePendingStopDayInput): Day | null {
-  if (isEditing || type === 'hotel') return null
+  // `isEditing` is retained in the input for callers that share this helper with
+  // older forms. A legacy edit can be exactly the row that needs the repair.
+  void isEditing
+  if (type === 'hotel') return null
   if (!placeId || assignmentId) return null
   const date = (reservationTime || '').slice(0, 10)
-  if (!date) return null
-  const day = (days || []).find(d => (d.date || '').slice(0, 10) === date)
+  const day = date
+    ? (days || []).find(d => (d.date || '').slice(0, 10) === date)
+    : (days || []).find(d => String(d.id) === String(dayId))
   if (!day) return null
   const pid = Number(placeId)
-  const already = (assignments?.[String(day.id)] || []).some(a => Number(a.place?.id) === pid)
+  const already = (assignments?.[String(day.id)] || []).some(a => Number(a.place?.id ?? a.place_id) === pid)
   return already ? null : day
 }

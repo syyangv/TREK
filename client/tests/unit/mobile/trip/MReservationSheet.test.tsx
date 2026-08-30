@@ -252,6 +252,20 @@ describe('MReservationSheet', () => {
     expect(screen.getByPlaceholderText('reservations.locationPlaceholder')).toHaveValue('Philharmonikerstrasse 4')
   })
 
+  it('FE-MOB-RESSH-010b: linking a day assignment also links its place and date', () => {
+    setup(makePlanner({
+      assignments: {
+        11: [{ id: 201, day_id: 11, place_id: 101, order_index: 0, place: PLACES[0] }],
+      },
+    }))
+
+    pick(screen.getByLabelText('reservations.pickAssignment') as HTMLSelectElement, 201)
+
+    expect(screen.getByLabelText('reservations.meta.pickPlace')).toHaveAttribute('data-value', '101')
+    expect(dates()[0]).toHaveValue('2026-05-01')
+    expect(screen.getByPlaceholderText('reservations.locationPlaceholder')).toHaveValue('Philharmonikerstrasse 4')
+  })
+
   it('FE-MOB-RESSH-011: linking a place never overwrites what the user already typed', () => {
     setup()
     type(titleField(), 'My dinner')
@@ -797,8 +811,8 @@ describe('MReservationSheet', () => {
     expect(offerBtn()).not.toBeInTheDocument()
   })
 
-  it('FE-MOB-RESSH-058: no offer when editing an existing booking', () => {
+  it('FE-MOB-RESSH-058: editing a place-linked booking can repair a missing day stop', () => {
     setup(makePlanner({ editingReservation: DINNER }))
-    expect(offerBtn()).not.toBeInTheDocument()
+    expect(offerBtn()).toBeInTheDocument()
   })
 })

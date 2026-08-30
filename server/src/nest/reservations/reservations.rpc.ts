@@ -64,10 +64,17 @@ export class ReservationsRpc {
     const input = parsed.data as Record<string, unknown>;
     this.requireValidEndpoints(input.endpoints);
     this.guards.requireTripEdit(tripId, actor, RESERVATION_EDIT_ACTION);
+    if (input.create_assignment === true) {
+      this.guards.requireTripEdit(tripId, actor, 'day_edit');
+    }
     const current = this.reservations.getReservation(String(reservationId), String(tripId));
     if (!current) throw new ForbiddenResource(`no reservation ${reservationId} on trip ${tripId}`);
-    const { reservation, accommodationChanged } = this.reservations.update(String(reservationId), String(tripId), input as never, current as never);
+    const { reservation, accommodationChanged, assignmentCreated } = this.reservations.update(String(reservationId), String(tripId), input as never, current as never);
     if (accommodationChanged) this.realtime.broadcast(tripId, 'accommodation:updated', {}, undefined);
+    if (assignmentCreated) {
+      this.realtime.broadcast(tripId, 'assignment:created', { assignment: assignmentCreated }, undefined);
+      this.reservations.reconcileAssignments(tripId);
+    }
     const cur = current as { title: string; type?: string };
     const i = input as { title?: string; type?: string; create_budget_entry?: unknown };
     this.reservations.syncBudgetOnUpdate(String(tripId), String(reservationId), i.title ?? '', i.type, cur.title, cur.type, i.create_budget_entry as never, undefined);

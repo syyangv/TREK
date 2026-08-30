@@ -127,6 +127,27 @@ describe('ReservationsService (DI-native, real SQL)', () => {
       expect(clamped.day_id).toBe(day3.id);
     });
 
+    it('RESV-SVC-003b: an assignment supplies the canonical place and day', () => {
+      const { trip } = ownerTrip({ start_date: '2030-05-01', end_date: '2030-05-02' });
+      const days = testDb.prepare('SELECT id FROM days WHERE trip_id = ? ORDER BY day_number').all(trip.id) as { id: number }[];
+      const assignedPlace = createPlace(testDb, trip.id, { name: 'Assigned place' });
+      const conflictingPlace = createPlace(testDb, trip.id, { name: 'Wrong place' });
+      const assignment = testDb.prepare(
+        'INSERT INTO day_assignments (day_id, place_id, order_index) VALUES (?, ?, 0)',
+      ).run(days[0].id, assignedPlace.id);
+
+      const { reservation } = svc.create(String(trip.id), {
+        title: 'Dinner', type: 'restaurant', place_id: conflictingPlace.id,
+        assignment_id: Number(assignment.lastInsertRowid), day_id: days[1].id,
+      });
+
+      expect(reservation).toMatchObject({
+        place_id: assignedPlace.id,
+        assignment_id: Number(assignment.lastInsertRowid),
+        day_id: days[0].id,
+      });
+    });
+
     it('RESV-SVC-004: auto-creates the accommodation for a hotel with create_accommodation', () => {
       const { trip } = ownerTrip({ start_date: '2030-05-01', end_date: '2030-05-03' });
       const place = createPlace(testDb, trip.id);
@@ -212,6 +233,30 @@ describe('ReservationsService (DI-native, real SQL)', () => {
       current = svc.getReservation(String(res.id), String(trip.id))!;
       svc.update(String(res.id), String(trip.id), { endpoints: [] }, current);
       expect(testDb.prepare('SELECT COUNT(*) as c FROM reservation_endpoints WHERE reservation_id = ?').get(res.id)).toEqual({ c: 0 });
+    });
+
+    it('RESV-SVC-010b: an explicit assignment normalizes a conflicting place and day', () => {
+      const { trip } = ownerTrip({ start_date: '2030-05-01', end_date: '2030-05-02' });
+      const days = testDb.prepare('SELECT id FROM days WHERE trip_id = ? ORDER BY day_number').all(trip.id) as { id: number }[];
+      const assignedPlace = createPlace(testDb, trip.id, { name: 'Assigned place' });
+      const conflictingPlace = createPlace(testDb, trip.id, { name: 'Wrong place' });
+      const assignment = testDb.prepare(
+        'INSERT INTO day_assignments (day_id, place_id, order_index) VALUES (?, ?, 0)',
+      ).run(days[0].id, assignedPlace.id);
+      const res = createReservation(testDb, trip.id, { title: 'Dinner', type: 'restaurant' });
+      const current = svc.getReservation(String(res.id), String(trip.id))!;
+
+      const { reservation } = svc.update(String(res.id), String(trip.id), {
+        place_id: conflictingPlace.id,
+        assignment_id: Number(assignment.lastInsertRowid),
+        day_id: days[1].id,
+      }, current);
+
+      expect(reservation).toMatchObject({
+        place_id: assignedPlace.id,
+        assignment_id: Number(assignment.lastInsertRowid),
+        day_id: days[0].id,
+      });
     });
   });
 

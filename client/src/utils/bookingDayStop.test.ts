@@ -26,8 +26,8 @@ describe('resolvePendingStopDay', () => {
     expect(resolvePendingStopDay(base)?.id).toBe(12)
   })
 
-  it('FE-UTIL-BOOKDAY-002: no offer while editing an existing booking', () => {
-    expect(resolvePendingStopDay({ ...base, isEditing: true })).toBeNull()
+  it('FE-UTIL-BOOKDAY-002: an edit can offer to repair a missing day stop', () => {
+    expect(resolvePendingStopDay({ ...base, isEditing: true })?.id).toBe(12)
   })
 
   it('FE-UTIL-BOOKDAY-003: no offer for hotels — they carry an accommodation instead', () => {
@@ -65,5 +65,9 @@ describe('resolvePendingStopDay', () => {
 
   it('FE-UTIL-BOOKDAY-011: compares place ids across string/number forms', () => {
     expect(resolvePendingStopDay({ ...base, placeId: '102', assignments: stop(102) })).toBeNull()
+  })
+
+  it('FE-UTIL-BOOKDAY-012: an existing day id works when the booking has no timestamp', () => {
+    expect(resolvePendingStopDay({ ...base, reservationTime: '', dayId: 11 })?.id).toBe(11)
   })
 })

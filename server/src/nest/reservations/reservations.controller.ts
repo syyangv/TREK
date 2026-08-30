@@ -114,14 +114,24 @@ export class ReservationsController {
     @Headers('x-socket-id') socketId?: string,
   ) {
     const body = rawBody as ReservationBody;
+    const trip = body.create_assignment === true
+      ? this.reservations.verifyTripAccess(tripId, user.id)
+      : null;
+    if (body.create_assignment === true && (!trip || !this.reservations.canEditDay(trip, user))) {
+      throw new HttpException({ error: 'No permission' }, 403);
+    }
     const current = this.reservations.getReservation(id, tripId);
     if (!current) {
       throw new HttpException({ error: 'Reservation not found' }, 404);
     }
     this.rejectForeignReferences(tripId, body);
-    const { reservation, accommodationChanged } = this.reservations.update(id, tripId, body as never, current as never);
+    const { reservation, accommodationChanged, assignmentCreated } = this.reservations.update(id, tripId, body as never, current as never);
     if (accommodationChanged) {
       this.reservations.broadcast(tripId, 'accommodation:updated', {}, socketId);
+    }
+    if (assignmentCreated) {
+      this.reservations.broadcast(tripId, 'assignment:created', { assignment: assignmentCreated }, socketId);
+      this.reservations.reconcileAssignments(tripId, socketId);
     }
     const cur = current as { title: string; type?: string };
     this.reservations.syncBudgetOnUpdate(tripId, id, body.title ?? '', body.type, cur.title, cur.type, body.create_budget_entry, socketId);

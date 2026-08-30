@@ -128,42 +128,49 @@ linking a place on a booking previously wrote metadata only, so the place still
 appeared as unplanned in Places without telling the user what to do next.
 
 - The booking dialog shows an "Also add this place to {day}" checkbox, checked
-  by default, directly under the place picker. It appears only when the dialog
-  is creating a booking, the type is not `hotel`, a place is picked, no
-  assignment is linked, and the booking's date matches a trip day exactly on
-  which that place is not already a stop.
+  by default, directly under the place picker. It appears when a non-hotel
+  booking has a linked place but no assignment, its date (or existing day) maps
+  to a trip day, and that place is not already a stop there. This also makes an
+  edit of a legacy booking able to repair its missing stop.
 - **Both surfaces carry it**: the desktop `ReservationModal` and the phone
   `MReservationSheet`. The mobile version is a tappable toggle row with a check,
   matching that file's idiom.
 - The rule for when the offer applies lives once in
   `resolvePendingStopDay` (`client/src/utils/bookingDayStop.ts`), imported by
   both surfaces. Do not re-inline the condition in either one.
-- Only an exact date match qualifies. The server's nearest-day clamp is not
-  mirrored, so the offer never guesses a day.
-- The checkbox sends `create_assignment: true`. The server creates the day stop
-  inside the existing create transaction and binds the booking's
-  `assignment_id` to it, so the booking and place agree or neither changes.
+- Only an exact booking-date match qualifies; an existing reservation day is used
+  only as a legacy fallback. The server's nearest-day clamp is not mirrored, so
+  the offer never guesses a day.
+- Assignment selection synchronizes `place_id`, the booking date, and the
+  reservation-specific location default. Place selection reuses a matching
+  same-day assignment when one exists; otherwise the checkbox sends
+  `create_assignment: true`. The server creates the day stop inside the existing
+  reservation transaction and binds the booking's `assignment_id` to it.
 - Creating the extra stop requires `day_edit` as well as `reservation_edit`;
   reservation-only editors cannot use the checkbox to mutate the day plan.
 - `create_assignment` is a boolean, never a day or place reference. The server
   uses the day derived from the booking's own date and the trip-validated
   `place_id`, so the flag adds no reference a caller could aim at another trip.
-- An explicit `assignment_id` always wins; the flag never creates a second stop.
+- An explicit `assignment_id` always wins and supplies the canonical `place_id`
+  and day; the flag never creates a second stop. A changed place clears a stale
+  assignment unless a same-day assignment for the new place can be reused.
 - The default is on. A linked place is nearly always meant to be part of that
   day, and leaving it off is precisely what silently files it as unplanned.
-- The upgrade migration also repairs older dated bookings that already had a
-  `place_id` and `day_id` but no day stop: it reuses an existing same-day stop
-  when possible, otherwise appends one and links the booking. Undated bookings
-  remain unplanned because they have no safe day to schedule.
+- The upgrade migrations repair dated bookings that already had a `place_id` and
+  `day_id` but no day stop, rerun that repair for rows created after the original
+  backfill, and normalize mismatched assignment/place/day links. They reuse an
+  existing same-day stop when possible, otherwise append one and link the booking.
+  Undated bookings remain unplanned because they have no safe day to schedule.
 
 Preserve the locale keys `reservations.alsoAddToDay` and
 `reservations.alsoAddToDayHint` in every locale.
 
-Tests: `FE-UTIL-BOOKDAY-001` to `011` (shared helper),
-`FE-PLANNER-RESMODAL-089` to `093` (desktop modal),
-`FE-MOB-RESSH-054` to `058` (mobile sheet), and `RESV-015` to `015i`
-(server integration, including permission, stale-day, duplicate, and
-out-of-range protections).
+Tests: `FE-UTIL-BOOKDAY-001` to `012` and `reservationLinks.test.ts` (shared
+helpers), `FE-PLANNER-RESMODAL-083` and `089` to `093` (desktop modal),
+`FE-MOB-RESSH-010b` and `054` to `058` (mobile sheet), `FE-TP-HOOK-078b`
+(planner refresh), and `RESV-004d` to `004e` plus `RESV-015` to `015i`
+(server integration, including canonical links, permission, stale-day,
+duplicate, and out-of-range protections).
 
 ## PWA and offline behavior
 

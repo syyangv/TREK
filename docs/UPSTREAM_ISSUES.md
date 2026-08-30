@@ -50,12 +50,14 @@ Observed instance. Place 24 (J. P. Murphy Tennis Courts) had zero
 trip all carried an `assignment_id`, because in each of those the day stop was
 created first and the booking was attached to it afterwards.
 
-Fix taken. An opt-in checkbox in the booking dialog, checked by default, sends
-`create_assignment: true`; the server creates the day stop in the same
-transaction as the booking and binds `assignment_id` to it. Widening
-`plannedIds` to count bookings was considered and rejected -- it would stop the
-unplanned filter from being an actionable list of places still needing to be
-scheduled. A follow-up boot migration repairs dated place-linked bookings
-created before that checkbox existed (including the observed legacy rows),
-without changing undated bookings or treating a metadata-only link as a day
-stop.
+Fix taken. The booking editors now synchronize assignment and place selection:
+an assignment supplies its canonical place/day, while a place selection reuses a
+same-day stop or offers to create one. The server applies the same invariant to
+REST/MCP writes, so conflicting `assignment_id`/`place_id` pairs cannot be
+persisted. The optional checkbox still permits an intentional metadata-only
+place link. Widening `plannedIds` to count every booking was considered and
+rejected -- it would stop the unplanned filter from being an actionable list of
+places still needing to be scheduled. An idempotent follow-up boot migration
+repairs dated place-linked bookings created after the original backfill (including
+the observed legacy rows), normalizes contradictory assignment links, and leaves
+undated bookings without a safe day untouched.

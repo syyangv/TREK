@@ -16,6 +16,7 @@ import { openFile } from '../../utils/fileDownload'
 import { parseReservationMetadata } from '../../utils/flightLegs'
 import { resolveDayId } from '../../utils/formatters'
 import { resolvePendingStopDay } from '../../utils/bookingDayStop'
+import { selectReservationAssignment, selectReservationDate, selectReservationPlace } from '../../utils/reservationLinks'
 import type { Day, Place, Reservation, TripFile, AssignmentsMap, Accommodation, BudgetItem } from '../../types'
 import { BookingCostsSection } from './BookingCostsSection'
 import { TravelerPicker } from './TravelerPicker'
@@ -137,6 +138,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
       type: form.type,
       placeId: form.place_id,
       assignmentId: form.assignment_id,
+      dayId: reservation?.day_id,
       reservationTime: form.reservation_time,
       days,
       assignments,
@@ -170,7 +172,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         endTime = ''
       }
       const editAcc = accommodations.find(a => a.id == reservation.accommodation_id)
-      setForm({
+      const initialForm = {
         title: reservation.title || '',
         type: reservation.type || 'other',
         status: reservation.status || 'pending',
@@ -193,7 +195,8 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         // The linked place carries the address; reservations saved without a
         // place (or before the accommodation existed) keep it in location.
         hotel_address: places.find(p => p.id == editAcc?.place_id)?.address || reservation.location || '',
-      })
+      }
+      setForm(selectReservationAssignment(initialForm, reservation.assignment_id || '', assignments, days, places))
     } else if (prefill) {
       // Review-before-save: populate from a parsed import item, stay in create mode.
       const meta = (prefill.metadata && typeof prefill.metadata === 'object' ? prefill.metadata : {}) as Record<string, string>
@@ -202,7 +205,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
       let endTime = rawEnd
       if (rawEnd.includes('T')) { endDate = rawEnd.split('T')[0]; endTime = rawEnd.split('T')[1]?.slice(0, 5) || '' }
       else if (/^\d{4}-\d{2}-\d{2}$/.test(rawEnd)) { endDate = rawEnd; endTime = '' }
-      setForm({
+      const initialForm = {
         title: prefill.title || '',
         type: prefill.type || 'other',
         status: prefill.status || 'pending',
@@ -223,17 +226,19 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
         hotel_start_day: resolveDayId(days, prefill._accommodation?.check_in),
         hotel_end_day: resolveDayId(days, prefill._accommodation?.check_out),
         hotel_address: prefill._venue?.address || '',
-      })
+      }
+      setForm(selectReservationAssignment(initialForm, defaultAssignmentId ?? '', assignments, days, places))
       // Seed the booking's Files with the document this item was parsed from.
       setPendingFiles(prefill._sourceFiles ?? [])
     } else {
-      setForm({
+      const initialForm = {
         title: '', type: 'other', status: 'pending',
         reservation_time: '', reservation_end_time: '', end_date: '', location: '', confirmation_number: '',
         notes: '', url: '', assignment_id: defaultAssignmentId ?? '', accommodation_id: '', place_id: '',
         meta_check_in_time: '', meta_check_in_end_time: '', meta_check_out_time: '',
         hotel_place_id: '', hotel_start_day: '', hotel_end_day: '', hotel_address: '',
-      })
+      }
+      setForm(selectReservationAssignment(initialForm, defaultAssignmentId ?? '', assignments, days, places))
       setPendingFiles([])
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -474,14 +479,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
               <CustomSelect
                 value={form.assignment_id}
                 onChange={value => {
-                  set('assignment_id', value)
-                  const opt = assignmentOptions.find(o => o.value === value)
-                  if (opt?.dayDate) {
-                    setForm(prev => {
-                      if (prev.reservation_time) return prev
-                      return { ...prev, reservation_time: opt.dayDate }
-                    })
-                  }
+                  setForm(prev => selectReservationAssignment(prev, value, assignments, days, places))
                 }}
                 placeholder={t('reservations.pickAssignment')}
                 options={[
@@ -505,7 +503,8 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
                   value={(() => { const [d] = (form.reservation_time || '').split('T'); return d || '' })()}
                   onChange={d => {
                     const [, tm] = (form.reservation_time || '').split('T')
-                    set('reservation_time', d ? (tm ? `${d}T${tm}` : d) : '')
+                    const nextDate = d ? (tm ? `${d}T${tm}` : d) : ''
+                    setForm(prev => selectReservationDate(prev, nextDate, assignments, days))
                   }}
                   min={tripDateRange.min}
                   max={tripDateRange.max}
@@ -554,15 +553,7 @@ export function ReservationModal({ isOpen, onClose, onSave, reservation, days, p
             <CustomSelect
               value={form.place_id}
               onChange={value => {
-                const p = places.find(pl => pl.id === value)
-                setForm(prev => {
-                  const next = { ...prev, place_id: value }
-                  if (value && p) {
-                    if (!prev.title) next.title = p.name
-                    if (!prev.location && p.address) next.location = p.address
-                  }
-                  return next
-                })
+                setForm(prev => selectReservationPlace(prev, value, places, assignments, days))
               }}
               placeholder={t('reservations.meta.pickPlace')}
               options={[
