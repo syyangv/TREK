@@ -134,8 +134,19 @@ export function PlaceRow({ assignment, fullPlace, linkedRes, chrome, reorder, dr
   const { t } = chrome
   const place = assignment.place
   const CatIcon = getCategoryIcon(place?.category?.icon)
-  const startTime = fmtTime(place?.place_time, chrome)
-  const endTime = fmtTime(place?.end_time, chrome)
+  // A planned assignment slot wins over the linked booking time (e.g. a
+  // reservation may be 11:00–13:00 while the itinerary slot is 12:00–12:30).
+  // If no planned slot exists, show the linked reservation's time instead.
+  const hasPlannedTime = Boolean(place?.place_time || place?.end_time)
+  const reservationPhase = linkedRes ? getSpanPhase(linkedRes, assignment.day_id) : 'single'
+  const reservationStart = linkedRes
+    ? splitReservationDateTime(getDisplayTimeForDay(linkedRes, assignment.day_id)).time
+    : null
+  const reservationEnd = linkedRes && reservationPhase === 'single'
+    ? splitReservationDateTime(linkedRes.reservation_end_time).time
+    : null
+  const startTime = fmtTime(hasPlannedTime ? place?.place_time : reservationStart, chrome)
+  const endTime = fmtTime(hasPlannedTime ? place?.end_time : reservationEnd, chrome)
   const time = startTime ? `${startTime}${endTime ? ` – ${endTime}` : ''}` : endTime
   const sub = linkedRes
     ? [
