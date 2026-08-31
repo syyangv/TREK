@@ -45,7 +45,7 @@ export default function MPackingListTab({ planner }: { planner: TripPlanner }) {
   // Bag-tracking is a global addon flag, NOT part of planner.enabledAddons (§6.4).
   const bagTrackingEnabled = useAddonStore(s => s.bagTracking)
   const tripMembers = planner.tripMembers
-  const hasCompanions = packingHasCompanions(tripMembers)
+  const hasCompanions = packingHasCompanions(planner.rosterState)
 
   const [view, setView] = useState<PackingView>('common')
   const [statusFilter, setStatusFilter] = useState<PackingStatusFilter>('all')

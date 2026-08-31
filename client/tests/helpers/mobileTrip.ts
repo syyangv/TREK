@@ -83,6 +83,7 @@ export function buildPlanner(overrides: Partial<TripPlanner> = {}): TripPlanner 
     setTripAccommodations: vi.fn(),
     allowedFileTypes: ['image/jpeg', 'image/png', 'application/pdf'],
     tripMembers: [],
+    rosterState: 'solo' as const,
     setTripMembers: vi.fn(),
     refreshMembers: vi.fn(),
     loadAccommodations: vi.fn(),
@@ -232,7 +233,12 @@ export function buildPlanner(overrides: Partial<TripPlanner> = {}): TripPlanner 
     splashDone: true,
   };
 
-  return { ...base, ...overrides } as unknown as TripPlanner;
+  const planner = { ...base, ...overrides } as unknown as TripPlanner;
+  planner.rosterState = overrides.rosterState
+    ?? (overrides.tripMembers === undefined
+      ? 'loading'
+      : planner.tripMembers.length > 1 ? 'collaborative' : 'solo');
+  return planner;
 }
 
 export function buildShell(overrides: Partial<MTripShellApi> = {}): MTripShellApi {

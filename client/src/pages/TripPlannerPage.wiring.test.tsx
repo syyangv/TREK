@@ -144,6 +144,7 @@ function baseState(): HookState {
     allowedFileTypes: 'pdf',
     tripMembers: [],
     hasCompanions: true,
+    rosterState: 'collaborative' as const,
     setTripMembers: vi.fn(),
     refreshMembers: vi.fn(),
     loadAccommodations: vi.fn(),

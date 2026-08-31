@@ -31,7 +31,7 @@ export default function MTransportsTab({ planner, shell }: MTabScreenProps) {
   const transports = travelerFilter.size === 0 ? allTransports : allTransports.filter(r => (r.travelers || []).some(tv => travelerFilter.has(tv.user_id)))
   const groups = groupTransports(transports, days)
   const canEdit = planner.can('day_edit', planner.trip)
-  const showTravelerFilter = planner.tripMembers.length > 1 && allTransports.some(r => (r.travelers || []).length > 0)
+  const showTravelerFilter = planner.rosterState === 'collaborative' && allTransports.some(r => (r.travelers || []).length > 0)
   const toggleTravelerFilter = (id: number) => setTravelerFilter(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})

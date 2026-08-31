@@ -10,6 +10,7 @@ import { useAddonStore } from '../../store/addonStore'
 import type { PackingItem, PackingBag } from '../../types'
 import { BAG_COLORS, PACKING_PLACEHOLDER_NAME } from './packingListPanel.constants'
 import { parseImportLines } from './packingListPanel.helpers'
+import { getTripRosterState, rosterHasCompanions, type TripRosterState } from '../../utils/tripRosterState'
 
 export interface TripMember {
   id: number
@@ -39,6 +40,7 @@ export interface PackingListPanelProps {
   // Page-level trip roster (owner + members/guests). Preferred over the panel's
   // own fetch so a just-added companion is reflected without a remount.
   tripMembers?: TripMember[]
+  rosterState?: TripRosterState
 }
 
 /**
@@ -48,7 +50,7 @@ export interface PackingListPanelProps {
  * sections below render header, filters, the grouped list, the bag sidebar/
  * modal and the import dialog.
  */
-export function usePackingList({ tripId, items, openImportSignal = 0, clearCheckedSignal = 0, saveTemplateSignal = 0, inlineHeader = true, view: viewProp, onViewChange, tripMembers: tripMembersProp }: PackingListPanelProps) {
+export function usePackingList({ tripId, items, openImportSignal = 0, clearCheckedSignal = 0, saveTemplateSignal = 0, inlineHeader = true, view: viewProp, onViewChange, tripMembers: tripMembersProp, rosterState: rosterStateProp }: PackingListPanelProps) {
   const [filter, setFilter] = useState('alle') // 'alle' | 'offen' | 'erledigt'
   // Three-tier sharing (#858): 'common' = the group pool, 'personal' = my own
   // list (private + shared-to-me).
@@ -103,12 +105,14 @@ export function usePackingList({ tripId, items, openImportSignal = 0, clearCheck
   // An externally supplied empty roster is the page's initial/unhydrated state,
   // not proof of a solo trip. Standalone panels keep their existing behavior by
   // using the completed local request to distinguish an empty result from load.
-  const membersLoading = tripMembersProp !== undefined
-    ? tripMembersProp.length === 0
-    : !internalMembersLoaded
+  const rosterState = rosterStateProp ?? getTripRosterState(
+    tripMembersProp !== undefined ? tripMembersProp.length > 0 : internalMembersLoaded,
+    tripMembers.length,
+  )
+  const membersLoading = rosterState === 'loading'
   // Without a travel companion the shared/personal split is meaningless: pin the
   // view to the user's own list (the default) and hide the sharing UI entirely.
-  const hasCompanions = tripMembers.length > 1
+  const hasCompanions = rosterHasCompanions(rosterState)
     || (membersLoading && tripMembersProp !== undefined)
   const view = hasCompanions ? (viewProp ?? ownView) : 'personal'
 

@@ -28,6 +28,7 @@ import type { BudgetItem } from '../types'
 import PluginFrame from '../components/Plugins/PluginFrame'
 import ErrorBoundary from '../components/shared/ErrorBoundary'
 import { lazyWithRetry } from '../utils/lazyWithRetry'
+import type { TripRosterState } from '../utils/tripRosterState'
 import TripWarningsBanner from '../components/Planner/TripWarningsBanner'
 import Navbar from '../components/Layout/Navbar'
 import { useToast } from '../components/shared/Toast'
@@ -95,7 +96,7 @@ function LazyPanel({ id, children }: { id: string; children: React.ReactNode }):
   )
 }
 
-function ListsContainer({ tripId, packingItems, todoItems, tripMembers }: { tripId: number; packingItems: PackingItem[]; todoItems: TodoItem[]; tripMembers: TripMember[] }) {
+function ListsContainer({ tripId, packingItems, todoItems, tripMembers, rosterState }: { tripId: number; packingItems: PackingItem[]; todoItems: TodoItem[]; tripMembers: TripMember[]; rosterState: TripRosterState }) {
   const [subTab, setSubTab] = useState<'packing' | 'todo'>(() => {
     return (sessionStorage.getItem(`trip-lists-subtab-${tripId}`) as 'packing' | 'todo') || 'packing'
   })
@@ -111,7 +112,7 @@ function ListsContainer({ tripId, packingItems, todoItems, tripMembers }: { trip
   const isAdmin = useAuthStore(s => s.user?.role === 'admin')
   // Without a travel companion the shared/personal split is meaningless:
   // pin to the user's own list and hide sharing UI.
-  const hasCompanions = tripMembers.length > 1
+  const hasCompanions = rosterState !== 'solo'
 
   const tabs = [
     { id: 'packing' as const, label: t('todo.subtab.packing'), icon: PackageCheck, count: packingItems.length },
@@ -220,7 +221,7 @@ function ListsContainer({ tripId, packingItems, todoItems, tripMembers }: { trip
       <div style={{ padding: '16px 28px 0' }} className="max-md:!px-4">
         {subTab === 'packing' && (
           <LazyPanel id="packing">
-            <PackingListPanel tripId={tripId} items={packingItems} openImportSignal={importPackingSignal} clearCheckedSignal={clearCheckedSignal} saveTemplateSignal={saveTemplateSignal} inlineHeader={false} view={packingView} onViewChange={setPackingView} tripMembers={tripMembers} />
+            <PackingListPanel tripId={tripId} items={packingItems} openImportSignal={importPackingSignal} clearCheckedSignal={clearCheckedSignal} saveTemplateSignal={saveTemplateSignal} inlineHeader={false} view={packingView} onViewChange={setPackingView} tripMembers={tripMembers} rosterState={rosterState} />
           </LazyPanel>
         )}
         {subTab === 'todo' && (
@@ -248,7 +249,7 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
     selectedDayId, isLoading, tripActions, can, canUploadFiles,
     pushUndo, undo, canUndo, lastActionLabel, handleUndo,
     enabledAddons, collabFeatures, tripAccommodations, setTripAccommodations,
-    allowedFileTypes, tripMembers, setTripMembers, refreshMembers, loadAccommodations,
+    allowedFileTypes, tripMembers, rosterState, setTripMembers, refreshMembers, loadAccommodations,
     TRANSPORT_TYPES, TRIP_TABS, activeTab, setActiveTab, handleTabChange, hasCompanions,
     leftWidth, rightWidth, leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed, startResizeLeft, startResizeRight,
     selectedPlaceId, selectedAssignmentId, setSelectedPlaceId, selectAssignment,
@@ -778,7 +779,7 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
 
         {activeTab === 'listen' && (
           <div style={{ height: '100%', overflowY: 'auto', overscrollBehavior: 'contain', width: '100%', paddingBottom: 'var(--bottom-nav-h)' }}>
-            <ListsContainer tripId={tripId} packingItems={packingItems} todoItems={todoItems} tripMembers={tripMembers} />
+            <ListsContainer tripId={tripId} packingItems={packingItems} todoItems={todoItems} tripMembers={tripMembers} rosterState={rosterState} />
           </div>
         )}
 

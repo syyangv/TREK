@@ -29,10 +29,10 @@ import { buildPackingItem, buildTodoItem } from '../../../helpers/factories';
 const TODAY = '2026-07-15';
 
 describe('listsModel — packing', () => {
-  it('FE-MOB-LSTM-000: treats exactly one resolved member as a solo trip', () => {
-    expect(packingHasCompanions([])).toBe(true)
-    expect(packingHasCompanions([{ id: 1 }])).toBe(false)
-    expect(packingHasCompanions([{ id: 1 }, { id: 2 }])).toBe(true)
+  it('FE-MOB-LSTM-000: preserves sharing while loading and distinguishes resolved roster states', () => {
+    expect(packingHasCompanions('loading')).toBe(true)
+    expect(packingHasCompanions('solo')).toBe(false)
+    expect(packingHasCompanions('collaborative')).toBe(true)
   })
 
   it('FE-MOB-LSTM-001: packingViewItems splits the common pool from private items', () => {

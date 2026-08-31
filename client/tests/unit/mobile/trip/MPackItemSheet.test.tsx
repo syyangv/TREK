@@ -21,13 +21,14 @@ function packItem(overrides: Partial<PackingItem> = {}): PackingItem {
 }
 
 function setup(overrides: Partial<ComponentProps<typeof MPackItemSheet>> = {}, items: PackingItem[] = [packItem()]) {
-  const planner = buildPlanner({ tripId: 3, packingItems: items })
+  const suppliedMembers = overrides.tripMembers ?? [ANNA, BEN]
+  const planner = buildPlanner({ tripId: 3, packingItems: items, tripMembers: suppliedMembers })
   const props: ComponentProps<typeof MPackItemSheet> = {
     planner,
     open: true,
     itemId: 1,
     bagTrackingEnabled: true,
-    tripMembers: [ANNA, BEN],
+    tripMembers: suppliedMembers,
     currentUserId: ME,
     onClose: vi.fn(),
     ...overrides,
@@ -184,9 +185,9 @@ describe('MPackItemSheet', () => {
     expect(srcs).toContain('https://cdn.example/ben.png')
   })
 
-  it('FE-MOB-PACKITEM-017: tells the owner when there is nobody to share with', () => {
+  it('FE-MOB-PACKITEM-017: hides sharing controls for a resolved empty roster', () => {
     setup({ tripMembers: [] })
-    expect(screen.getByText('packing.noOneToShare')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'packing.tierPersonal' })).not.toBeInTheDocument()
   })
 
   it('FE-MOB-PACKITEM-018: a non-owner can pledge to bring a common item too', () => {

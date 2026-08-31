@@ -79,7 +79,7 @@ function makeShell(overrides: Record<string, unknown> = {}) {
 }
 
 function makePlanner(overrides: Record<string, unknown> = {}) {
-  return {
+  const planner = {
     tripId: 5,
     trip: { id: 5, title: 'Vienna' },
     language: 'en',
@@ -116,6 +116,9 @@ function makePlanner(overrides: Record<string, unknown> = {}) {
     toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
     ...overrides,
   } as unknown as TripPlanner
+  planner.rosterState = (overrides.rosterState as TripPlanner['rosterState'] | undefined)
+    ?? (planner.tripMembers.length > 1 ? 'collaborative' : 'solo')
+  return planner
 }
 
 function renderSheet(planner: TripPlanner = makePlanner(), shell: MTripShellApi = makeShell()) {

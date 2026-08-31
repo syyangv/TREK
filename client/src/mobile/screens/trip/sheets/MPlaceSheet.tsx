@@ -457,7 +457,7 @@ export default function MPlaceSheet({ planner, shell }: MTripSheetsProps) {
             )}
 
             {/* ── Participants of the selected day's assignment ── */}
-            {assignmentInDay && members.length > 1 && (
+            {assignmentInDay && planner.rosterState === 'collaborative' && (
               <>
                 <Eyebrow className="mb-[6px] mt-3">{t('inspector.participants')}</Eyebrow>
                 <div className="flex flex-wrap items-center gap-[6px]">

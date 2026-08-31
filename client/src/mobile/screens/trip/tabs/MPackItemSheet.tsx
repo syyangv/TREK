@@ -65,7 +65,7 @@ export default function MPackItemSheet({
   const others = tripMembers.filter(m => m.id !== item.owner_id && m.id !== currentUserId)
   // An empty roster is still hydrating; only one resolved member proves this
   // is a solo trip and makes the sharing controls meaningless.
-  const hasCompanions = packingHasCompanions(tripMembers)
+  const hasCompanions = packingHasCompanions(planner.rosterState)
 
   const setSharing = (nextVisibility: 'common' | 'personal' | 'shared', nextRecipients: number[]) => {
     tripActions.setPackingItemSharing(tripId, item.id, nextVisibility, nextRecipients)

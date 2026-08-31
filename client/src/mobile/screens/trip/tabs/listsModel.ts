@@ -1,4 +1,5 @@
 import type { PackingItem, TodoItem, TripMember } from '../../../../types'
+import type { TripRosterState } from '../../../../utils/tripRosterState'
 import { PACKING_PLACEHOLDER_NAME } from '../../../../components/Packing/packingListPanel.constants'
 import { STATUS_COLOR } from './tabModel'
 
@@ -19,8 +20,8 @@ export type PackingStatusFilter = 'all' | 'open' | 'done'
  * An empty roster is the initial/unhydrated state, not proof of a solo trip.
  * Only one resolved member proves there is nobody else to share with.
  */
-export function packingHasCompanions(tripMembers: Pick<TripMember, 'id'>[]): boolean {
-  return tripMembers.length === 0 || tripMembers.length > 1
+export function packingHasCompanions(rosterState: TripRosterState): boolean {
+  return rosterState !== 'solo'
 }
 
 /** Three-tier sharing split (#858): Common = group pool, Personal = mine + shared-to-me. */

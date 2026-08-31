@@ -36,6 +36,7 @@ import {
   type StoredConnections,
 } from '../../utils/connectionsVisibility'
 import { plannedPlaceIds, plannedPlaceIdsForDay } from '../../utils/plannedPlaces'
+import { getTripRosterState, rosterHasCompanions } from '../../utils/tripRosterState'
 
 /**
  * Trip planner page logic — the big one. Owns the trip store wiring, addon
@@ -93,6 +94,7 @@ export function useTripPlanner() {
   const [allowedFileTypes, setAllowedFileTypes] = useState<string | null>(null)
   const [tripMembers, setTripMembers] = useState<TripMember[]>([])
   const [membersLoaded, setMembersLoaded] = useState(false)
+  const rosterState = getTripRosterState(membersLoaded, tripMembers.length)
 
   // Re-fetch the trip roster so consumers (Costs participants, Collab, …) pick up a
   // just-added guest or member without a full page reload.
@@ -131,7 +133,7 @@ export function useTripPlanner() {
   const tripPagePlugins = allPlugins.filter(p => p.type === 'trip-page')
   const tripPluginIds = tripPagePlugins.map(p => p.id).join(',')
 
-  const hasCompanions = tripMembers.length > 1
+  const hasCompanions = rosterHasCompanions(rosterState)
 
   // A trip-page plugin may replace core tabs while it's active (its manifest names
   // them; 'plan' is never replaceable) and may pick where its own tab sits.
@@ -1079,7 +1081,7 @@ export function useTripPlanner() {
     selectedDayId, isLoading, tripActions, can, canUploadFiles,
     pushUndo, undo, canUndo, lastActionLabel, handleUndo,
     enabledAddons, collabFeatures, tripAccommodations, setTripAccommodations,
-    allowedFileTypes, tripMembers, setTripMembers, refreshMembers, loadAccommodations,
+    allowedFileTypes, tripMembers, rosterState, setTripMembers, refreshMembers, loadAccommodations,
     TRANSPORT_TYPES, TRIP_TABS, activeTab, setActiveTab, handleTabChange, hasCompanions,
     leftWidth, rightWidth, leftCollapsed, rightCollapsed, setLeftCollapsed, setRightCollapsed, startResizeLeft, startResizeRight,
     selectedPlaceId, selectedAssignmentId, setSelectedPlaceId, selectAssignment,

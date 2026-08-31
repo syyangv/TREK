@@ -27,7 +27,7 @@ export default function MBookingsTab({ planner, shell }: MTabScreenProps) {
   const bookings = travelerFilter.size === 0 ? allBookings : allBookings.filter(r => (r.travelers || []).some(tv => travelerFilter.has(tv.user_id)))
   const groups = groupTransports(bookings, days)
   const canEdit = planner.can('reservation_edit', planner.trip)
-  const showTravelerFilter = planner.tripMembers.length > 1 && allBookings.some(r => (r.travelers || []).length > 0)
+  const showTravelerFilter = planner.rosterState === 'collaborative' && allBookings.some(r => (r.travelers || []).length > 0)
   const toggleTravelerFilter = (id: number) => setTravelerFilter(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
