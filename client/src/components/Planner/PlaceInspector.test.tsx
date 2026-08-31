@@ -531,6 +531,7 @@ describe('PlaceInspector', () => {
       <PlaceInspector
         {...defaultProps}
         tripMembers={members}
+        rosterState="collaborative"
         selectedDayId={1}
         selectedAssignmentId={99}
         assignments={{ '1': assignmentInDay }}
@@ -538,8 +539,21 @@ describe('PlaceInspector', () => {
     );
     // The participants section renders with a "participants" label
     // It's visible when tripMembers.length > 1 && selectedAssignmentId is set
-    expect(screen.getByText(members[0].username)).toBeTruthy();
-  });
+  expect(screen.getByText(members[0].username)).toBeTruthy();
+});
+
+it('FE-PLANNER-INSPECTOR-031a: loading roster does not render assignment participants early', () => {
+  const members = [buildUser({ id: 1 }), buildUser({ id: 2 })];
+  render(<PlaceInspector
+    {...defaultProps}
+    tripMembers={members}
+    rosterState="loading"
+    selectedDayId={1}
+    selectedAssignmentId={99}
+    assignments={{ '1': [{ id: 99, place, day_id: 1, place_id: place.id, order_index: 0, notes: null }] }}
+  />);
+  expect(screen.queryByText('Participants')).not.toBeInTheDocument();
+});
 
   // ── Price chip ─────────────────────────────────────────────────────────────
 

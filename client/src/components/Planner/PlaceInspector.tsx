@@ -26,6 +26,7 @@ import { usePluginStore } from '../../store/pluginStore'
 import PluginFrame from '../Plugins/PluginFrame'
 import type { Place, Category, Day, Assignment, Reservation, TripFile, AssignmentsMap } from '../../types'
 import type { CollectionStatus } from '@trek/shared'
+import type { TripRosterState } from '../../utils/tripRosterState'
 import { splitReservationDateTime, formatTime, formatMoney } from '../../utils/formatters'
 import { useTripStore } from '../../store/tripStore'
 import { formatDistance, formatElevation } from '../../utils/units'
@@ -157,6 +158,7 @@ interface PlaceInspectorProps {
   files?: TripFile[]
   onFileUpload?: (fd: FormData) => Promise<unknown>
   tripMembers?: TripMember[]
+  rosterState?: TripRosterState
   onSetParticipants?: (assignmentId: number, dayId: number, participantIds: number[]) => void
   onUpdatePlace?: (placeId: number, data: Partial<Place>) => void
   /** Upload a custom thumbnail (#1136); enables the click-to-change avatar in trip mode. */
@@ -176,7 +178,7 @@ export default function PlaceInspector({
   place, categories, mode = 'trip', days = [], selectedDayId = null, selectedAssignmentId = null,
   assignments = {}, reservations = [], onEditTransport, onEditReservation,
   onClose, onEdit, onDelete, onAssignToDay, onRemoveAssignment,
-  files = [], onFileUpload, tripMembers = [], onSetParticipants, onUpdatePlace, onUploadImage, onRate,
+  files = [], onFileUpload, tripMembers = [], rosterState, onSetParticipants, onUpdatePlace, onUploadImage, onRate,
   leftWidth = 0, rightWidth = 0,
   collectionStatus, onCopyToTrip, onSetStatus, onRemoveFromList,
 }: PlaceInspectorProps) {
@@ -431,7 +433,7 @@ export default function PlaceInspector({
           {/* Reservation + Participants — trip-only (collections have no days) */}
           {mode === 'trip' && (
             <PlaceReservationParticipants selectedAssignmentId={selectedAssignmentId} reservations={reservations}
-              assignments={assignments} selectedDayId={selectedDayId} tripMembers={tripMembers} locale={locale}
+              assignments={assignments} selectedDayId={selectedDayId} tripMembers={tripMembers} rosterState={rosterState} locale={locale}
               timeFormat={timeFormat} t={t} onSetParticipants={onSetParticipants}
               onEditTransport={onEditTransport} onEditReservation={onEditReservation} />
           )}
@@ -821,7 +823,7 @@ function PlaceInspectorHeader({ openNow, place, category, t, editingName, nameIn
 }
 
 function PlaceReservationParticipants({ selectedAssignmentId, reservations, assignments, selectedDayId,
-  tripMembers, locale, timeFormat, t, onSetParticipants, onEditTransport, onEditReservation }: any) {
+  tripMembers, rosterState, locale, timeFormat, t, onSetParticipants, onEditTransport, onEditReservation }: any) {
   return (
     <>
           {(() => {
@@ -830,7 +832,8 @@ function PlaceReservationParticipants({ selectedAssignmentId, reservations, assi
             const currentParticipants = assignment?.participants || []
             const participantIds = currentParticipants.map(p => p.user_id)
             const allJoined = currentParticipants.length === 0
-            const showParticipants = selectedAssignmentId && tripMembers.length > 1
+    const showParticipants = selectedAssignmentId
+      && (rosterState === 'collaborative' || (rosterState === undefined && tripMembers.length > 1))
             if (!res && !showParticipants) return null
             return (
               <div className={`grid ${res && showParticipants ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-2`}>

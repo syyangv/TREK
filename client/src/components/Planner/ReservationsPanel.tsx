@@ -28,6 +28,7 @@ import { getFlightLegs, getTrainLegs } from '../../utils/flightLegs'
 import EmptyState from '../shared/EmptyState'
 import { TravelerAvatarRow, TravelerFilterAvatars } from './TravelerPicker'
 import type { TripMember } from '../Budget/BudgetPanelMemberChips'
+import type { TripRosterState } from '../../utils/tripRosterState'
 
 interface AssignmentLookupEntry {
   dayNumber: number
@@ -718,6 +719,7 @@ interface ReservationsPanelProps {
   contributionView?: 'reservations' | 'transports'
   /** Trip members + guests, forwarded to each card's traveler picker (#1517). */
   tripMembers?: TripMember[]
+  rosterState?: TripRosterState
 }
 
 /** The empty state's call-to-action buttons — same shape as the toolbar's. */
@@ -728,7 +730,7 @@ const CTA_STYLE: CSSProperties = {
   fontSize: 'calc(13px * var(--fs-scale-body, 1))', fontWeight: 500,
 }
 
-export default function ReservationsPanel({ tripId, reservations, days, assignments, files = [], onAdd, onImport, bookingImportAvailable, onAirTrailImport, airTrailAvailable, onEdit, onDelete, onNavigateToFiles, titleKey = 'reservations.title', addManualKey = 'reservations.addManual', contributionView = 'reservations', tripMembers = [] }: ReservationsPanelProps) {
+export default function ReservationsPanel({ tripId, reservations, days, assignments, files = [], onAdd, onImport, bookingImportAvailable, onAirTrailImport, airTrailAvailable, onEdit, onDelete, onNavigateToFiles, titleKey = 'reservations.title', addManualKey = 'reservations.addManual', contributionView = 'reservations', tripMembers = [], rosterState }: ReservationsPanelProps) {
   const { t, locale } = useTranslation()
   const can = useCanDo()
   const trip = useTripStore((s) => s.trip)
@@ -892,7 +894,7 @@ export default function ReservationsPanel({ tripId, reservations, days, assignme
           )}
 
           {/* Filter by traveler — members/guests assigned to bookings (#1517/#1557). */}
-          {tripMembers.length > 1 && reservations.some(r => (r.travelers || []).length > 0) && (
+      {(rosterState === 'collaborative' || (rosterState === undefined && tripMembers.length > 1)) && reservations.some(r => (r.travelers || []).length > 0) && (
             <>
               <div className="hidden md:block" style={{ width: 1, height: 22, background: 'var(--border-faint)', flexShrink: 0 }} />
               <TravelerFilterAvatars members={tripMembers} active={travelerFilters} onToggle={toggleTravelerFilter} label={t('reservations.travelers.label')} />

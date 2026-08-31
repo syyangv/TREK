@@ -611,7 +611,7 @@ describe('ReservationsPanel', () => {
     const members = [{ id: 1, username: 'ada' }, { id: 2, username: 'bob' }];
     const adas = buildReservation({ id: 1, title: 'Ada flight', type: 'flight', status: 'confirmed', travelers: [{ user_id: 1, username: 'ada', avatar_url: null }] } as any);
     const bobs = buildReservation({ id: 2, title: 'Bob hotel', type: 'hotel', status: 'confirmed', travelers: [{ user_id: 2, username: 'bob', avatar_url: null }] } as any);
-    render(<ReservationsPanel {...defaultProps} reservations={[adas, bobs]} tripMembers={members} />);
+  render(<ReservationsPanel {...defaultProps} reservations={[adas, bobs]} tripMembers={members} rosterState="collaborative" />);
     await user.click(screen.getByTitle('ada'));
     expect(screen.getByText('Ada flight')).toBeInTheDocument();
     expect(screen.queryByText('Bob hotel')).not.toBeInTheDocument();
@@ -917,4 +917,11 @@ describe('ReservationsPanel', () => {
     expect(shown.tagName).toBe('SPAN');
     expect(document.querySelector('a[href^="javascript:"]')).toBeNull();
   });
+});
+
+it('FE-PLANNER-RESP-055a: loading roster does not expose traveler filters before hydration', () => {
+  const members = [{ id: 1, username: 'ada' }, { id: 2, username: 'bob' }];
+  const res = buildReservation({ id: 1, title: 'Ada flight', type: 'flight', status: 'confirmed', travelers: [{ user_id: 1, username: 'ada', avatar_url: null }] } as any);
+  render(<ReservationsPanel {...defaultProps} reservations={[res]} tripMembers={members} rosterState="loading" />);
+  expect(screen.queryByTitle('ada')).not.toBeInTheDocument();
 });

@@ -642,6 +642,7 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
                 files={files}
                 onFileUpload={canUploadFiles ? (fd) => tripActions.addFile(tripId, fd) : undefined}
                 tripMembers={tripMembers}
+                rosterState={rosterState}
                 onSetParticipants={async (assignmentId, dayId, userIds) => {
                   try {
                     const data = await assignmentsApi.setParticipants(tripId, assignmentId, userIds)
@@ -684,6 +685,7 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
                     files={files}
                     onFileUpload={canUploadFiles ? (fd) => tripActions.addFile(tripId, fd) : undefined}
                     tripMembers={tripMembers}
+                    rosterState={rosterState}
                     onSetParticipants={async (assignmentId, dayId, userIds) => {
                       try {
                         const data = await assignmentsApi.setParticipants(tripId, assignmentId, userIds)
@@ -751,6 +753,7 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
                 addManualKey="transport.addManual"
                 contributionView="transports"
                 tripMembers={tripMembers}
+                rosterState={rosterState}
               />
             </LazyPanel>
           </div>
@@ -772,6 +775,7 @@ function TripPlannerPageDesktop(): React.ReactElement | null {
                 onDelete={handleDeleteReservation}
                 onNavigateToFiles={() => handleTabChange('dateien')}
                 tripMembers={tripMembers}
+                rosterState={rosterState}
               />
             </LazyPanel>
           </div>
