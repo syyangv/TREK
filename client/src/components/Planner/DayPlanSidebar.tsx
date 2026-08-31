@@ -54,16 +54,8 @@ import { TransitTitle, TransitLegChips, TransitItineraryInline } from './transit
 import { DayPlanSidebarFooter } from './DayPlanSidebarFooter'
 import type { Trip, Day, Place, Category, Assignment, Accommodation, Reservation, AssignmentsMap, RouteResult, RouteSegment, DayNote } from '../../types'
 import { getNavigationTargets, openNavigationTarget } from './placeNavigation'
+import { usePastDayExpansion } from '../../hooks/usePastDayExpansion'
 
-function isPastDay(day: Pick<Day, 'date'>): boolean {
-  const date = day.date?.slice(0, 10)
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false
-  const today = new Date()
-  const todayDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-  return date < todayDate
-}
-
-const PAST_DAY_EXPANSION_DEFAULT_VERSION = 'past-days-collapsed-v1'
 
 interface DayPlanSidebarProps {
   tripId: number
@@ -202,30 +194,9 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
 
   const { noteUi, setNoteUi, noteInputRef, dayNotes, openAddNote: _openAddNote, openEditNote: _openEditNote, cancelNote, saveNote, deleteNote: _deleteNote, moveNote: _moveNote } = useDayNotes(tripId)
 
-  const pastDayDefaultsAppliedRef = useRef(false)
-  const pastDayDefaultsVersionKey = `day-expanded-defaults-${tripId}`
-  const [expandedDays, setExpandedDays] = useState(() => {
-    if (initialExpandedDayIds) {
-      // A parent-provided snapshot is already an explicit user choice; do not
-      // run the one-time past-day migration over it.
-      pastDayDefaultsAppliedRef.current = true
-      return new Set(initialExpandedDayIds)
-    }
-    try {
-      const saved = localStorage.getItem(`day-expanded-${tripId}`)
-      const defaultsApplied = localStorage.getItem(pastDayDefaultsVersionKey) === PAST_DAY_EXPANSION_DEFAULT_VERSION
-      if (defaultsApplied) {
-        pastDayDefaultsAppliedRef.current = true
-        if (saved) return new Set<number>(JSON.parse(saved) as number[])
-      } else if (saved) {
-        const expanded = new Set<number>(JSON.parse(saved) as number[])
-        days.forEach(day => { if (isPastDay(day)) expanded.delete(day.id) })
-        return expanded
-      }
-    } catch {}
-    return new Set<number>(days.filter(d => !isPastDay(d)).map(d => d.id))
+  const { expandedDays, setExpandedDays, setPersistedExpandedDays } = usePastDayExpansion({
+    tripId, days, initialExpandedDayIds, onExpandedDaysChange,
   })
-  useEffect(() => { onExpandedDaysChange?.(expandedDays) }, [expandedDays])
   // Per-segment legs keyed by day id, then by the start place's assignment id (or the
   // transport's reservation id). Nested per day so several Route-toggled mobile days
   // can't collide in one flat map — assignment ids and reservation ids come from
@@ -354,37 +325,6 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     return { placeId, assignmentId: '', noteId: '', reservationId: '', fromDayId: 0, phase: 'single' as const }
   }
 
-  // Only auto-expand genuinely new days (not on initial load from storage). Past
-  // days remain collapsed after the one-time default migration, while manual
-  // expand/collapse choices remain untouched.
-  const prevDayCount = React.useRef(days.length)
-  useEffect(() => {
-    if (days.length > prevDayCount.current) {
-      setExpandedDays(prev => {
-        const n = new Set(prev)
-        days.forEach(day => { if (!prev.has(day.id) && !isPastDay(day)) n.add(day.id) })
-        try {
-          localStorage.setItem(`day-expanded-${tripId}`, JSON.stringify([...n]))
-          localStorage.setItem(pastDayDefaultsVersionKey, PAST_DAY_EXPANSION_DEFAULT_VERSION)
-        } catch {}
-        pastDayDefaultsAppliedRef.current = true
-        return n
-      })
-    } else if (!pastDayDefaultsAppliedRef.current && days.length > 0) {
-      setExpandedDays(prev => {
-        const n = new Set(prev)
-        days.forEach(day => { if (isPastDay(day)) n.delete(day.id) })
-        try {
-          localStorage.setItem(`day-expanded-${tripId}`, JSON.stringify([...n]))
-          localStorage.setItem(pastDayDefaultsVersionKey, PAST_DAY_EXPANSION_DEFAULT_VERSION)
-        } catch {}
-        pastDayDefaultsAppliedRef.current = true
-        return n
-      })
-    }
-    prevDayCount.current = days.length
-  }, [days, pastDayDefaultsVersionKey, tripId])
-
   // Globaler Aufräum-Listener: wenn ein Drag endet ohne Drop, alles zurücksetzen
   useEffect(() => {
     const cleanup = () => {
@@ -404,10 +344,9 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
 
   const toggleDay = (dayId, e) => {
     e.stopPropagation()
-    setExpandedDays(prev => {
+    setPersistedExpandedDays(prev => {
       const n = new Set(prev)
       n.has(dayId) ? n.delete(dayId) : n.add(dayId)
-      try { localStorage.setItem(`day-expanded-${tripId}`, JSON.stringify([...n])) } catch {}
       return n
     })
   }
@@ -1202,6 +1141,7 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     moveNote,
     expandedDays,
     setExpandedDays,
+    setPersistedExpandedDays,
     routeLegs,
     setRouteLegs,
     hotelLegs,
@@ -1242,7 +1182,6 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     costBase,
     fxRates,
     getDragData,
-    prevDayCount,
     toggleDay,
     getSpanLabel,
     getDayOrder,
@@ -1379,6 +1318,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
     moveNote,
     expandedDays,
     setExpandedDays,
+    setPersistedExpandedDays,
     routeLegs,
     setRouteLegs,
     hotelLegs,
@@ -1419,7 +1359,6 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
     costBase,
     fxRates,
     getDragData,
-    prevDayCount,
     toggleDay,
     getSpanLabel,
     getDayOrder,
@@ -1605,7 +1544,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
         locale={locale}
         toast={toast}
         expandedDays={expandedDays}
-        setExpandedDays={setExpandedDays}
+        setExpandedDays={setPersistedExpandedDays}
         onUndo={onUndo}
         canUndo={canUndo}
         undoHover={undoHover}
