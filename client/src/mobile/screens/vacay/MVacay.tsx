@@ -59,7 +59,13 @@ export default function MVacay() {
           <button type="button" onClick={v.prevYear} aria-label={t('mobileVacay.prevYear')} className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-full">
             <ChevronLeft size={17} strokeWidth={2.2} />
           </button>
-          <span className="text-[1rem] font-extrabold tabular-nums">{v.selectedYear}</span>
+          <span
+            className="flex items-center gap-1 text-[1rem] font-extrabold tabular-nums"
+            title={`${v.companyHolidayCount} ${t('vacay.companyHolidays')}`}
+          >
+            <span>{v.selectedYear}</span>
+            <span className="text-[0.7rem] font-bold text-m-muted">· {v.companyHolidayCount}</span>
+          </span>
           <button type="button" onClick={v.nextYear} aria-label={t('mobileVacay.nextYear')} className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-full">
             <ChevronRight size={17} strokeWidth={2.2} />
           </button>

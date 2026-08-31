@@ -248,7 +248,7 @@ export function useMVacay() {
   const tripDotColor = users.find(u => u.id === currentUser?.id)?.color || 'var(--m-st-info)'
 
   return {
-    loading, plan, selectedYear,
+    loading, plan, selectedYear, companyHolidayCount: companyHolidays.length,
     users, isFused, currentUser,
     incomingInvites, acceptInvite, declineInvite,
     incomingShares, toggleShareHidden,

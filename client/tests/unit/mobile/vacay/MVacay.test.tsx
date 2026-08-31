@@ -58,6 +58,7 @@ function buildV(over: Record<string, unknown> = {}): Record<string, unknown> {
     loading: false,
     plan: { id: 1, holiday_calendars: [] },
     selectedYear: 2026,
+    companyHolidayCount: 0,
     users: [
       { id: 1, username: 'alice', color: '#3b82f6' },
       { id: 2, username: 'bob', color: null },
@@ -133,6 +134,12 @@ describe('MVacay', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next year' }));
     expect(mocks.v.prevYear).toHaveBeenCalledTimes(1);
     expect(mocks.v.nextYear).toHaveBeenCalledTimes(1);
+  });
+
+  it('FE-MOB-MVACSCR-002b: shows the company holiday count next to the year', () => {
+    mocks.v = buildV({ companyHolidayCount: 40 });
+    render(<MVacay />);
+    expect(screen.getByText('· 40')).toBeInTheDocument();
   });
 
   it('FE-MOB-MVACSCR-003: the header icons open the invite, share and settings sheets', () => {

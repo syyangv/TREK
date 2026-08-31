@@ -101,6 +101,17 @@ describe('VacayPage', () => {
     });
   });
 
+  it('displays the selected year company holiday count', async () => {
+    seedStore(useVacayStore, makeVacayState({
+      selectedYear: 2025,
+      companyHolidays: [{ date: '2025-01-01' }, { date: '2025-05-01' }],
+    }) as any);
+    render(<VacayPage />);
+    await waitFor(() => {
+      expect(screen.getByText('· 2')).toBeInTheDocument();
+    });
+  });
+
   // FE-PAGE-VACAY-004
   it('calls loadAll on mount', () => {
     const mockLoadAll = vi.fn().mockResolvedValue(undefined);

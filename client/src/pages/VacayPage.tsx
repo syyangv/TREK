@@ -31,6 +31,7 @@ function VacayPageDesktop(): React.ReactElement {
   } = useVacay()
 
   const companyHolidays = useVacayStore(s => s.companyHolidays)
+  const companyHolidayCount = companyHolidays.length
   const obsidianHolidayNotes = Object.keys(OBSIDIAN_HOLIDAY_STYLES).filter(note =>
     companyHolidays.some(h => h.note === note)
   ) as (keyof typeof OBSIDIAN_HOLIDAY_STYLES)[]
@@ -62,7 +63,13 @@ function VacayPageDesktop(): React.ReactElement {
               <ChevronLeft size={16} />
             </button>
           </div>
-          <span className="tabular-nums" style={{ fontSize: 22, fontWeight: 700, color: 'var(--vg-ink)' }}>{selectedYear}</span>
+          <span
+            className="flex items-center gap-1.5 tabular-nums"
+            title={`${companyHolidayCount} ${t('vacay.companyHolidays')}`}
+          >
+            <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--vg-ink)' }}>{selectedYear}</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--vg-ink3)' }}>· {companyHolidayCount}</span>
+          </span>
           <div className="flex items-center gap-0.5">
             <button type="button" onClick={() => { const idx = years.indexOf(selectedYear); if (idx < years.length - 1) setSelectedYear(years[idx + 1]) }} disabled={years.indexOf(selectedYear) >= years.length - 1} className="w-7 h-7 rounded-lg flex items-center justify-center disabled:opacity-20 transition-colors" style={{ color: 'var(--vg-ink3)' }}>
               <ChevronRight size={16} />
