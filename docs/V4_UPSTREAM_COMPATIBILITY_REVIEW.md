@@ -5,6 +5,8 @@
 **Current integration:** [PR #58](https://github.com/syyangv/TREK/pull/58), merge
 commit `fae97028`
 
+**Latest deploy follow-up:** 2026-08-30, production `v4.1.6`
+
 The post-merge follow-up audit after `fdc451a4` covers explicit Obsidian
 reconciliation, reservation-link unlink semantics, mobile reservation-time
 fallbacks, complete mobile time ranges, and roster-loading protection.
@@ -136,12 +138,48 @@ error, update the key restriction before treating the OpenStreetMap fallback as
 normal behavior. Browser-referrer restrictions are incompatible with the
 server-side Places request path.
 
-### P1 — Integration hotspots that remain open
+### P1 — Integration hotspots (resolved in source follow-up)
 
-1. Extract a shared Assignment Time Slot editing hook.
-2. Finish propagating loading/solo/collaborative roster state to every
-   companion-dependent surface; packing now protects the initial loading state.
-3. Isolate past-day expansion persistence from `DayPlanSidebar`.
+1. **Resolved:** Extracted a shared Assignment Time Slot editing hook.
+2. **Resolved:** Propagated explicit loading/solo/collaborative roster state to
+   companion-dependent surfaces; packing's initial-loading guard remains.
+3. **Resolved:** Isolated past-day expansion persistence from
+   `DayPlanSidebar`.
+
+These changes are implemented on `main` but are not yet in the running
+production v4.1.6 image. They must pass the normal PR, CI, security, release,
+and promotion process before the fixes are considered deployed.
+
+## Latest deployment follow-up — v4.1.6
+
+Production is currently running the immutable image
+`thvysy44/trek-fork@sha256:4dbc1906460c7692973fd85e7cd131c258561883598381eea24e8fac956015d8`.
+The promotion record identifies source tag `v4.1.6`, source commit
+`6d87821bf7cac7e8c62273829975796f2107de59`, and promotion commit
+`c10ab33c4c20a63e525f0e618aa547265fb892a8`. The running container is healthy,
+and its `/api/health` endpoint returned `{"status":"ok"}`.
+
+The stable v4.1.6 release, CI, Security Scan, and Docker image build all
+passed for the deployed source. GitHub reports the protected
+`deploy/production` promotion commit as signature-verified, and the local
+poller state agrees with both the promotion record and the running image
+digest.
+
+The focused follow-up checks changed the old collaboration-test note:
+
+- Source follow-up commits: `ef86d38d`, `56fa7ef3`, `bfb92b82`, `fe7adc11`,
+  and `a18cb214`.
+- Changed-area client suites: 15 files, 836 tests passed; client typecheck
+  and `git diff --check` passed.
+- Collaboration integration suite: 56 tests passed; `COLLAB-011` passes.
+- Focused collaboration E2E suite: 13 tests passed, including the expected
+  unauthenticated `401`. A prior parallel combined run exposed a test-isolation
+  `401`/`404` mismatch; it did not reproduce in the focused run.
+
+Therefore the three P1 engineering items are resolved in source but pending
+deployment. The collaboration E2E mismatch is not currently reproducible in
+isolation and should be monitored for test-order/isolation regressions. The
+existing v4.1.6 production release and its acceptance gates remain complete.
 
 ## Rules for future upstream syncs
 
@@ -193,12 +231,11 @@ book schemas, packing terminology, and shared locale changes.
 The post-merge preservation follow-up passed the focused Vacay/Obsidian,
 reservation-link, mobile itinerary, packing, client store, and full client test
 suites, plus build, typecheck, lint, strict i18n parity, and diff checks. The
-full server suite still has two unrelated collaboration failures:
-`tests/e2e/collab.e2e.test.ts` receives 404 instead of the expected 429, and
-`tests/integration/collab.test.ts` fails in `COLLAB-011` while reading an
-undefined poll id. They are outside this preservation fix.
+v4.1.6 follow-up then passed the changed-area client suites and the focused
+collaboration E2E suite; the prior `COLLAB-011` integration failure and the
+previous E2E `404`-versus-`429` note are no longer current.
 
-Production acceptance is not part of this local review. After the PR merges,
-the protected release process must still provide green CI and Security Scan, a
-stable release with provenance, a signed immutable-digest promotion, poller
-agreement, and `/api/health` returning `{"status":"ok"}`.
+Production acceptance for v4.1.6 is complete: CI, Security Scan, stable release
+provenance, signed immutable-digest promotion, poller agreement, and the live
+`/api/health` check all passed. The source follow-up commits listed above still
+require the normal PR and production-promotion process before they are deployed.
