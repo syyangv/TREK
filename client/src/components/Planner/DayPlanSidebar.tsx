@@ -37,6 +37,7 @@ import { withinDriveRange } from '../../utils/geo'
 import { formatDate, formatTime, dayTotalCost, formatMoneySum, splitReservationDateTime } from '../../utils/formatters'
 import { useDayNotes } from '../../hooks/useDayNotes'
 import { useExchangeRates } from '../../hooks/useExchangeRates'
+import { useAssignmentTimeSlotEditor } from '../../hooks/useAssignmentTimeSlotEditor'
 import { RES_ICONS, getNoteIcon } from './DayPlanSidebar.constants'
 import { noteSurface } from './noteSurface'
 import { findTodayDayId } from './today'
@@ -48,7 +49,7 @@ import { MobileAddPlaceButton } from './DayPlanSidebarMobileAddPlaceButton'
 import { DayPlanSidebarToolbar } from './DayPlanSidebarToolbar'
 import { DayPlanSidebarNoteModal } from './DayPlanSidebarNoteModal'
 import { DayPlanSidebarTimeConfirmModal } from './DayPlanSidebarTimeConfirmModal'
-import { TimeSlotModal, type TimeSlotEditState } from './TimeSlotModal'
+import { TimeSlotModal } from './TimeSlotModal'
 import { DayPlanSidebarTransportDetailModal } from './DayPlanSidebarTransportDetailModal'
 import { TransitTitle, TransitLegChips, TransitItineraryInline } from './transitDisplay'
 import { DayPlanSidebarFooter } from './DayPlanSidebarFooter'
@@ -229,8 +230,10 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
   const [transportPosVersion, setTransportPosVersion] = useState(0)
   // Assignment row's own Time Slot editor; it writes an assignment override,
   // never the place's shared default time.
-  const [timeSlotEdit, setTimeSlotEdit] = useState<TimeSlotEditState | null>(null)
-  const [isSavingTimeSlot, setIsSavingTimeSlot] = useState(false)
+  const { timeSlotEdit, setTimeSlotEdit, isSavingTimeSlot, saveTimeSlot } = useAssignmentTimeSlotEditor({
+    tripId,
+    onError: err => toast.error(err instanceof Error ? err.message : t('common.unknownError')),
+  })
 
   useEffect(() => {
     if (externalTransportDetail) {
@@ -929,30 +932,6 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     }
   }
 
-  // A Time Slot edits the assignment override only. Updating the place default
-  // would silently change every other day that uses the same place.
-  const saveTimeSlot = async (placeTime: string | null, endTime: string | null) => {
-    if (!timeSlotEdit || isSavingTimeSlot) return
-    const { dayId, assignmentId } = timeSlotEdit
-    setIsSavingTimeSlot(true)
-    try {
-      await assignmentsApi.updateTime(tripId, assignmentId, { place_time: placeTime, end_time: endTime })
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('common.unknownError'))
-      return
-    } finally {
-      setIsSavingTimeSlot(false)
-    }
-    const key = String(dayId)
-    const currentAssignments = { ...assignments }
-    if (currentAssignments[key]) {
-      currentAssignments[key] = currentAssignments[key].map(a =>
-        a.id === assignmentId ? { ...a, place: { ...a.place, place_time: placeTime, end_time: endTime } } : a
-      )
-      tripActions.setAssignments(currentAssignments)
-    }
-    setTimeSlotEdit(null)
-  }
 
   const moveNote = async (dayId, noteId, direction) => {
     await _moveNote(dayId, noteId, direction, getMergedItems)
