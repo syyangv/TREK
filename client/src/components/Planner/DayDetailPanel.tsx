@@ -4,7 +4,8 @@ import { X, Sun, Cloud, CloudRain, CloudSnow, CloudDrizzle, CloudLightning, Wind
 
 const RES_TYPE_ICONS = { flight: Plane, hotel: Hotel, restaurant: Utensils, train: Train, car: Car, cruise: Ship, transit: TramFront, event: Ticket, tour: Users, parking: ParkingSquare, other: FileText }
 const RES_TYPE_COLORS = { flight: '#3b82f6', hotel: '#8b5cf6', restaurant: '#ef4444', train: '#06b6d4', car: '#6b7280', cruise: '#0ea5e9', transit: '#7c3aed', event: '#f59e0b', tour: '#10b981', parking: '#2563eb', other: '#6b7280' }
-import { assignmentsApi, weatherApi, accommodationsApi } from '../../api/client'
+import { weatherApi, accommodationsApi } from '../../api/client'
+import { useAssignmentTimeSlotEditor } from '../../hooks/useAssignmentTimeSlotEditor'
 import { usePluginViewContributions, PluginCardFooter } from '../Plugins/PluginContributions'
 import { usePluginStore } from '../../store/pluginStore'
 import PluginFrame from '../Plugins/PluginFrame'
@@ -17,7 +18,7 @@ import { useToast } from '../shared/Toast'
 import { getLocaleForLanguage, useTranslation } from '../../i18n'
 import type { Assignment, Day, Place, Category, Reservation, AssignmentsMap } from '../../types'
 import { isDayInAccommodationRange } from '../../utils/dayOrder'
-import { TimeSlotModal, type TimeSlotEditState } from './TimeSlotModal'
+import { TimeSlotModal } from './TimeSlotModal'
 import { formatClockTime, splitReservationDateTime } from '../../utils/formatters'
 import { useDayDetail } from './useDayDetail'
 
@@ -86,30 +87,10 @@ export default function DayDetailPanel({ day, days, places, categories = [], tri
 
   // The day-detail list edits the assignment override, not the place default;
   // the same place can appear on several days with independent time slots.
-  const [timeSlotEdit, setTimeSlotEdit] = useState<TimeSlotEditState | null>(null)
-  const [isSavingTimeSlot, setIsSavingTimeSlot] = useState(false)
-  const saveTimeSlot = async (placeTime: string | null, endTime: string | null) => {
-    if (!timeSlotEdit || isSavingTimeSlot) return
-    const { dayId, assignmentId } = timeSlotEdit
-    setIsSavingTimeSlot(true)
-    try {
-      await assignmentsApi.updateTime(tripId, assignmentId, { place_time: placeTime, end_time: endTime })
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('common.unknownError'))
-      return
-    } finally {
-      setIsSavingTimeSlot(false)
-    }
-    const key = String(dayId)
-    const current = assignments[key] || []
-    useTripStore.getState().setAssignments({
-      ...assignments,
-      [key]: current.map(a => a.id === assignmentId
-        ? { ...a, place: { ...a.place, place_time: placeTime, end_time: endTime } }
-        : a),
-    })
-    setTimeSlotEdit(null)
-  }
+  const { timeSlotEdit, setTimeSlotEdit, isSavingTimeSlot, saveTimeSlot } = useAssignmentTimeSlotEditor({
+    tripId,
+    onError: err => toast.error(err instanceof Error ? err.message : t('common.unknownError')),
+  })
 
   // Inline day rename (#1065) — took over from the sidebar's pencil, which the
   // transit search button replaced.

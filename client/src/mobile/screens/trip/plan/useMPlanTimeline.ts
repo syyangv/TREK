@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTripStore } from '../../../../store/tripStore'
 import { useRouteCalculation } from '../../../../hooks/useRouteCalculation'
+import { useAssignmentTimeSlotEditor } from '../../../../hooks/useAssignmentTimeSlotEditor'
 import { assignmentsApi, reservationsApi, weatherApi } from '../../../../api/client'
 import { usePluginStore } from '../../../../store/pluginStore'
 import { getDayBookendHotels } from '../../../../utils/dayOrder'
 import { getDisplayTimeForDay, getMergedItems, getTransportForDay } from '../../../../utils/dayMerge'
 import { dayCoMapsUrl, dayGoogleMapsUrl, optimizeDayOrder } from '../lib/dayRoute'
-import type { TimeSlotEditState } from '../../../../components/Planner/TimeSlotModal'
 import {
   buildPlanRows, breaksChronology, findUpNext, hotelChipsForDay, hotelLegsForDay, itemHasTime,
   type HotelLegs, type PlanRow, type TransportEntry,
@@ -36,8 +36,11 @@ export function useMPlanTimeline(planner: TripPlanner) {
   // Mobile used to reach the full place editor for time slots, but the
   // persistent row-level editor belongs here now that the phone timeline is a
   // separate implementation from the desktop DayPlanSidebar.
-  const [timeSlotEdit, setTimeSlotEdit] = useState<TimeSlotEditState | null>(null)
-  const [isSavingTimeSlot, setIsSavingTimeSlot] = useState(false)
+  const { timeSlotEdit, setTimeSlotEdit, isSavingTimeSlot, saveTimeSlot } = useAssignmentTimeSlotEditor({
+    tripId,
+    onError: err => toast.error(err instanceof Error ? err.message : t('common.unknownError')),
+    onSaved: () => tripActions.refreshDays(tripId),
+  })
 
   const openTimeSlot = useCallback((assignment: Assignment) => {
     setTimeSlotEdit({
@@ -51,25 +54,6 @@ export function useMPlanTimeline(planner: TripPlanner) {
     })
   }, [])
 
-  // Time slots are assignment overrides, not shared place defaults. Refresh
-  // the day after saving because the server also chronologically re-sorts a
-  // newly timed assignment.
-  const saveTimeSlot = useCallback(async (placeTime: string | null, endTime: string | null) => {
-    if (!timeSlotEdit || isSavingTimeSlot) return
-    setIsSavingTimeSlot(true)
-    try {
-      await assignmentsApi.updateTime(tripId, timeSlotEdit.assignmentId, {
-        place_time: placeTime,
-        end_time: endTime,
-      })
-      await tripActions.refreshDays(tripId)
-      setTimeSlotEdit(null)
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : t('common.unknownError'))
-    } finally {
-      setIsSavingTimeSlot(false)
-    }
-  }, [isSavingTimeSlot, t, timeSlotEdit, toast, tripActions, tripId])
 
   const dayAssignments = useMemo<Assignment[]>(() => {
     if (!day) return []
