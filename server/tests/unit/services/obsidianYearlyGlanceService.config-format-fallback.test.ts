@@ -27,7 +27,10 @@ beforeAll(() => {
 afterAll(() => fs.rmSync(vaultPath, { recursive: true, force: true }));
 
 describe('Obsidian format fallback', () => {
-  it('does not treat a configured daily note as a planned leave row', () => {
-    expect(loadObsidianPublicHolidaysForYear(2025)).toEqual([]);
+  it('uses the default format when only the folder is configured', () => {
+    expect(loadObsidianPublicHolidaysForYear(2025)).toContainEqual({
+      date: '2025-02-05',
+      note: 'Obsidian PTO',
+    });
   });
 });

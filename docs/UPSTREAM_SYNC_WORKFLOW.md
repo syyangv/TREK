@@ -47,9 +47,10 @@ For every conflict or upstream rewrite:
 6. For mobile trip-plan or reservation changes, verify that assignment-linked
    reservations still persist `assignment_id`, and that mobile place rows keep
    the planned-slot-first / reservation-time-fallback display rule.
-7. For Vacay/Obsidian changes, verify that `请假计划.md` remains authoritative,
-   reconciliation stays behind the explicit sync operation, and `getEntries`
-   remains database-read-only.
+7. For Vacay/Obsidian changes, verify daily-note `假期` remains authoritative
+   for actual leave, `请假计划.md` remains authoritative for planned leave,
+   daily-note-over-plan precedence is preserved, reconciliation stays behind the
+   explicit sync operation, and `getEntries` remains database-read-only.
 
 Pay special attention to `.github/workflows`, `client/src/App.tsx`,
 `client/vite.config.js`, Vacay client/server code, locale files, deployment
@@ -170,9 +171,11 @@ Record the following in the session or release report:
 
 For UI/data changes, manually verify login, persisted data/uploads, Vacay,
 Obsidian synchronization, and the PWA update path on the private production URL.
-Vacay verification must include a future `PTO` row and a `公共假期` row from
-the read-only `请假计划.md` table, plus a negative check that an unrelated
-Yearly Glance custom event (for example a flight) is not imported as PTO.
+Vacay verification must include a historical daily-note `假期` row before the
+first plan-table row, future `PTO` and `公共假期` rows from the read-only
+`请假计划.md` table, same-date daily-note precedence, and a negative check
+that an unrelated Yearly Glance custom event (for example a flight) is not
+imported as PTO.
 
 ## Lessons from the v3.4.1 integration
 

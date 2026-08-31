@@ -27,7 +27,10 @@ beforeAll(() => {
 afterAll(() => fs.rmSync(vaultPath, { recursive: true, force: true }));
 
 describe('configured Obsidian daily notes', () => {
-  it('does not treat configured daily-note text as a planned leave row', () => {
-    expect(loadObsidianPublicHolidaysForYear(2025)).toEqual([]);
+  it('prefers explicit folder and format settings from config', () => {
+    expect(loadObsidianPublicHolidaysForYear(2025)).toContainEqual({
+      date: '2025-02-03',
+      note: 'Obsidian PTO',
+    });
   });
 });

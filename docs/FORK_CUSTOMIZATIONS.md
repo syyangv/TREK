@@ -62,12 +62,15 @@ See [CI/CD deployment](ci-cd-phase-3-4-deployment.md) and
 
 ## Vacay and Obsidian
 
-- Preserve the Vacay addon and its read-only Obsidian leave-plan import. Yearly
-  Glance may render that source, but it is not a runtime leave authority.
-- Planned leave is imported directly from the vault's `请假计划.md` Markdown
-  table (`Date | Type | Note`). Yearly Glance renders this source but is not a
-  runtime dependency for Vacay. Treat `Type`, never title, color, or emoji, as
-  the category authority. Supported values are `PTO`, `病假`, and `公共假期`.
+- Preserve the Vacay addon and its read-only Obsidian Yearly Glance leave import.
+- Actual/past leave is read from each daily note's `假期` frontmatter; planned
+  leave is imported directly from the vault's `请假计划.md` Markdown table
+  (`Date | Type | Note`). Resolve the daily-note source, folder, and format from
+  Yearly Glance's configuration and its Daily Notes/Periodic Notes settings. A
+  daily note wins over a plan row for the same date, including an existing note
+  with an empty or invalid `假期` value. Treat `Type`/`假期`, never title, color,
+  or emoji, as the category authority. Supported values are `PTO`, `病假`, and
+  `公共假期`.
 - Keep the vault mounted read-only. Reconciliation may update TREK's derived
   Vacay rows, but must never modify `请假计划.md` or any Obsidian note.
 - Preserve PTO, sick-leave, and public-holiday mappings and their locale keys.
@@ -79,8 +82,9 @@ See [CI/CD deployment](ci-cd-phase-3-4-deployment.md) and
   `carried_over`; use 30 only when no preceding user-year configuration exists.
 - Carry-over recalculation may update `carried_over` on an existing year, but it
   must not overwrite a base entitlement that the user configured for that year.
-- `请假计划.md` is the authoritative leave source; Yearly Glance custom events
-  and daily-note text are not inferred as leave. Obsidian reconciliation runs
+- Daily-note `假期` is authoritative for actual leave and `请假计划.md` is
+  authoritative for planned leave; unrelated Yearly Glance custom events (for
+  example flights) are never inferred as leave. Obsidian reconciliation runs
   only through the explicit authenticated sync endpoint, never from a read path.
 - Verify imported entries, company holidays, user entitlements, and existing
   persisted data after an upstream sync.
@@ -243,11 +247,14 @@ See [PWA implementation handoff](pwa-template-handoff.md).
 - [ ] Login and authenticated navigation work.
 - [ ] Existing database records and uploads remain present.
 - [ ] Vacay opens on the current year and existing entries remain visible.
-- [ ] `请假计划.md` future PTO and holiday rows import by `Type`, while
-      unrelated Yearly Glance events such as flights do not become PTO.
-- [ ] Obsidian import is triggered explicitly and `getEntries` remains a DB-only
-      read; `请假计划.md` Type values are authoritative and the vault is never
-      written.
+- [ ] Historical daily-note `假期` rows before the first plan-table row import
+  for `PTO`, `病假`, and `公共假期`.
+- [ ] A daily note wins over a same-date plan row, and an existing daily note
+  with empty/invalid `假期` suppresses that stale plan row.
+- [ ] `请假计划.md` future PTO/public-holiday rows import by `Type`, while
+  unrelated Yearly Glance events (for example flights) do not become PTO.
+- [ ] Obsidian import is triggered explicitly; `getEntries` remains a DB-only
+  read, and the vault is never written.
 - [ ] PWA installs and an update produce the reload banner.
 - [ ] Offline map caches are retained across a PWA update.
 - [ ] A booking created with a place picked still offers the day-stop checkbox,
