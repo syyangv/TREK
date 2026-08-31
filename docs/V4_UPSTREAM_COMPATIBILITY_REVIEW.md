@@ -5,8 +5,6 @@
 **Current integration:** [PR #58](https://github.com/syyangv/TREK/pull/58), merge
 commit `fae97028`
 
-**Latest deploy follow-up:** 2026-08-30, production `v4.1.6`
-
 The post-merge follow-up audit after `fdc451a4` covers explicit Obsidian
 reconciliation, reservation-link unlink semantics, mobile reservation-time
 fallbacks, complete mobile time ranges, and roster-loading protection.
@@ -138,48 +136,12 @@ error, update the key restriction before treating the OpenStreetMap fallback as
 normal behavior. Browser-referrer restrictions are incompatible with the
 server-side Places request path.
 
-### P1 — Integration hotspots (resolved in source follow-up)
+### P1 — Integration hotspots (superseded by v4.1.7 follow-up)
 
-1. **Resolved:** Extracted a shared Assignment Time Slot editing hook.
-2. **Resolved:** Propagated explicit loading/solo/collaborative roster state to
-   companion-dependent surfaces; packing's initial-loading guard remains.
-3. **Resolved:** Isolated past-day expansion persistence from
-   `DayPlanSidebar`.
-
-These changes are implemented on `main` but are not yet in the running
-production v4.1.6 image. They must pass the normal PR, CI, security, release,
-and promotion process before the fixes are considered deployed.
-
-## Latest deployment follow-up — v4.1.6
-
-Production is currently running the immutable image
-`thvysy44/trek-fork@sha256:4dbc1906460c7692973fd85e7cd131c258561883598381eea24e8fac956015d8`.
-The promotion record identifies source tag `v4.1.6`, source commit
-`6d87821bf7cac7e8c62273829975796f2107de59`, and promotion commit
-`c10ab33c4c20a63e525f0e618aa547265fb892a8`. The running container is healthy,
-and its `/api/health` endpoint returned `{"status":"ok"}`.
-
-The stable v4.1.6 release, CI, Security Scan, and Docker image build all
-passed for the deployed source. GitHub reports the protected
-`deploy/production` promotion commit as signature-verified, and the local
-poller state agrees with both the promotion record and the running image
-digest.
-
-The focused follow-up checks changed the old collaboration-test note:
-
-- Source follow-up commits: `ef86d38d`, `56fa7ef3`, `bfb92b82`, `fe7adc11`,
-  and `a18cb214`.
-- Changed-area client suites: 15 files, 836 tests passed; client typecheck
-  and `git diff --check` passed.
-- Collaboration integration suite: 56 tests passed; `COLLAB-011` passes.
-- Focused collaboration E2E suite: 13 tests passed, including the expected
-  unauthenticated `401`. A prior parallel combined run exposed a test-isolation
-  `401`/`404` mismatch; it did not reproduce in the focused run.
-
-Therefore the three P1 engineering items are resolved in source but pending
-deployment. The collaboration E2E mismatch is not currently reproducible in
-isolation and should be monitored for test-order/isolation regressions. The
-existing v4.1.6 production release and its acceptance gates remain complete.
+1. Extract a shared Assignment Time Slot editing hook.
+2. Finish propagating loading/solo/collaborative roster state to every
+   companion-dependent surface; packing now protects the initial loading state.
+3. Isolate past-day expansion persistence from `DayPlanSidebar`.
 
 ## Rules for future upstream syncs
 
@@ -189,7 +151,7 @@ existing v4.1.6 production release and its acceptance gates remain complete.
 3. Never resolve deployment or PWA policy conflicts by accepting all upstream.
 4. Update this review and `FORK_CUSTOMIZATIONS.md` when adding an invariant.
 
-## Verification
+## Verification — historical PR #58 baseline
 
 PR #58 passed the following local checks:
 
@@ -228,14 +190,44 @@ Focused regression suites covered booking day stops, desktop and mobile
 reservation surfaces, migrations, storage administration, Vacay, PWA behavior,
 book schemas, packing terminology, and shared locale changes.
 
-The post-merge preservation follow-up passed the focused Vacay/Obsidian,
+At the time of the original review, the post-merge preservation follow-up passed
+the focused Vacay/Obsidian,
 reservation-link, mobile itinerary, packing, client store, and full client test
 suites, plus build, typecheck, lint, strict i18n parity, and diff checks. The
-v4.1.6 follow-up then passed the changed-area client suites and the focused
-collaboration E2E suite; the prior `COLLAB-011` integration failure and the
-previous E2E `404`-versus-`429` note are no longer current.
+full server suite still has two unrelated collaboration failures:
+`tests/e2e/collab.e2e.test.ts` receives 404 instead of the expected 429, and
+`tests/integration/collab.test.ts` fails in `COLLAB-011` while reading an
+undefined poll id. They are outside this preservation fix.
 
-Production acceptance for v4.1.6 is complete: CI, Security Scan, stable release
-provenance, signed immutable-digest promotion, poller agreement, and the live
-`/api/health` check all passed. The source follow-up commits listed above still
-require the normal PR and production-promotion process before they are deployed.
+At that time, production acceptance was not part of the local review. After the
+PR merged,
+the protected release process must still provide green CI and Security Scan, a
+stable release with provenance, a signed immutable-digest promotion, poller
+agreement, and `/api/health` returning `{"status":"ok"}`.
+
+
+## Latest follow-up status — production v4.1.7
+
+The senior-engineer coordinator managed exactly three role-specialized subagents
+and completed all three P1 items:
+
+1. A shared `useAssignmentTimeSlotEditor` now owns the Assignment Time Slot
+   mutation lifecycle across desktop and mobile surfaces.
+2. Explicit `loading`, `solo`, and `collaborative` roster state now reaches the
+   companion-dependent packing, mobile, reservation, and place-inspector gates.
+3. Versioned past-day expansion persistence now lives in
+   `usePastDayExpansion`, outside `DayPlanSidebar`.
+
+The follow-up commits are `ef86d38d`, `56fa7ef3`, `bfb92b82`, `fe7adc11`, and
+`a18cb214`. Changed-area client tests passed (15 files, 836 tests), client
+typecheck, client lint, and `git diff --check` passed. The focused collaboration
+E2E suite passed all 13 tests, and the collaboration integration suite passed 56
+tests including `COLLAB-011`.
+
+Production now runs v4.1.7 image
+`thvysy44/trek-fork@sha256:a0c416c948101cb7c9d7c269a6a756b02753607129af909b8d2b59f408c98844`,
+promoted by signed commit `2e63f37555492f5671d34ae3dba0c7e97c692f96`.
+The poller state and running container agree with this digest, and
+`/api/health` returns `{"status":"ok"}`. CI, Security Scan, stable release
+provenance, and the immutable Docker build all passed. This section supersedes
+the earlier local-review note that these items were pending deployment.
