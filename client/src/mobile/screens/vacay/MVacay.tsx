@@ -165,9 +165,9 @@ export default function MVacay() {
               <span className="truncate">{s.username}</span>
             </button>
           ))}
-          {v.companyHolidaysEnabled && (
-            <LegendChip color="#F5D9A6" label={t('mobileVacay.companyLegend')} />
-          )}
+          {v.companyHolidaysEnabled && v.companyHolidayLegend.map(category => (
+            <LegendChip key={category.key} color={category.color} label={category.label} />
+          ))}
           {v.holidaysEnabled && (v.plan?.holiday_calendars ?? []).map(cal => (
             <LegendChip key={cal.id} color={cal.color} label={cal.label || cal.region} />
           ))}

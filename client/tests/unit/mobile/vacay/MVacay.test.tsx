@@ -59,6 +59,7 @@ function buildV(over: Record<string, unknown> = {}): Record<string, unknown> {
     plan: { id: 1, holiday_calendars: [] },
     selectedYear: 2026,
     companyHolidayCount: 0,
+    companyHolidayLegend: [{ key: 'manual', color: '#F5D9A6', label: 'Company days' }],
     users: [
       { id: 1, username: 'alice', color: '#3b82f6' },
       { id: 2, username: 'bob', color: null },
@@ -140,6 +141,18 @@ describe('MVacay', () => {
     mocks.v = buildV({ companyHolidayCount: 40 });
     render(<MVacay />);
     expect(screen.getByText('· 40')).toBeInTheDocument();
+  });
+
+  it('FE-MOB-MVACSCR-002c: shows separate company-holiday legend categories', () => {
+    mocks.v = buildV({ companyHolidayLegend: [
+      { key: 'Obsidian PTO', color: '#f1c40f', label: 'PTO' },
+      { key: 'Obsidian 公共假期', color: '#e67e22', label: 'Public Holiday' },
+      { key: 'Obsidian 病假', color: '#e74c3c', label: 'Sick Leave' },
+    ] });
+    render(<MVacay />);
+    expect(screen.getByText('PTO')).toBeInTheDocument();
+    expect(screen.getByText('Public Holiday')).toBeInTheDocument();
+    expect(screen.getByText('Sick Leave')).toBeInTheDocument();
   });
 
   it('FE-MOB-MVACSCR-003: the header icons open the invite, share and settings sheets', () => {

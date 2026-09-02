@@ -184,6 +184,20 @@ describe('useMVacay', () => {
     expect(result.current.dayCtx.companyHolidaySet.has('2026-12-24')).toBe(true);
   });
 
+  it('FE-MOB-MVAC-007a: counts PTO and public holidays but excludes sick leave', async () => {
+    act(() => { useVacayStore.setState({ companyHolidays: [
+      { date: '2026-06-15', note: 'Obsidian PTO' },
+      { date: '2026-06-16', note: 'Obsidian 公共假期' },
+      { date: '2026-06-17', note: 'Obsidian 病假' },
+    ] }); });
+    const { result } = await mount();
+
+    expect(result.current.companyHolidayCount).toBe(2);
+    expect(result.current.dayCtx.companyHolidayColorMap?.get('2026-06-15')).toBe('#f1c40f');
+    expect(result.current.dayCtx.companyHolidayColorMap?.get('2026-06-16')).toBe('#e67e22');
+    expect(result.current.dayCtx.companyHolidayColorMap?.get('2026-06-17')).toBe('#e74c3c');
+  });
+
   it('FE-MOB-MVAC-008: overlays visible shared calendars only', async () => {
     act(() => {
       useVacayStore.setState({

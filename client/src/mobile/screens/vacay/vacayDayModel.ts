@@ -1,4 +1,5 @@
 import { schoolHolidayWash } from '../../../components/Vacay/holidayVisual'
+import { MANUAL_COMPANY_HOLIDAY_COLOR } from '../../../components/Vacay/obsidianHolidays'
 import type { HolidaysMap, VacayEntry } from '../../../types'
 
 // Users created before picking a color have color=null; same fallback the
@@ -27,6 +28,7 @@ export interface DayVisualContext {
   todayStr: string
   entryMap: Record<string, VacayEntry[]>
   companyHolidaySet: Set<string>
+  companyHolidayColorMap?: Map<string, string>
   companyHolidaysEnabled: boolean
   holidays: HolidaysMap
   weekendDays: number[]
@@ -104,7 +106,14 @@ function baseDayVisual(dateStr: string, dayOfWeek: number, ctx: DayVisualContext
   // vacation day or company holiday logged for today was stored and counted but
   // drawn as an empty cell.
   if (ctx.companyHolidaysEnabled && ctx.companyHolidaySet.has(dateStr)) {
-    return withSchool({ background: '#F5D9A6', numColor: '#8A5A00' })
+    const color = ctx.companyHolidayColorMap?.get(dateStr)
+    if (!color || color === MANUAL_COMPANY_HOLIDAY_COLOR) {
+      return withSchool({ background: MANUAL_COMPANY_HOLIDAY_COLOR, numColor: '#8A5A00' })
+    }
+    return withSchool({
+      background: `color-mix(in srgb, ${color} 28%, var(--m-sheet))`,
+      numColor: holidayInk(color),
+    })
   }
   const entries = ctx.entryMap[dateStr]
   if (entries && entries.length > 0) {

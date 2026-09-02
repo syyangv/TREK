@@ -10,6 +10,7 @@ import { isWeekend } from '../../../components/Vacay/holidays'
 import { currentPeriodYear, inGridWindow, windowMonths } from '../../../vacay/yearWindow'
 import { FALLBACK_PERSON_COLOR, localDateStr, type DayVisualContext } from './vacayDayModel'
 import { getApiErrorMessage, type Trip } from '../../../types'
+import { companyHolidayColor, countsTowardCompanyHolidayTotal, isObsidianHolidayNote, MANUAL_COMPANY_HOLIDAY_COLOR, OBSIDIAN_HOLIDAY_STYLES } from '../../../components/Vacay/obsidianHolidays'
 
 export type MVacayView = 'grid' | 'edit'
 export type MVacayMode = 'vacation' | 'company'
@@ -95,6 +96,20 @@ export function useMVacay() {
   )
 
   const companyHolidaySet = useMemo(() => new Set(companyHolidays.map(h => h.date)), [companyHolidays])
+  const companyHolidayColorMap = useMemo(() => {
+    const map = new Map<string, string>()
+    companyHolidays.forEach(h => map.set(h.date, companyHolidayColor(h.note)))
+    return map
+  }, [companyHolidays])
+  const companyHolidayLegend = useMemo(() => {
+    const categories: { key: string; color: string; label: string }[] = (Object.keys(OBSIDIAN_HOLIDAY_STYLES) as (keyof typeof OBSIDIAN_HOLIDAY_STYLES)[])
+      .filter(note => companyHolidays.some(h => h.note === note))
+      .map(note => ({ key: note, color: OBSIDIAN_HOLIDAY_STYLES[note].color, label: t(OBSIDIAN_HOLIDAY_STYLES[note].labelKey) }))
+    if (companyHolidays.some(h => !isObsidianHolidayNote(h.note))) {
+      categories.push({ key: 'manual', color: MANUAL_COMPANY_HOLIDAY_COLOR, label: t('mobileVacay.companyLegend') })
+    }
+    return categories
+  }, [companyHolidays, t])
 
   const entryMap = useMemo(() => {
     const map: DayVisualContext['entryMap'] = {}
@@ -125,8 +140,8 @@ export function useMVacay() {
   }, [sharedCalendars])
 
   const dayCtx = useMemo<DayVisualContext>(() => ({
-    todayStr, entryMap, companyHolidaySet, companyHolidaysEnabled, holidays, weekendDays, sharedMap,
-  }), [todayStr, entryMap, companyHolidaySet, companyHolidaysEnabled, holidays, weekendDays, sharedMap])
+    todayStr, entryMap, companyHolidaySet, companyHolidayColorMap, companyHolidaysEnabled, holidays, weekendDays, sharedMap,
+  }), [todayStr, entryMap, companyHolidaySet, companyHolidayColorMap, companyHolidaysEnabled, holidays, weekendDays, sharedMap])
 
   // The twelve months the window spans, in display order — Jan–Dec for a calendar
   // year, Jul–Jun for a fiscal one starting in July (#737).
@@ -248,7 +263,9 @@ export function useMVacay() {
   const tripDotColor = users.find(u => u.id === currentUser?.id)?.color || 'var(--m-st-info)'
 
   return {
-    loading, plan, selectedYear, companyHolidayCount: companyHolidays.length,
+    loading, plan, selectedYear,
+    companyHolidayCount: companyHolidays.filter(h => countsTowardCompanyHolidayTotal(h.note)).length,
+    companyHolidayLegend,
     users, isFused, currentUser,
     incomingInvites, acceptInvite, declineInvite,
     incomingShares, toggleShareHidden,

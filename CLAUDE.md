@@ -99,6 +99,18 @@ These principles come out of a verified 2026 full-repo audit and shape how all n
 - **Use the runtime's native idioms.** Prefer React 19 features (`useOptimistic`, Actions, `use()`/Suspense) and Nest subsystems (DI providers, pipes, guards, `@nestjs/schedule`) over hand-rolled equivalents of the same machinery.
 - **Fail closed, gates stay on.** Security switches default to safe; misconfiguration must refuse, not silently degrade. Never lower a quality gate (strict TS, lint severity, coverage, parity checks) to land a change — no new `any`, no new `eslint-disable`, no downgrading rules to `warn`.
 
+## Session-learned guardrails
+
+- **Vacay/Obsidian:** daily-note `假期` is authoritative for actual leave;
+  `请假计划.md` supplies planned leave; daily notes override plans, and
+  unrelated Yearly Glance custom events are ignored.
+- **Vacay UI:** PTO, 公共假期, and 病假 keep distinct colors; the annual total
+  counts PTO/public holidays but excludes 病假.
+- **Production release:** main → CI/Security Scan → stable provenance → signed
+  `deploy/production` promotion → verify poller digest and `/api/health`.
+- **Branch hygiene:** audit open PRs and unique commits before cleanup; preserve
+  operational `dev`, protected `deploy/production`, and generated `gh-pages`.
+
 ## Conventions (from CONTRIBUTING.md)
 
 - **Target the `dev` branch** for PRs, not `main` (exception: `wiki/`-only changes).

@@ -61,7 +61,7 @@ graph impact data.
 | 18 | Compact v4 dashboard cards | **Upstream base + thin fork delta** | Keep the compact CSS override without forking dashboard JSX; require visual smoke coverage after upstream layout changes. |
 | 19 | Simplified Chinese `个人清单` terminology | **Conflict — preserve fork policy** | Preserve `packing.viewPersonal` and `packing.cloneToMine`, plus the focused terminology test. Do not replace them with upstream `我的清单`. |
 | 20 | Vacay entitlement inheritance and carry-over | **Upstream base + behavior-critical fork delta** | Inherit the preceding year's configured `vacation_days`; calculate `carried_over` independently and never overwrite the new year's base entitlement. |
-| 21 | Obsidian Vacay import | **Fork-only — follow-up fixed** | Actual leave comes from daily-note `假期` frontmatter and planned leave from `请假计划.md`; daily notes win over same-date plans, unrelated Yearly Glance custom events are ignored, reconciliation is transactional/explicit, and Vacay reads remain database-only. |
+| 21 | Obsidian Vacay import | **Fork-only — follow-up fixed** | Actual leave comes from daily-note `假期` frontmatter and planned leave from `请假计划.md`; daily notes win over same-date plans, unrelated Yearly Glance custom events are ignored, PTO/公共假期/病假 colors remain distinct, the beside-year total excludes 病假, reconciliation is transactional/explicit, and Vacay reads remain database-only. |
 | 22 | CI, release, promotion, and Tailscale deployment | **Conflict / fork-only security boundary** | Never wholesale-replace workflows. Preserve repository identity, `thvysy44/trek-fork`, immutable digests, environment approval, signed promotion, restricted deploy agent, poller verification, and health evidence. |
 
 ## v4.1.0 sync outcome

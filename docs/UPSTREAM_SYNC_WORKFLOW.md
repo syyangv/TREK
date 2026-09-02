@@ -49,7 +49,9 @@ For every conflict or upstream rewrite:
    the planned-slot-first / reservation-time-fallback display rule.
 7. For Vacay/Obsidian changes, verify daily-note `假期` remains authoritative
    for actual leave, `请假计划.md` remains authoritative for planned leave,
-   daily-note-over-plan precedence is preserved, reconciliation stays behind the
+   PTO/公共假期/病假 colors remain distinct, and the beside-year company-holiday
+   count includes PTO and 公共假期 but excludes 病假, and daily-note-over-plan
+   precedence is preserved. Reconciliation stays behind the
    explicit sync operation, and `getEntries` remains database-read-only.
 
 Pay special attention to `.github/workflows`, `client/src/App.tsx`,
@@ -171,11 +173,15 @@ Record the following in the session or release report:
 
 For UI/data changes, manually verify login, persisted data/uploads, Vacay,
 Obsidian synchronization, and the PWA update path on the private production URL.
-Vacay verification must include a historical daily-note `假期` row before the
-first plan-table row, future `PTO` and `公共假期` rows from the read-only
-`请假计划.md` table, same-date daily-note precedence, and a negative check
-that an unrelated Yearly Glance custom event (for example a flight) is not
-imported as PTO.
+Vacay verification must include:
+
+- a historical daily-note `假期` row before the first plan-table row;
+- a mixed-category color/count check: PTO, 公共假期, and 病假 remain visually
+  separate, with 病假 excluded from the beside-year total;
+- future `PTO` and `公共假期` rows from the read-only `请假计划.md` table;
+- same-date daily-note precedence; and
+- a negative check that an unrelated Yearly Glance custom event (for example a
+  flight) is not imported as PTO.
 
 ## Lessons from the v3.4.1 integration
 

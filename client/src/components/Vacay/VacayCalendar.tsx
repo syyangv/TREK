@@ -7,7 +7,7 @@ import { inGridWindow, windowMonths } from '../../vacay/yearWindow'
 import { tripsApi } from '../../api/client'
 import VacayMonthCard from './VacayMonthCard'
 import type { VacayEntry } from '../../types'
-import { isObsidianHolidayNote, OBSIDIAN_HOLIDAY_STYLES } from './obsidianHolidays'
+import { companyHolidayColor, isObsidianHolidayNote } from './obsidianHolidays'
 import { Building2, MousePointer2 } from 'lucide-react'
 
 type VacayMode = 'vacation' | 'company'
@@ -67,7 +67,7 @@ export default function VacayCalendar() {
   const visibleHolidayColors = useMemo(() => {
     const colors = new Map<string, string>()
     companyHolidays.forEach(h => {
-      if (isObsidianHolidayNote(h.note)) colors.set(h.date, OBSIDIAN_HOLIDAY_STYLES[h.note].color)
+      if (isObsidianHolidayNote(h.note)) colors.set(h.date, companyHolidayColor(h.note))
     })
     if (plan?.company_holidays_enabled !== false) {
       manualCompanyHolidaySet.forEach(date => colors.set(date, '#f59e0b'))

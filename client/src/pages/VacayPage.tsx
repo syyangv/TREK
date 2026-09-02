@@ -11,7 +11,7 @@ import { Plus, Minus, ChevronLeft, ChevronRight, Settings, CalendarDays, AlertTr
 import Modal from '../components/shared/Modal'
 import { useVacay } from './vacay/useVacay'
 import { useVacayStore } from '../store/vacayStore'
-import { OBSIDIAN_HOLIDAY_STYLES } from '../components/Vacay/obsidianHolidays'
+import { countsTowardCompanyHolidayTotal, OBSIDIAN_HOLIDAY_STYLES } from '../components/Vacay/obsidianHolidays'
 
 export default function VacayPage(): React.ReactElement {
   // ViewportRoute in App.tsx picks the branch now, so the phone screen is a
@@ -31,7 +31,7 @@ function VacayPageDesktop(): React.ReactElement {
   } = useVacay()
 
   const companyHolidays = useVacayStore(s => s.companyHolidays)
-  const companyHolidayCount = companyHolidays.length
+  const companyHolidayCount = companyHolidays.filter(h => countsTowardCompanyHolidayTotal(h.note)).length
   const obsidianHolidayNotes = Object.keys(OBSIDIAN_HOLIDAY_STYLES).filter(note =>
     companyHolidays.some(h => h.note === note)
   ) as (keyof typeof OBSIDIAN_HOLIDAY_STYLES)[]

@@ -16,6 +16,22 @@ function ctx(over: Partial<DayVisualContext> = {}): DayVisualContext {
 }
 
 describe('vacayDayModel colors', () => {
+  it('uses distinct company-holiday colors for PTO, public holidays, and sick leave', () => {
+    const colors = [
+      ['2026-06-01', '#f1c40f'],
+      ['2026-06-02', '#e67e22'],
+      ['2026-06-03', '#e74c3c'],
+    ] as const
+    for (const [date, color] of colors) {
+      const visual = dayVisual(date, 1, ctx({
+        companyHolidaySet: new Set([date]),
+        companyHolidayColorMap: new Map([[date, color]]),
+      }))
+      expect(visual.background).toBe(`color-mix(in srgb, ${color} 28%, var(--m-sheet))`)
+      expect(visual.numColor).toBe(holidayInk(color))
+    }
+  })
+
   it('FE-MOB-MVACDM-001: a colour that is not a plain hex is passed through untouched', () => {
     expect(personTint('var(--m-act)')).toBe('var(--m-act)');
     expect(holidayInk('rgb(1,2,3)')).toBe('var(--m-ink)');

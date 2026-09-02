@@ -82,6 +82,12 @@ See [CI/CD deployment](ci-cd-phase-3-4-deployment.md) and
   `carried_over`; use 30 only when no preceding user-year configuration exists.
 - Carry-over recalculation may update `carried_over` on an existing year, but it
   must not overwrite a base entitlement that the user configured for that year.
+- Preserve distinct PTO, 公共假期, and 病假 colors in both desktop and mobile
+  company-holiday markers and legends. Manual company holidays retain the
+  neutral fallback color.
+- The annual company-holiday count shown beside the selected year counts
+  documented PTO and 公共假期 dates in the selected leave-year window, but
+  explicitly excludes 病假.
 - Daily-note `假期` is authoritative for actual leave and `请假计划.md` is
   authoritative for planned leave; unrelated Yearly Glance custom events (for
   example flights) are never inferred as leave. Obsidian reconciliation runs
@@ -249,6 +255,9 @@ See [PWA implementation handoff](pwa-template-handoff.md).
 - [ ] Vacay opens on the current year and existing entries remain visible.
 - [ ] Historical daily-note `假期` rows before the first plan-table row import
   for `PTO`, `病假`, and `公共假期`.
+- [ ] A mixed-category year preserves separate PTO, 公共假期, and 病假 colors
+  in desktop/mobile markers and legends, and the beside-year count excludes
+  病假 while counting PTO and 公共假期.
 - [ ] A daily note wins over a same-date plan row, and an existing daily note
   with empty/invalid `假期` suppresses that stale plan row.
 - [ ] `请假计划.md` future PTO/public-holiday rows import by `Type`, while

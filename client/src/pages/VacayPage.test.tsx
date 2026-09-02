@@ -104,7 +104,7 @@ describe('VacayPage', () => {
   it('displays the selected year company holiday count', async () => {
     seedStore(useVacayStore, makeVacayState({
       selectedYear: 2025,
-      companyHolidays: [{ date: '2025-01-01' }, { date: '2025-05-01' }],
+      companyHolidays: [{ date: '2025-01-01', note: 'Obsidian PTO' }, { date: '2025-05-01', note: 'Obsidian 公共假期' }, { date: '2025-05-02', note: 'Obsidian 病假' }],
     }) as any);
     render(<VacayPage />);
     await waitFor(() => {
