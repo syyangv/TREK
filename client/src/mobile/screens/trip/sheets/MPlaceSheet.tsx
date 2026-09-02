@@ -77,8 +77,6 @@ export default function MPlaceSheet({ planner, shell }: MTripSheetsProps) {
     return rows
   }, [place, planner.days, planner.assignments])
 
-  const unassignedDays = planner.days.filter(d => !placeAssignments.some(r => r.day.id === d.id))
-
   // Participants belong to the assignment in the selected day (desktop parity).
   const dayAssignments = planner.selectedDayId ? (planner.assignments[String(planner.selectedDayId)] || []) : []
   const assignmentInDay = planner.selectedDayId
@@ -398,7 +396,7 @@ export default function MPlaceSheet({ planner, shell }: MTripSheetsProps) {
                   )}
                 </span>
               ))}
-              {canEditDays && unassignedDays.length > 0 && (
+              {canEditDays && planner.days.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setDayPickerOpen(v => !v)}
@@ -412,7 +410,7 @@ export default function MPlaceSheet({ planner, shell }: MTripSheetsProps) {
             </div>
             {dayPickerOpen && (
               <div className="mt-[6px] max-h-[180px] overflow-y-auto rounded-[14px] border border-[color:var(--m-rowbr)] bg-[color:var(--m-sheetop)] p-[6px]">
-                {unassignedDays.map(d => (
+                {planner.days.map(d => (
                   <button
                     key={d.id}
                     type="button"

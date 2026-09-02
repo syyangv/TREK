@@ -410,13 +410,17 @@ describe('Place list interaction', () => {
     expect(onAssignToDay).toHaveBeenCalledWith(99);
   });
 
-  it('FE-PLANNER-SIDEBAR-029: "+" button not shown when place already assigned to selectedDay', () => {
+  it('FE-PLANNER-SIDEBAR-029: "+" button is shown and clickable even when place already assigned to selectedDay', async () => {
+    const user = userEvent.setup();
+    const onAssignToDay = vi.fn();
     const place = buildPlace({ id: 55, name: 'Already Assigned' });
     const assignments = { '5': [buildAssignment({ place, day_id: 5 })] };
-    render(<PlacesSidebar {...defaultProps} places={[place]} selectedDayId={5} assignments={assignments} />);
+    render(<PlacesSidebar {...defaultProps} places={[place]} selectedDayId={5} assignments={assignments} onAssignToDay={onAssignToDay} />);
     const placeRow = screen.getByText('Already Assigned').closest('div[draggable]')!;
-    const plusBtn = placeRow.querySelector('button');
-    expect(plusBtn).toBeNull();
+    const plusBtn = placeRow.querySelector('button')!;
+    expect(plusBtn).not.toBeNull();
+    await user.click(plusBtn);
+    expect(onAssignToDay).toHaveBeenCalledWith(55);
   });
 
   it('FE-PLANNER-SIDEBAR-030: place address shown as subtitle', () => {

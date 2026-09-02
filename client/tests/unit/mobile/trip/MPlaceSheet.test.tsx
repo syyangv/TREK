@@ -229,6 +229,23 @@ describe('MPlaceSheet', () => {
     expect(screen.queryByText('May 1')).not.toBeInTheDocument()
   })
 
+  it('FE-MOB-PLSH-010b: allows assigning a place to a day again even when already assigned to all days', () => {
+    // Assigned to all 3 days
+    const assignments = {
+      '1': [dayAssignment(10, 1)],
+      '2': [dayAssignment(11, 2)],
+      '3': [dayAssignment(12, 3)],
+    }
+    const planner = makePlanner({ assignments })
+    renderSheet(planner)
+    const add = screen.getByRole('button', { name: 'Add to Day' })
+    fireEvent.click(add)
+    const dayBtn = screen.getByRole('button', { name: /Old Town/i })
+    expect(dayBtn).toBeInTheDocument()
+    fireEvent.click(dayBtn)
+    expect(planner.handleAssignToDay).toHaveBeenCalledWith(101, 2)
+  })
+
   it('FE-MOB-PLSH-011: treats an assignment without participants as everyone joined', async () => {
     vi.spyOn(assignmentsApi, 'setParticipants').mockResolvedValue({ participants: [{ user_id: 2, username: 'bob' }] })
     renderSheet()

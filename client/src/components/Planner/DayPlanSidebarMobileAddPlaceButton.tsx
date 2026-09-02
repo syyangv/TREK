@@ -14,9 +14,7 @@ export function MobileAddPlaceButton({ dayId, places, assignments, onAssign, onA
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
 
-  // Find places not assigned to this day
-  const assignedToDay = new Set((assignments[String(dayId)] || []).map(a => a.place_id))
-  const available = places.filter(p => !assignedToDay.has(p.id))
+  const available = places
   const filtered = search.trim()
     ? available.filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
     : available

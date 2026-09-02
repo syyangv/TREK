@@ -39,12 +39,12 @@ describe('MobileAddPlaceButton', () => {
     expect(screen.getByText('Eiffel Tower')).toBeInTheDocument()
   })
 
-  it('FE-PLANNER-DPADDPLACE-003: places already assigned to this day are filtered out', async () => {
+  it('FE-PLANNER-DPADDPLACE-003: places already assigned to this day are still available to add again', async () => {
     const user = userEvent.setup()
     const assignments = { '5': [buildAssignment({ id: 1, day_id: 5, place_id: 11, place: louvre })] } as AssignmentsMap
     render(<MobileAddPlaceButton {...makeProps({ assignments })} />)
     await openPicker(user)
-    expect(screen.queryByText('Louvre')).not.toBeInTheDocument()
+    expect(screen.getByText('Louvre')).toBeInTheDocument()
     expect(screen.getByText('Eiffel Tower')).toBeInTheDocument()
   })
 
@@ -65,15 +65,9 @@ describe('MobileAddPlaceButton', () => {
     expect(screen.getByText('No match')).toBeInTheDocument()
   })
 
-  it('FE-PLANNER-DPADDPLACE-006: with everything already assigned it shows the all-assigned hint', async () => {
+  it('FE-PLANNER-DPADDPLACE-006: with no places in the trip it shows the empty hint', async () => {
     const user = userEvent.setup()
-    const assignments = {
-      '5': [
-        buildAssignment({ id: 1, day_id: 5, place_id: 11, place: louvre }),
-        buildAssignment({ id: 2, day_id: 5, place_id: 12, place: eiffel }),
-      ],
-    } as AssignmentsMap
-    render(<MobileAddPlaceButton {...makeProps({ assignments })} />)
+    render(<MobileAddPlaceButton {...makeProps({ places: [] })} />)
     await openPicker(user)
     expect(screen.getByText('All places assigned')).toBeInTheDocument()
   })
