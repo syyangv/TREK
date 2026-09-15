@@ -55,7 +55,9 @@ See [CI/CD deployment](ci-cd-phase-3-4-deployment.md) and
   TREK's server-side requests.
 - The production IP may change. Treat `API_KEY_IP_ADDRESS_BLOCKED` and loss of
   Google photos, ratings, or opening hours as signals to verify the egress IP
-  and update the key restriction.
+  and update the key restriction. Outbound requests to Google prefer IPv6;
+  whitelist both the public IPv4 address and the `/64` IPv6 prefix to prevent
+  SLAAC privacy address rotation from violating key restrictions.
 - After release, verify the variable is set in the container with its value
   redacted, run a minimal Places API probe, and confirm `/api/health` remains
   `{"status":"ok"}`.
