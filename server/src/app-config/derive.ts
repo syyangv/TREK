@@ -241,6 +241,13 @@ export function deriveIntegrations(raw: RawEnv) {
       .split(process.platform === 'win32' ? ';' : ':')
       .map(p => p.trim())
       .filter(Boolean),
+    googleCalendar: {
+      clientId: raw.GOOGLE_CALENDAR_CLIENT_ID?.trim() || '',
+      clientSecret: raw.GOOGLE_CALENDAR_CLIENT_SECRET?.trim() || '',
+      refreshToken: raw.GOOGLE_CALENDAR_REFRESH_TOKEN?.trim() || '',
+      calendarId: raw.GOOGLE_CALENDAR_ID?.trim() || 'primary',
+      syncEnabled: raw.GOOGLE_CALENDAR_SYNC_ENABLED ? !['false', '0', 'off', 'no'].includes(raw.GOOGLE_CALENDAR_SYNC_ENABLED.toLowerCase().trim()) : true,
+    },
   };
 }
 

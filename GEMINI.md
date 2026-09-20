@@ -5,3 +5,4 @@
 - `Vacay holiday classification` — PTO, 公共假期, and 病假 retain separate colors across desktop and mobile; annual leave counter includes PTO and public holidays but excludes 病假.
 - `npm run test --workspace=client -- src/...` — Client Vitest paths must be workspace-relative.
 - `Places API key IP restriction` — Outbound calls prefer IPv6; whitelist both public IPv4 and `/64` IPv6 prefix in GCP (`trek-production-506619` / `trek-places-server-v2`) when `API_KEY_IP_ADDRESS_BLOCKED` occurs.
+- `Google Calendar reservation sync` — Native NestJS integration pushes flight/hotel/activity reservations to Google Calendar API; OAuth refresh token in `.env` (`GOOGLE_CALENDAR_REFRESH_TOKEN`) forwarded into app container; authorize/backfill via `python3 scripts/setup_gcal_auth.py`.

@@ -62,6 +62,26 @@ See [CI/CD deployment](ci-cd-phase-3-4-deployment.md) and
   redacted, run a minimal Places API probe, and confirm `/api/health` remains
   `{"status":"ok"}`.
 
+## Google Calendar reservation sync
+
+- Native NestJS backend integration pushing reservations to Google Calendar (v3 API)
+  in real-time on create, update, and delete.
+- Maps transportation endpoints (flights, trains with origin/destination timezones),
+  stays/accommodations (check-in/check-out dates & times), timed reservations
+  (dining, activities, appointments), and date-only reservations to Google Calendar events.
+- Stores `gcal_event_id` and `gcal_synced_at` in SQLite `reservations.metadata` for
+  idempotent patching and deletions.
+- Google Calendar API calls are non-blocking and fail-closed: Google API downtime or network
+  errors never fail or roll back local SQLite reservation mutations.
+- Configured via environment variables (`GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET`,
+  `GOOGLE_CALENDAR_REFRESH_TOKEN`, `GOOGLE_CALENDAR_ID`, `GOOGLE_CALENDAR_SYNC_ENABLED`) in `.env`
+  forwarded through `docker-compose.override.yml`, with optional runtime overrides in `app_settings`.
+- CLI helper `scripts/setup_gcal_auth.py` provides local browser OAuth authorization and
+  bulk backfill of all upcoming reservations.
+- Preserved endpoints under `/api/integrations/google-calendar` (`status`, `auth-url`, `oauth-callback`,
+  `sync-all`, `settings`).
+- Unit tests: `server/tests/unit/nest/google-calendar.service.test.ts`.
+
 ## Vacay and Obsidian
 
 - Preserve the Vacay addon and its read-only Obsidian Yearly Glance leave import.
@@ -273,6 +293,7 @@ See [PWA implementation handoff](pwa-template-handoff.md).
 - [ ] Google Places returns a successful result when `PLACES_API_KEY` is
       configured; an invalid or missing key must not go unnoticed as an
       OpenStreetMap fallback.
+- [ ] Google Calendar reservation sync pushes reservation create/update/delete to configured calendar.
 - [ ] Main CI, strict i18n parity, Docker smoke, Helm, and security gates pass.
 - [ ] The released image matches the intended main commit and immutable digest.
 - [ ] The private production `/api/health` returns `{"status":"ok"}`.

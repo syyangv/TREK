@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DatabaseService, type TripAccess } from '../database/database.service';
 import type { TrekWsPayload, TrekWsTripEventName } from '@trek/shared';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -9,6 +9,7 @@ import { BudgetService } from '../budget/budget.service';
 import { typeToCostCategory } from '@trek/shared';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AssignmentsService } from '../assignments/assignments.service';
+import { GoogleCalendarService } from '../integrations/google-calendar/google-calendar.service';
 
 type Trip = TripAccess;
 type BudgetEntry = { total_price?: number; category?: string } | undefined;
@@ -167,6 +168,8 @@ type AccommodationTimesMeta = {
  */
 @Injectable()
 export class ReservationsService {
+  private readonly logger = new Logger(ReservationsService.name);
+
   constructor(
     private readonly db: DatabaseService,
     private readonly permissions: PermissionsService,
@@ -175,6 +178,7 @@ export class ReservationsService {
     private readonly notifications: NotificationsService,
     private readonly reads: ReservationsReadRepository,
     private readonly assignments: AssignmentsService,
+    @Optional() private readonly googleCalendar?: GoogleCalendarService,
   ) {}
 
   verifyTripAccess(tripId: string | number, userId: number) {
@@ -645,7 +649,13 @@ export class ReservationsService {
   /** The accommodation insert, the reservation insert, the endpoint save and
    *  the metadata sync are one logical write — all-or-nothing. */
   create(tripId: string | number, data: CreateReservationData): CreateReservationResult {
-    return this.db.transaction(() => this.createInTx(tripId, data));
+    const result = this.db.transaction(() => this.createInTx(tripId, data));
+    if (this.googleCalendar) {
+      void this.googleCalendar.syncReservation(result.reservation, tripId).catch((err) => {
+        this.logger.warn(`Google Calendar sync failed for reservation ${result.reservation.id}: ${err?.message || err}`);
+      });
+    }
+    return result;
   }
 
   private createInTx(tripId: string | number, data: CreateReservationData): CreateReservationResult {
@@ -820,7 +830,13 @@ export class ReservationsService {
   /** The accommodation upsert, the reservation update, the endpoint replace
    *  and the metadata sync are one logical write — all-or-nothing. */
   update(id: string | number, tripId: string | number, data: UpdateReservationData, current: Reservation): UpdateReservationResult {
-    return this.db.transaction(() => this.updateInTx(id, tripId, data, current));
+    const result = this.db.transaction(() => this.updateInTx(id, tripId, data, current));
+    if (this.googleCalendar) {
+      void this.googleCalendar.syncReservation(result.reservation, tripId).catch((err) => {
+        this.logger.warn(`Google Calendar sync on update failed for reservation ${id}: ${err?.message || err}`);
+      });
+    }
+    return result;
   }
 
   private updateInTx(id: string | number, tripId: string | number, data: UpdateReservationData, current: Reservation): UpdateReservationResult {
@@ -1023,10 +1039,10 @@ export class ReservationsService {
 
   /** The accommodation + budget-item + reservation deletes are one logical
    *  cascade — all-or-nothing. */
-  remove(id: string | number, tripId: string | number): { deleted: { id: number; title: string; type: string; accommodation_id: number | null } | undefined; accommodationDeleted: boolean; deletedBudgetItemId: number | null } {
-    return this.db.transaction(() => {
-      const reservation = this.db.get<{ id: number; title: string; type: string; accommodation_id: number | null }>(
-        'SELECT id, title, type, accommodation_id FROM reservations WHERE id = ? AND trip_id = ?', id, tripId
+  remove(id: string | number, tripId: string | number): { deleted: { id: number; title: string; type: string; accommodation_id: number | null; metadata?: string | null } | undefined; accommodationDeleted: boolean; deletedBudgetItemId: number | null } {
+    const result = this.db.transaction(() => {
+      const reservation = this.db.get<{ id: number; title: string; type: string; accommodation_id: number | null; metadata?: string | null }>(
+        'SELECT id, title, type, accommodation_id, metadata FROM reservations WHERE id = ? AND trip_id = ?', id, tripId
       );
       if (!reservation) return { deleted: undefined, accommodationDeleted: false, deletedBudgetItemId: null };
 
@@ -1049,6 +1065,14 @@ export class ReservationsService {
       this.db.run('DELETE FROM reservations WHERE id = ?', id);
       return { deleted: reservation, accommodationDeleted, deletedBudgetItemId: linkedBudget ? linkedBudget.id : null };
     });
+
+    if (result.deleted && this.googleCalendar) {
+      void this.googleCalendar.deleteReservation(result.deleted, tripId).catch((err) => {
+        this.logger.warn(`Google Calendar delete failed for reservation ${id}: ${err?.message || err}`);
+      });
+    }
+
+    return result;
   }
 
   /** POST side effect: auto-create a linked budget item when a price is provided. */
