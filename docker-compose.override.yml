@@ -4,8 +4,8 @@ services:
       context: .
     image: ${TREK_IMAGE:-thvysy44/trek-fork:tailscale}
     environment:
-      - APP_URL=${APP_URL:-https://home-macbook-air.tailcd6e49.ts.net}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://home-macbook-air.tailcd6e49.ts.net}
+      - APP_URL=${APP_URL:-https://mie-thinkcentre-m75q-gen-2.tailcd6e49.ts.net}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://mie-thinkcentre-m75q-gen-2.tailcd6e49.ts.net}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@trek.local}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - OBSIDIAN_VAULT_PATH=/obsidian-vault
@@ -16,3 +16,7 @@ services:
       - GOOGLE_CALENDAR_SYNC_ENABLED=${GOOGLE_CALENDAR_SYNC_ENABLED:-true}
     volumes:
       - ${OBSIDIAN_VAULT_PATH:?Set OBSIDIAN_VAULT_PATH in .env}:/obsidian-vault:ro
+    # Bind to loopback only; linuxbox serves it via `tailscale serve :443`.
+    # !override replaces the base compose `ports: ["3000:3000"]` (all interfaces).
+    ports: !override
+      - "127.0.0.1:3000:3000"
