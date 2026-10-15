@@ -43,6 +43,12 @@ vi.mock('../api/websocket', () => ({
   removeListener: vi.fn(),
 }));
 
+const buildStat = (over = {}) => ({
+  user_id: 1, person_name: 'alice', person_color: '#3b82f6', year: 2025,
+  vacation_days: 30, carried_over: 0, total_available: 30, used: 4, remaining: 26,
+  ...over,
+});
+
 const makeVacayState = (overrides = {}) => ({
   years: [2025],
   selectedYear: 2025,
@@ -109,6 +115,20 @@ describe('VacayPage', () => {
     render(<VacayPage />);
     await waitFor(() => {
       expect(screen.getByText('· 2')).toBeInTheDocument();
+    });
+  });
+
+  it('shows planned days over the allowance plus public holidays next to the year, sick leave excluded', async () => {
+    const me = buildUser();
+    seedStore(useAuthStore, { isAuthenticated: true, user: me });
+    seedStore(useVacayStore, makeVacayState({
+      selectedYear: 2025,
+      stats: [buildStat({ user_id: me.id, total_available: 25 })],
+      companyHolidays: [{ date: '2025-01-01', note: 'Obsidian PTO' }, { date: '2025-05-01', note: 'Obsidian 公共假期' }, { date: '2025-05-02', note: 'Obsidian 病假' }],
+    }) as any);
+    render(<VacayPage />);
+    await waitFor(() => {
+      expect(screen.getByText('· 2/26')).toBeInTheDocument();
     });
   });
 

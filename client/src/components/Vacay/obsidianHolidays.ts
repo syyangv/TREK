@@ -19,3 +19,14 @@ export function companyHolidayColor(note?: string): string {
 export function countsTowardCompanyHolidayTotal(note?: string): boolean {
   return note !== 'Obsidian 病假'
 }
+
+// Half days (#552) make the allowance fractional; one decimal is enough and never drifts.
+const fmtDays = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
+
+/** Days already planned over the annual total ("3/26"). The total is the allowance plus the public holidays; sick leave is in neither. */
+export function vacationPlanLabel(companyHolidays: { note?: string }[], totalAvailable?: number): string {
+  const planned = companyHolidays.filter(h => countsTowardCompanyHolidayTotal(h.note)).length
+  if (totalAvailable === undefined) return String(planned)
+  const publicHolidays = companyHolidays.filter(h => h.note === 'Obsidian 公共假期').length
+  return `${planned}/${fmtDays(totalAvailable + publicHolidays)}`
+}

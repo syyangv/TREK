@@ -11,7 +11,8 @@ import { Plus, Minus, ChevronLeft, ChevronRight, Settings, CalendarDays, AlertTr
 import Modal from '../components/shared/Modal'
 import { useVacay } from './vacay/useVacay'
 import { useVacayStore } from '../store/vacayStore'
-import { countsTowardCompanyHolidayTotal, OBSIDIAN_HOLIDAY_STYLES } from '../components/Vacay/obsidianHolidays'
+import { useAuthStore } from '../store/authStore'
+import { OBSIDIAN_HOLIDAY_STYLES, vacationPlanLabel } from '../components/Vacay/obsidianHolidays'
 
 export default function VacayPage(): React.ReactElement {
   // ViewportRoute in App.tsx picks the branch now, so the phone screen is a
@@ -31,7 +32,9 @@ function VacayPageDesktop(): React.ReactElement {
   } = useVacay()
 
   const companyHolidays = useVacayStore(s => s.companyHolidays)
-  const companyHolidayCount = companyHolidays.filter(h => countsTowardCompanyHolidayTotal(h.note)).length
+  const stats = useVacayStore(s => s.stats)
+  const currentUserId = useAuthStore(s => s.user?.id)
+  const vacationPlan = vacationPlanLabel(companyHolidays, stats.find(s => s.user_id === currentUserId)?.total_available)
   const obsidianHolidayNotes = Object.keys(OBSIDIAN_HOLIDAY_STYLES).filter(note =>
     companyHolidays.some(h => h.note === note)
   ) as (keyof typeof OBSIDIAN_HOLIDAY_STYLES)[]
@@ -65,10 +68,10 @@ function VacayPageDesktop(): React.ReactElement {
           </div>
           <span
             className="flex items-center gap-1.5 tabular-nums"
-            title={`${companyHolidayCount} ${t('vacay.companyHolidays')}`}
+            title={`${vacationPlan} ${t('vacay.companyHolidays')}`}
           >
             <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--vg-ink)' }}>{selectedYear}</span>
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--vg-ink3)' }}>· {companyHolidayCount}</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--vg-ink3)' }}>· {vacationPlan}</span>
           </span>
           <div className="flex items-center gap-0.5">
             <button type="button" onClick={() => { const idx = years.indexOf(selectedYear); if (idx < years.length - 1) setSelectedYear(years[idx + 1]) }} disabled={years.indexOf(selectedYear) >= years.length - 1} className="w-7 h-7 rounded-lg flex items-center justify-center disabled:opacity-20 transition-colors" style={{ color: 'var(--vg-ink3)' }}>

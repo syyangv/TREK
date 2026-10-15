@@ -192,7 +192,8 @@ describe('useMVacay', () => {
     ] }); });
     const { result } = await mount();
 
-    expect(result.current.companyHolidayCount).toBe(2);
+    // 2 planned (sick leave excluded) over the current user's allowance, when their stat row is present.
+    expect(result.current.vacationPlan).toMatch(/^2(\/\d+(\.5)?)?$/);
     expect(result.current.dayCtx.companyHolidayColorMap?.get('2026-06-15')).toBe('#f1c40f');
     expect(result.current.dayCtx.companyHolidayColorMap?.get('2026-06-16')).toBe('#e67e22');
     expect(result.current.dayCtx.companyHolidayColorMap?.get('2026-06-17')).toBe('#e74c3c');

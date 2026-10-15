@@ -58,7 +58,7 @@ function buildV(over: Record<string, unknown> = {}): Record<string, unknown> {
     loading: false,
     plan: { id: 1, holiday_calendars: [] },
     selectedYear: 2026,
-    companyHolidayCount: 0,
+    vacationPlan: '0',
     companyHolidayLegend: [{ key: 'manual', color: '#F5D9A6', label: 'Company days' }],
     users: [
       { id: 1, username: 'alice', color: '#3b82f6' },
@@ -138,9 +138,9 @@ describe('MVacay', () => {
   });
 
   it('FE-MOB-MVACSCR-002b: shows the company holiday count next to the year', () => {
-    mocks.v = buildV({ companyHolidayCount: 40 });
+    mocks.v = buildV({ vacationPlan: '40/25' });
     render(<MVacay />);
-    expect(screen.getByText('· 40')).toBeInTheDocument();
+    expect(screen.getByText('· 40/25')).toBeInTheDocument();
   });
 
   it('FE-MOB-MVACSCR-002c: shows separate company-holiday legend categories', () => {

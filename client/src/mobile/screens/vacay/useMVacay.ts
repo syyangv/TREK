@@ -10,7 +10,7 @@ import { isWeekend } from '../../../components/Vacay/holidays'
 import { currentPeriodYear, inGridWindow, windowMonths } from '../../../vacay/yearWindow'
 import { FALLBACK_PERSON_COLOR, localDateStr, type DayVisualContext } from './vacayDayModel'
 import { getApiErrorMessage, type Trip } from '../../../types'
-import { companyHolidayColor, countsTowardCompanyHolidayTotal, isObsidianHolidayNote, MANUAL_COMPANY_HOLIDAY_COLOR, OBSIDIAN_HOLIDAY_STYLES } from '../../../components/Vacay/obsidianHolidays'
+import { companyHolidayColor, isObsidianHolidayNote, MANUAL_COMPANY_HOLIDAY_COLOR, OBSIDIAN_HOLIDAY_STYLES, vacationPlanLabel } from '../../../components/Vacay/obsidianHolidays'
 
 export type MVacayView = 'grid' | 'edit'
 export type MVacayMode = 'vacation' | 'company'
@@ -264,7 +264,7 @@ export function useMVacay() {
 
   return {
     loading, plan, selectedYear,
-    companyHolidayCount: companyHolidays.filter(h => countsTowardCompanyHolidayTotal(h.note)).length,
+    vacationPlan: vacationPlanLabel(companyHolidays, stats.find(s => s.user_id === currentUser?.id)?.total_available),
     companyHolidayLegend,
     users, isFused, currentUser,
     incomingInvites, acceptInvite, declineInvite,
