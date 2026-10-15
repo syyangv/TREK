@@ -14,6 +14,7 @@ import { Public } from '../../auth/public.decorator';
 import { CurrentUser } from '../../auth/current-user.decorator';
 import type { User } from '../../../types';
 import { GoogleCalendarService } from './google-calendar.service';
+import { GoogleCalendarSettingsDto } from './google-calendar.dto';
 import { readEnv } from '../../../app-config';
 
 @Controller('api/integrations/google-calendar')
@@ -115,7 +116,7 @@ export class GoogleCalendarController {
   @Post('settings')
   async updateSettings(
     @CurrentUser() user: User,
-    @Body() body: { refresh_token?: string; calendar_id?: string; enabled?: boolean },
+    @Body() body: GoogleCalendarSettingsDto,
   ) {
     if (user.role !== 'admin') {
       throw new HttpException({ error: 'Admin only' }, 403);

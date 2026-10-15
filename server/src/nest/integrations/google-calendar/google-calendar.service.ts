@@ -75,14 +75,7 @@ export class GoogleCalendarService {
    * to database app_settings.
    */
   getCredentials(): GoogleCalendarConfig {
-    const env = readEnv();
-    const envGcal = (env as any).integrations?.googleCalendar || {};
-
-    const rawClientId = envGcal.clientId || process.env.GOOGLE_CALENDAR_CLIENT_ID;
-    const rawClientSecret = envGcal.clientSecret || process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
-    const rawRefreshToken = envGcal.refreshToken || process.env.GOOGLE_CALENDAR_REFRESH_TOKEN;
-    const rawCalendarId = envGcal.calendarId || process.env.GOOGLE_CALENDAR_ID;
-    const rawEnabled = process.env.GOOGLE_CALENDAR_SYNC_ENABLED;
+    const envGcal = readEnv().integrations.googleCalendar;
 
     // Read DB settings overrides if present
     const getSetting = (k: string): string | null => {
@@ -100,15 +93,13 @@ export class GoogleCalendarService {
     const dbCalendarId = getSetting('google_calendar_id');
     const dbEnabled = getSetting('google_calendar_enabled');
 
-    const clientId = (dbClientId || rawClientId || '').trim();
-    const clientSecret = (dbClientSecret || rawClientSecret || '').trim();
-    const refreshToken = (dbRefreshToken || rawRefreshToken || '').trim();
-    const calendarId = (dbCalendarId || rawCalendarId || 'primary').trim();
+    const clientId = (dbClientId || envGcal.clientId).trim();
+    const clientSecret = (dbClientSecret || envGcal.clientSecret).trim();
+    const refreshToken = (dbRefreshToken || envGcal.refreshToken).trim();
+    const calendarId = (dbCalendarId || envGcal.calendarId).trim();
     const enabled = dbEnabled !== null
       ? dbEnabled === 'true' || dbEnabled === '1'
-      : rawEnabled !== undefined
-        ? !['false', '0', 'off', 'no'].includes(rawEnabled.toLowerCase().trim())
-        : true;
+      : envGcal.syncEnabled;
 
     return {
       clientId,
@@ -269,7 +260,7 @@ export class GoogleCalendarService {
     let start: { dateTime?: string; date?: string; timeZone?: string } | null = null;
     let end: { dateTime?: string; date?: string; timeZone?: string } | null = null;
 
-    const defaultTz = r.trip_timezone || tripPlaceTz || process.env.TZ || 'America/New_York';
+    const defaultTz = r.trip_timezone || tripPlaceTz || readEnv().app.tz || 'America/New_York';
 
     if (endpoints && endpoints.length > 0) {
       const first = endpoints[0];
@@ -427,7 +418,7 @@ export class GoogleCalendarService {
     }
 
     const existingEventId = (meta.gcal_event_id as string) || null;
-    let eventId = existingEventId;
+    let eventId: string;
 
     try {
       if (existingEventId) {

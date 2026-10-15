@@ -44,6 +44,10 @@ describe('GoogleCalendarService', () => {
   });
 
   beforeEach(() => {
+    // isConfigured() needs a client id/secret alongside the refresh token; supply
+    // them here so the suite doesn't depend on the developer's own environment.
+    vi.stubEnv('GOOGLE_CALENDAR_CLIENT_ID', 'test-client-id');
+    vi.stubEnv('GOOGLE_CALENDAR_CLIENT_SECRET', 'test-client-secret');
     testDb.exec('DELETE FROM reservation_endpoints');
     testDb.exec('DELETE FROM reservations');
     testDb.exec('DELETE FROM day_accommodations');
@@ -255,12 +259,14 @@ describe('GoogleCalendarService', () => {
     it('syncs all upcoming reservations across trips', async () => {
       service.saveDbCredentials('valid-token', 'primary', true);
       testDb.exec("INSERT INTO users (id, username, email, password_hash) VALUES (1, 'alice', 'alice@example.com', 'hash')");
-      testDb.exec("INSERT INTO trips (id, user_id, title, start_date, end_date) VALUES (1, 1, 'Trip 1', '2026-10-01', '2026-10-10')");
+      // Dates are relative to now so the "upcoming" window never ages out of the fixture.
+      const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+      testDb.prepare('INSERT INTO trips (id, user_id, title, start_date, end_date) VALUES (1, 1, ?, ?, ?)').run('Trip 1', day(1), day(10));
       testDb.exec(`
         INSERT INTO reservations (id, trip_id, title, type, reservation_time)
         VALUES
-          (101, 1, 'Event 1', 'other', '2026-10-02T10:00'),
-          (102, 1, 'Event 2', 'other', '2026-10-03T11:00')
+          (101, 1, 'Event 1', 'other', '${day(2)}T10:00'),
+          (102, 1, 'Event 2', 'other', '${day(3)}T11:00')
       `);
 
       const result = await service.syncAllUpcomingReservations();

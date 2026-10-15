@@ -8,6 +8,13 @@ export const googleCalendarStatusSchema = z.object({
 });
 export type GoogleCalendarStatus = z.infer<typeof googleCalendarStatusSchema>;
 
+export const googleCalendarSettingsRequestSchema = z.object({
+  refresh_token: z.string().optional(),
+  calendar_id: z.string().optional(),
+  enabled: z.boolean().optional(),
+});
+export type GoogleCalendarSettingsRequest = z.infer<typeof googleCalendarSettingsRequestSchema>;
+
 export const googleCalendarSyncResultSchema = z.object({
   success: z.boolean(),
   total: z.number(),

@@ -116,6 +116,9 @@ export const PUBLIC_ROUTE_ALLOW_LIST: string[] = [
   'FeedsPublicController.userFeed',
   // The download link carries its own short-lived token.
   'FilesDownloadController.download',
+  // Google redirects the browser back here with the auth code, before any
+  // TREK session cookie is sent. No `state` check yet (accepted for now).
+  'GoogleCalendarController.oauthCallback',
   'HelpController.asset',
   'HelpController.index',
   'HelpController.page',
