@@ -5,6 +5,7 @@ import { readEnv } from '../app-config';
 import { applyDurabilityPragmas } from './durability';
 import { createTables } from './schema';
 import { runMigrations } from './migrations';
+import { assertNoSchemaDrift } from './schema-drift';
 import { runSeeds } from './seeds';
 import { Place, Tag } from '../types';
 
@@ -53,6 +54,15 @@ function initDb(): void {
 
   createTables(_db);
   runMigrations(_db);
+  // The test DB is :memory: and built by this very code, so it cannot drift.
+  if (!isTest) {
+    try {
+      assertNoSchemaDrift(_db);
+    } catch (err) {
+      console.error('[DB] FATAL:', err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  }
 
   runSeeds(_db);
 }

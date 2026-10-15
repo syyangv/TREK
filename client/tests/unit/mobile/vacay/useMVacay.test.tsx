@@ -189,11 +189,11 @@ describe('useMVacay', () => {
       { date: '2026-06-15', note: 'Obsidian PTO' },
       { date: '2026-06-16', note: 'Obsidian 公共假期' },
       { date: '2026-06-17', note: 'Obsidian 病假' },
-    ] }); });
+    ], stats: [buildStat({ user_id: 1, total_available: 30 })] }); });
     const { result } = await mount();
 
-    // 2 planned (sick leave excluded) over the current user's allowance, when their stat row is present.
-    expect(result.current.vacationPlan).toMatch(/^2(\/\d+(\.5)?)?$/);
+    // 2 planned (PTO + public holiday, sick leave out) over 30 allowance + 1 public holiday.
+    expect(result.current.vacationPlan).toBe('2/31');
     expect(result.current.dayCtx.companyHolidayColorMap?.get('2026-06-15')).toBe('#f1c40f');
     expect(result.current.dayCtx.companyHolidayColorMap?.get('2026-06-16')).toBe('#e67e22');
     expect(result.current.dayCtx.companyHolidayColorMap?.get('2026-06-17')).toBe('#e74c3c');
