@@ -1,8 +1,7 @@
-import { Building2, ChevronLeft, ChevronRight, Eye, Minus, PenLine, Pencil, Plus, Settings2, Share2, ShieldCheck, Trash2, Unlink, UserPlus } from 'lucide-react'
+import { Building2, ChevronLeft, ChevronRight, Eye, PenLine, Pencil, Settings2, Share2, ShieldCheck, Trash2, Unlink, UserPlus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import MSheet from '../../components/MSheet'
 import MIconBtn from '../../components/MIconBtn'
-import MProgress from '../../components/MProgress'
 import { useTranslation } from '../../../i18n'
 import { useMVacay } from './useMVacay'
 import MVacayMonth from './MVacayMonth'
@@ -10,9 +9,16 @@ import MVacayInviteSheet from './MVacayInviteSheet'
 import MVacaySettingsSheet from './MVacaySettingsSheet'
 import MVacayShareSheet from './MVacayShareSheet'
 import { FALLBACK_PERSON_COLOR } from './vacayDayModel'
+import { OBSIDIAN_HOLIDAY_STYLES } from '../../../components/Vacay/obsidianHolidays'
 
 /** Half days (#552) make the balance fractional; one decimal is exact and never drifts. */
 const fmtDays = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
+
+const LEAVE_TILES = [
+  { key: 'publicHolidays', note: 'Obsidian 公共假期' },
+  { key: 'pto', note: 'Obsidian PTO' },
+  { key: 'sickLeave', note: 'Obsidian 病假' },
+] as const
 
 const WEEKDAY_KEYS_MONDAY = ['vacay.mon', 'vacay.tue', 'vacay.wed', 'vacay.thu', 'vacay.fri', 'vacay.sat', 'vacay.sun'] as const
 const WEEKDAY_KEYS_SUNDAY = ['vacay.sun', 'vacay.mon', 'vacay.tue', 'vacay.wed', 'vacay.thu', 'vacay.fri', 'vacay.sat'] as const
@@ -38,10 +44,6 @@ export default function MVacay() {
 
   const edit = v.view === 'edit'
   const stat = v.selectedStat
-  const pct = stat && stat.total_available > 0 ? Math.round((stat.used / stat.total_available) * 100) : 0
-  const leftColor = stat && stat.remaining <= 0
-    ? (stat.remaining < 0 ? 'var(--m-st-danger)' : 'var(--m-st-pending)')
-    : v.selectedColor
   const weekdayKeys = v.weekStart === 0 ? WEEKDAY_KEYS_SUNDAY : WEEKDAY_KEYS_MONDAY
 
   return (
@@ -77,57 +79,22 @@ export default function MVacay() {
 
       {/* Scroll container */}
       <div className="absolute inset-0 overflow-y-auto px-4 pt-[calc(var(--m-safe-top,12px)+44px)] pb-[calc(var(--bottom-nav-h,84px)+12px)]">
-        {/* Selected person card */}
-        {v.selectedUser && stat && (
-          <div className="mt-2 flex items-center gap-3 rounded-[18px] border border-[color:var(--m-gbr)] bg-[color:var(--m-glass)] px-[14px] py-[9px]">
-            <span
-              className="flex h-9 w-9 flex-none items-center justify-center rounded-full text-[0.875rem] font-extrabold text-white"
-              style={{ background: v.selectedColor }}
+        {/* Leave tiles: planned public holidays, PTO (Obsidian + logged by hand) and sick leave. */}
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          {LEAVE_TILES.map(tile => (
+            <div
+              key={tile.key}
+              data-testid={`leave-tile-${tile.key}`}
+              className="rounded-[18px] border border-[color:var(--m-gbr)] bg-[color:var(--m-glass)] px-[12px] py-[9px]"
             >
-              {v.selectedUser.username?.[0]?.toUpperCase()}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="text-[0.875rem] font-extrabold">{v.selectedUser.username}</div>
-              <MProgress value={pct} color={v.selectedColor} className="mt-[6px]" />
-              {/* Used, carried over and comp days all fit on a desktop sidebar; on a
-                  phone they turn into four scraps of 9px text. Only the number you
-                  act on stays — the rest is a tap away in the entitlement view. */}
-              <div className="mt-[6px] flex items-center">
-                <span
-                  className="inline-flex items-center gap-[3px] rounded-full px-[8px] py-[2px] font-geist text-[0.625rem] font-bold"
-                  style={{ background: `${leftColor}1f`, border: `1px solid ${leftColor}47`, color: leftColor }}
-                >
-                  <span className="font-extrabold tabular-nums">{fmtDays(stat.remaining)}</span>
-                  {t('mobileVacay.left')}
-                </span>
+              <div className="flex items-center gap-[5px]">
+                <span className="h-[8px] w-[8px] flex-none rounded-full" style={{ background: OBSIDIAN_HOLIDAY_STYLES[tile.note].color }} />
+                <span className="truncate text-[0.625rem] font-bold text-m-muted">{t(OBSIDIAN_HOLIDAY_STYLES[tile.note].labelKey)}</span>
               </div>
+              <div className="mt-[4px] text-[1.1875rem] font-extrabold leading-none tabular-nums">{fmtDays(v.leaveSummary[tile.key])}</div>
             </div>
-            <div className="flex flex-none items-center gap-1">
-              <button
-                type="button"
-                onClick={v.allowDec}
-                aria-label={t('mobileVacay.decreaseAllowance')}
-                className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[color:var(--m-ic)]"
-              >
-                <Minus size={15} strokeWidth={2.4} />
-              </button>
-              <div className="min-w-[40px] text-center">
-                <div className="text-[1.1875rem] font-extrabold leading-none tabular-nums">{stat.vacation_days}</div>
-                <div className="font-geist text-[0.5rem] font-bold uppercase tracking-[.06em] text-m-faint">
-                  {t('vacay.entitlementDays')}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={v.allowInc}
-                aria-label={t('mobileVacay.increaseAllowance')}
-                className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-m-act text-m-actfg"
-              >
-                <Plus size={15} strokeWidth={2.4} />
-              </button>
-            </div>
-          </div>
-        )}
+          ))}
+        </div>
 
         {/* Person + legend chips */}
         <div className="mx-[2px] mb-2 mt-[9px] flex flex-wrap items-center gap-[6px]">
@@ -344,7 +311,11 @@ export default function MVacay() {
 
       {/* Sheets */}
       <MVacayInviteSheet open={v.sheet === 'invite'} onClose={() => v.setSheet(null)} />
-      <MVacaySettingsSheet open={v.sheet === 'settings'} onClose={() => v.setSheet(null)} />
+      <MVacaySettingsSheet
+        open={v.sheet === 'settings'}
+        onClose={() => v.setSheet(null)}
+        allowance={stat ? { days: stat.vacation_days, onInc: v.allowInc, onDec: v.allowDec } : undefined}
+      />
       <MVacayShareSheet open={v.sheet === 'share'} onClose={() => v.setSheet(null)} />
       <MVacayIncomingInvite
         invites={v.incomingInvites}

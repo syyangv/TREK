@@ -20,10 +20,19 @@ vi.mock('../../../../src/mobile/screens/vacay/MVacayInviteSheet', () => ({
     </div>
   ),
 }));
+interface AllowanceStub { days: number; onInc: () => void; onDec: () => void }
+
 vi.mock('../../../../src/mobile/screens/vacay/MVacaySettingsSheet', () => ({
-  default: ({ open, onClose }: SheetStubProps) => (
+  default: ({ open, onClose, allowance }: SheetStubProps & { allowance?: AllowanceStub }) => (
     <div data-testid="settings-sheet" data-open={String(open)}>
       <button type="button" onClick={onClose}>close-settings</button>
+      {allowance && (
+        <>
+          <span data-testid="settings-allowance">{allowance.days}</span>
+          <button type="button" onClick={allowance.onInc}>allow-inc</button>
+          <button type="button" onClick={allowance.onDec}>allow-dec</button>
+        </>
+      )}
     </div>
   ),
 }));
@@ -59,6 +68,7 @@ function buildV(over: Record<string, unknown> = {}): Record<string, unknown> {
     plan: { id: 1, holiday_calendars: [] },
     selectedYear: 2026,
     vacationPlan: '0',
+    leaveSummary: { publicHolidays: 0, pto: 0, sickLeave: 0 },
     companyHolidayLegend: [{ key: 'manual', color: '#F5D9A6', label: 'Company days' }],
     users: [
       { id: 1, username: 'alice', color: '#3b82f6' },
@@ -150,9 +160,11 @@ describe('MVacay', () => {
       { key: 'Obsidian 病假', color: '#e74c3c', label: 'Sick Leave' },
     ] });
     render(<MVacay />);
-    expect(screen.getByText('PTO')).toBeInTheDocument();
-    expect(screen.getByText('Public Holiday')).toBeInTheDocument();
-    expect(screen.getByText('Sick Leave')).toBeInTheDocument();
+    // The same labels also head the leave tiles, so look only outside them.
+    const legendLabel = (text: string) => screen.getAllByText(text).filter(el => !el.closest('[data-testid^="leave-tile-"]'));
+    expect(legendLabel('PTO')).toHaveLength(1);
+    expect(legendLabel('Public Holiday')).toHaveLength(1);
+    expect(legendLabel('Sick Leave')).toHaveLength(1);
   });
 
   it('FE-MOB-MVACSCR-003: the header icons open the invite, share and settings sheets', () => {
@@ -187,48 +199,42 @@ describe('MVacay', () => {
     expect(mocks.v.setSheet).toHaveBeenNthCalledWith(3, null);
   });
 
-  it('FE-MOB-MVACSCR-005: renders the person card with the remaining balance and stepper', () => {
+  it('FE-MOB-MVACSCR-005: shows public holidays, PTO and sick leave as three tiles', () => {
+    mocks.v = buildV({ leaveSummary: { publicHolidays: 10, pto: 22.5, sickLeave: 3 } });
     render(<MVacay />);
 
-    expect(screen.getByText('alice', { selector: 'div' })).toBeInTheDocument();
-    const badge = screen.getByText('left');
-    expect(badge).toHaveTextContent('26');
-    expect(badge.style.color).toBe('rgb(59, 130, 246)');
-    expect(screen.getByText('Days').previousElementSibling).toHaveTextContent('30');
+    const tile = (id: string) => within(screen.getByTestId(`leave-tile-${id}`));
+    expect(tile('publicHolidays').getByText('Public Holiday')).toBeInTheDocument();
+    expect(tile('publicHolidays').getByText('10')).toBeInTheDocument();
+    expect(tile('pto').getByText('PTO')).toBeInTheDocument();
+    expect(tile('pto').getByText('22.5')).toBeInTheDocument();
+    expect(tile('sickLeave').getByText('Sick Leave')).toBeInTheDocument();
+    expect(tile('sickLeave').getByText('3')).toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Increase allowance' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Decrease allowance' }));
+  it('FE-MOB-MVACSCR-006: the person card with its balance and stepper is gone from the page', () => {
+    render(<MVacay />);
+
+    expect(screen.queryByRole('button', { name: 'Increase allowance' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Decrease allowance' })).toBeNull();
+    expect(screen.queryByText('left')).toBeNull();
+  });
+
+  it('FE-MOB-MVACSCR-007: the settings sheet gets the entitlement and the stepper handlers', () => {
+    render(<MVacay />);
+
+    expect(screen.getByTestId('settings-allowance')).toHaveTextContent('30');
+    fireEvent.click(screen.getByRole('button', { name: 'allow-inc' }));
+    fireEvent.click(screen.getByRole('button', { name: 'allow-dec' }));
     expect(mocks.v.allowInc).toHaveBeenCalledTimes(1);
     expect(mocks.v.allowDec).toHaveBeenCalledTimes(1);
   });
 
-  it('FE-MOB-MVACSCR-006: renders a fractional balance with one decimal', () => {
-    mocks.v = buildV({
-      selectedStat: { user_id: 1, vacation_days: 30, used: 4.5, total_available: 30, remaining: 25.5, carried_over: 0 },
-    });
+  it('FE-MOB-MVACSCR-008: without a stat row the settings sheet gets no entitlement', () => {
+    mocks.v = buildV({ selectedStat: undefined });
     render(<MVacay />);
 
-    expect(screen.getByText('25.5')).toBeInTheDocument();
-  });
-
-  it('FE-MOB-MVACSCR-007: colors an overdrawn balance as a danger badge', () => {
-    mocks.v = buildV({
-      selectedStat: { user_id: 1, vacation_days: 30, used: 32, total_available: 30, remaining: -2, carried_over: 0 },
-    });
-    render(<MVacay />);
-
-    const badge = screen.getByText('-2').parentElement as HTMLElement;
-    expect(badge.style.color).toBe('var(--m-st-danger)');
-  });
-
-  it('FE-MOB-MVACSCR-008: an exhausted balance switches to the pending color', () => {
-    mocks.v = buildV({
-      selectedStat: { user_id: 1, vacation_days: 30, used: 30, total_available: 30, remaining: 0, carried_over: 0 },
-    });
-    render(<MVacay />);
-
-    const badge = screen.getByText('0').parentElement as HTMLElement;
-    expect(badge.style.color).toBe('var(--m-st-pending)');
+    expect(screen.queryByTestId('settings-allowance')).toBeNull();
   });
 
   it('FE-MOB-MVACSCR-009: hides the person card when no stat row exists', () => {

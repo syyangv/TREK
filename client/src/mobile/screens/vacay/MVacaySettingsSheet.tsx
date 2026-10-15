@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowRightLeft, Building2, Calendar, CalendarRange, CalendarX, ChevronDown, Globe, GraduationCap, Loader2, Plus, Trash2, Unlink, X } from 'lucide-react'
+import { ArrowRightLeft, Building2, Calendar, CalendarRange, CalendarX, ChevronDown, Globe, GraduationCap, Loader2, Minus, Plus, Trash2, Unlink, X } from 'lucide-react'
 import MSheet from '../../components/MSheet'
 import MIconBtn from '../../components/MIconBtn'
 import MToggle from '../../components/MToggle'
@@ -20,6 +20,8 @@ interface Option { value: string; label: string }
 interface MVacaySettingsSheetProps {
   open: boolean
   onClose: () => void
+  /** The selected person's yearly entitlement and its stepper; the row is hidden without it. */
+  allowance?: { days: number; onInc: () => void; onDec: () => void }
 }
 
 /**
@@ -27,7 +29,7 @@ interface MVacaySettingsSheetProps {
  * start, carry-over, company holidays, public-holiday calendars (nager.at —
  * label/color/country/region, several) and dissolving the Fusion.
  */
-export default function MVacaySettingsSheet({ open, onClose }: MVacaySettingsSheetProps) {
+export default function MVacaySettingsSheet({ open, onClose, allowance }: MVacaySettingsSheetProps) {
   const { t, language } = useTranslation()
   const toast = useToast()
   const { plan, updatePlan, addHolidayCalendar, updateHolidayCalendar, deleteHolidayCalendar, isFused, dissolve, users } = useVacayStore()
@@ -78,6 +80,36 @@ export default function MVacaySettingsSheet({ open, onClose }: MVacaySettingsShe
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-[18px] pb-[18px] pt-2">
+        {/* Yearly entitlement */}
+        {allowance && (
+          <>
+            <div data-testid="allowance-row" className="flex items-center gap-[11px] py-3">
+              <CalendarRange size={17} strokeWidth={2} className="flex-none text-m-muted" />
+              <div className="flex-1 text-[0.84375rem] font-bold">{t('vacay.entitlement')}</div>
+              <span className="flex flex-none items-center gap-1">
+                <button
+                  type="button"
+                  onClick={allowance.onDec}
+                  aria-label={t('mobileVacay.decreaseAllowance')}
+                  className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-[color:var(--m-ic)]"
+                >
+                  <Minus size={15} strokeWidth={2.4} />
+                </button>
+                <span className="min-w-[40px] text-center text-[1.1875rem] font-extrabold leading-none tabular-nums">{allowance.days}</span>
+                <button
+                  type="button"
+                  onClick={allowance.onInc}
+                  aria-label={t('mobileVacay.increaseAllowance')}
+                  className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-m-act text-m-actfg"
+                >
+                  <Plus size={15} strokeWidth={2.4} />
+                </button>
+              </span>
+            </div>
+            <div className="my-2 h-px bg-[color:var(--m-rowbr)]" />
+          </>
+        )}
+
         {/* Block weekends */}
         <div className="flex items-start gap-[11px] py-3">
           <CalendarX size={17} strokeWidth={2} className="mt-[1px] flex-none text-m-muted" />

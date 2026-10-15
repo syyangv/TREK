@@ -28,3 +28,23 @@ export function vacationPlanLabel(companyHolidays: { note?: string }[], totalAva
   const planned = companyHolidays.filter(h => countsTowardCompanyHolidayTotal(h.note)).length
   return totalAvailable === undefined ? String(planned) : `${planned}/${fmtDays(totalAvailable)}`
 }
+
+export interface LeaveSummary {
+  publicHolidays: number
+  pto: number
+  sickLeave: number
+}
+
+/**
+ * Days per leave kind for the year: the Obsidian categories by note, with the PTO
+ * days logged by hand added to the Obsidian PTO. A hand-entered company day has no
+ * Obsidian note and belongs to none of the three.
+ */
+export function leaveSummary(companyHolidays: { note?: string }[], loggedPtoDays: number): LeaveSummary {
+  const count = (note: string) => companyHolidays.filter(h => h.note === note).length
+  return {
+    publicHolidays: count('Obsidian 公共假期'),
+    pto: count('Obsidian PTO') + loggedPtoDays,
+    sickLeave: count('Obsidian 病假'),
+  }
+}

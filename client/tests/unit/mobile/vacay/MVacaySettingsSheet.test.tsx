@@ -1,4 +1,4 @@
-// FE-MOB-MVACSET-001 to FE-MOB-MVACSET-030
+// FE-MOB-MVACSET-001 to FE-MOB-MVACSET-032
 import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -606,5 +606,25 @@ describe('MVacaySettingsSheet', () => {
     await waitFor(() => expect(releaseNl).toBeDefined());
     releaseNl?.();
     await screen.findByRole('combobox', { name: 'Select region (required)' });
+  });
+
+  it('FE-MOB-MVACSET-031: shows the entitlement stepper when given an allowance', () => {
+    const onInc = vi.fn(() => undefined);
+    const onDec = vi.fn(() => undefined);
+    render(<MVacaySettingsSheet open onClose={() => {}} allowance={{ days: 33, onInc, onDec }} />);
+
+    const row = screen.getByTestId('allowance-row');
+    expect(within(row).getByText('Entitlement')).toBeInTheDocument();
+    expect(within(row).getByText('33')).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole('button', { name: 'Increase allowance' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'Decrease allowance' }));
+    expect(onInc).toHaveBeenCalledTimes(1);
+    expect(onDec).toHaveBeenCalledTimes(1);
+  });
+
+  it('FE-MOB-MVACSET-032: has no entitlement row without an allowance', () => {
+    renderSheet();
+
+    expect(screen.queryByTestId('allowance-row')).not.toBeInTheDocument();
   });
 });

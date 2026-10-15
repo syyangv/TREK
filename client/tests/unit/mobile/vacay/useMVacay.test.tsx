@@ -199,6 +199,18 @@ describe('useMVacay', () => {
     expect(result.current.dayCtx.companyHolidayColorMap?.get('2026-06-17')).toBe('#e74c3c');
   });
 
+  it('FE-MOB-MVAC-007b: leaveSummary splits public holidays, PTO (Obsidian + logged by hand) and sick leave', async () => {
+    act(() => { useVacayStore.setState({ companyHolidays: [
+      { date: '2026-06-15', note: 'Obsidian PTO' },
+      { date: '2026-06-16', note: 'Obsidian PTO' },
+      { date: '2026-06-17', note: 'Obsidian 公共假期' },
+      { date: '2026-06-18', note: 'Obsidian 病假' },
+    ], stats: [buildStat({ user_id: 1, used: 4 })] }); });
+    const { result } = await mount();
+
+    expect(result.current.leaveSummary).toEqual({ publicHolidays: 1, pto: 6, sickLeave: 1 });
+  });
+
   it('FE-MOB-MVAC-008: overlays visible shared calendars only', async () => {
     act(() => {
       useVacayStore.setState({
