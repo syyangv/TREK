@@ -118,7 +118,7 @@ describe('VacayPage', () => {
     });
   });
 
-  it('shows planned days over the allowance plus public holidays next to the year, sick leave excluded', async () => {
+  it('shows planned days over the allowance next to the year, sick leave excluded', async () => {
     const me = buildUser();
     seedStore(useAuthStore, { isAuthenticated: true, user: me });
     seedStore(useVacayStore, makeVacayState({
@@ -128,7 +128,7 @@ describe('VacayPage', () => {
     }) as any);
     render(<VacayPage />);
     await waitFor(() => {
-      expect(screen.getByText('· 2/26')).toBeInTheDocument();
+      expect(screen.getByText('· 2/25')).toBeInTheDocument();
     });
   });
 

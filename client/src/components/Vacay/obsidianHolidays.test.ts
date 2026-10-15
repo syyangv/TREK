@@ -23,9 +23,9 @@ describe('vacationPlanLabel', () => {
     { note: undefined },
   ]
 
-  it('shows planned days over the allowance plus public holidays, with sick leave in neither', () => {
-    // planned: PTO + 公共假期 + the manual day = 3; total: 25 allowance + 1 public holiday = 26.
-    expect(vacationPlanLabel(holidays, 25)).toBe('3/26')
+  it('shows planned days over the allowance as stored, with sick leave out of the planned count', () => {
+    // planned: PTO + 公共假期 + the manual day = 3. The allowance already includes public holidays, so it is not topped up.
+    expect(vacationPlanLabel(holidays, 25)).toBe('3/25')
   })
 
   it('falls back to the planned count alone while the allowance is unknown', () => {
@@ -33,7 +33,7 @@ describe('vacationPlanLabel', () => {
   })
 
   it('prints a half-day allowance with one decimal', () => {
-    expect(vacationPlanLabel([{ note: 'Obsidian PTO' }, { note: 'Obsidian 公共假期' }], 12)).toBe('2/13')
+    expect(vacationPlanLabel([{ note: 'Obsidian PTO' }, { note: 'Obsidian 公共假期' }], 12)).toBe('2/12')
     expect(vacationPlanLabel([{ note: 'Obsidian PTO' }], 12.5)).toBe('1/12.5')
   })
 })
