@@ -64,6 +64,7 @@ jobs:
             deployment_tooling:
               - 'scripts/trek_*.py'
               - 'scripts/install_trek_deploy_*.sh'
+              - 'scripts/release_linuxbox.sh'
               - 'tests/test_trek_*.py'
               - '.github/workflows/**'
             documentation:
@@ -367,6 +368,7 @@ jobs:
         run: |
           bash -n scripts/install_trek_deploy_agent.sh
           bash -n scripts/install_trek_deploy_poller.sh
+          bash -n scripts/release_linuxbox.sh
 
       - name: Parse workflow YAML
         if: ${{ needs.changes.outputs.deployment_tooling_changed == 'true' }}

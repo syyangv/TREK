@@ -106,8 +106,22 @@ These principles come out of a verified 2026 full-repo audit and shape how all n
   unrelated Yearly Glance custom events are ignored.
 - **Vacay UI:** PTO, 公共假期, and 病假 keep distinct colors; the annual total
   counts PTO/public holidays but excludes 病假.
+- **Vacay numbers:** Obsidian leave lives in `vacay_company_holidays` (by `note`);
+  the server's per-person `used`/`remaining` count only hand-logged
+  `vacay_entries`, never Obsidian leave. The stored allowance
+  (`total_available`) already includes public holidays — don't add them again.
+  The number beside the year is `planned/total_available` (e.g. `32/33`).
 - **Production release:** main → CI/Security Scan → stable provenance → signed
   `deploy/production` promotion → verify poller digest and `/api/health`.
+  While the fork's Actions is blocked (`gh workflow run` → HTTP 422 "disabled"),
+  release with `scripts/release_linuxbox.sh`: push to the fork, then
+  `ssh linuxbox 'bash -s -- --ref main' < scripts/release_linuxbox.sh`. It builds
+  on linuxbox (legacy builder, 3g cap, kills the build below 1.5 GB free), smoke-boots
+  the image, backs up `data/`, recreates the `trek` container from `~/trek.env` and
+  rolls back on an unhealthy or refused boot. It refuses to deploy a schema change
+  without `--allow-migrations`; `--build-only` stops after the smoke test. Never dump
+  `docker inspect` (it holds secrets). The deploy agent's recorded version goes
+  stale after this.
 - **Branch hygiene:** audit open PRs and unique commits before cleanup; preserve
   operational `dev`, protected `deploy/production`, and generated `gh-pages`.
 
