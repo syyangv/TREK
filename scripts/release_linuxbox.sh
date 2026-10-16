@@ -11,7 +11,8 @@
 # Options:
 #   --ref REF           branch, tag or sha to release (default: main, resolved against origin)
 #   --build-only        stop after the smoke test; the live container is not touched
-#   --rebuild           build even if the image tag already exists
+#   --rebuild           build even if the image tag already exists (Docker's layer cache still applies)
+#   --no-cache          rebuild every layer from scratch; implies --rebuild (a real test of the memory cap)
 #   --allow-migrations  needed when server/src/db changed since the running version; the smoke test then
 #                       boots against a copy of the live database (DB migrations cannot be undone)
 #
@@ -24,12 +25,13 @@ usage() {
   else echo "see the header of scripts/release_linuxbox.sh"; fi
 }
 
-ref="main"; build_only=0; rebuild=0; allow_migrations=0
+ref="main"; build_only=0; rebuild=0; no_cache=0; allow_migrations=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --ref) ref="${2:?--ref needs a value}"; shift 2 ;;
     --build-only) build_only=1; shift ;;
     --rebuild) rebuild=1; shift ;;
+    --no-cache) no_cache=1; rebuild=1; shift ;;
     --allow-migrations) allow_migrations=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
@@ -156,7 +158,9 @@ if docker image inspect "$tag" >/dev/null 2>&1 && ((! rebuild)); then
 else
   log "building $tag with the legacy builder, memory cap 3g, guard at ${guard_mb} MB"
   build_log="$HOME/trek-build-$short.log"
-  (cd "$build_dir" && DOCKER_BUILDKIT=0 docker build --memory=3g -t "$tag" .) >"$build_log" 2>&1 &
+  build_extra=()
+  ((no_cache)) && build_extra+=(--no-cache)
+  (cd "$build_dir" && DOCKER_BUILDKIT=0 docker build --memory=3g -t "$tag" ${build_extra[@]+"${build_extra[@]}"} .) >"$build_log" 2>&1 &
   build_pid=$!
   guard "$tag" & guard_pid=$!
   wait "$build_pid" || { tail -20 "$build_log" >&2; die "build failed (full log: $build_log)"; }
