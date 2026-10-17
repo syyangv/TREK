@@ -119,9 +119,13 @@ These principles come out of a verified 2026 full-repo audit and shape how all n
   on linuxbox (legacy builder, 3g cap, kills the build below 1.5 GB free), smoke-boots
   the image, backs up `data/`, recreates the `trek` container from `~/trek.env` and
   rolls back on an unhealthy or refused boot. It refuses to deploy a schema change
-  without `--allow-migrations`; `--build-only` stops after the smoke test. Never dump
-  `docker inspect` (it holds secrets). The deploy agent's recorded version goes
-  stale after this.
+  without `--allow-migrations`; `--build-only` stops after the smoke test;
+  `--no-cache` forces a from-scratch build (`--rebuild` alone still uses Docker's
+  layer cache). Never dump `docker inspect` (it holds secrets). The linuxbox
+  `trek-deploy-agent` and `trek-deploy-poller` user services are disabled (they
+  would deploy an old promotion over a manual release); don't re-enable them, or
+  push to `deploy/production`, until releases go through signed promotions again.
+  Don't hand-create a `vX.Y.Z` tag: `docker.yml` derives the next version from it.
 - **Branch hygiene:** audit open PRs and unique commits before cleanup; preserve
   operational `dev`, protected `deploy/production`, and generated `gh-pages`.
 
