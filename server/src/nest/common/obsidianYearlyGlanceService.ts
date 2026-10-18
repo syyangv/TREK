@@ -252,6 +252,8 @@ export function loadObsidianPublicHolidaysForYear(year: number): ObsidianHoliday
   // the leave-plan table is the fallback for planned dates.  Do not import
   // arbitrary Yearly Glance custom events: they are not leave declarations.
   const holidayByDate = new Map(leavePlanHolidays(vaultPath, year).map(holiday => [holiday.date, holiday]));
+  const now = new Date();
+  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   const start = Date.UTC(year, 0, 1);
   const days = new Date(Date.UTC(year, 1, 29)).getUTCMonth() === 1 ? 366 : 365;
 
@@ -264,6 +266,9 @@ export function loadObsidianPublicHolidaysForYear(year: number): ObsidianHoliday
     try {
       markdown = fs.readFileSync(filePath, 'utf8');
     } catch {
+      // No note for this date: a plan row only counts while it is still ahead of
+      // us. A past date nobody wrote a note for is not leave (same as the plugin).
+      if (dateStr < today) holidayByDate.delete(dateStr);
       continue;
     }
     const note = parseJiaqiValues(markdown)

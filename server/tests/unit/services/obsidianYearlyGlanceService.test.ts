@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fs = require('node:fs') as typeof import('node:fs');
 const path = require('node:path') as typeof import('node:path');
@@ -72,6 +72,38 @@ import {
 afterAll(() => require('node:fs').rmSync(vaultPath, { recursive: true, force: true }));
 
 describe('loadObsidianPublicHolidaysForYear', () => {
+  // The fixtures are 2025 dates; pin "today" so plan rows stay in the future unless a test says otherwise.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2025, 5, 1, 12, 0, 0));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('drops plan rows that are in the past with no daily note, like the Yearly Glance plugin', () => {
+    const planPath = path.join(vaultPath, '请假计划.md');
+    const originalPlan = fs.readFileSync(planPath, 'utf8');
+    const notePath = path.join(vaultPath, 'Daily/Yearly Glance/2025-03-04.md');
+    fs.writeFileSync(notePath, '---\n假期: 放假/PTO\n---\n');
+    fs.writeFileSync(planPath, [
+      '| Date | Type | Note |',
+      '| --- | --- | --- |',
+      '| 2025-02-03 | PTO | past, never recorded |',
+      '| 2025-03-04 | PTO | past, recorded in its note |',
+      '| 2025-06-01 | PTO | today, still planned |',
+      '| 2025-12-01 | 公共假期 | future |',
+    ].join('\n'));
+    try {
+      const dates = loadObsidianPublicHolidaysForYear(2025).map(h => h.date);
+      expect(dates).not.toContain('2025-02-03');
+      expect(dates).toContain('2025-03-04');
+      expect(dates).toContain('2025-06-01');
+      expect(dates).toContain('2025-12-01');
+    } finally {
+      fs.writeFileSync(planPath, originalPlan);
+      fs.rmSync(notePath);
+    }
+  });
+
   it('preserves each Yearly Glance 假期 category using root-level Periodic Notes settings', () => {
     expect(loadObsidianPublicHolidaysForYear(2025)).toEqual([
       { date: '2025-01-01', note: getObsidianPublicHolidayNote() },
