@@ -273,6 +273,13 @@ export function deriveDb(raw: RawEnv) {
   };
 }
 
+export function deriveObsidian(raw: RawEnv) {
+  return {
+    // Fail closed: the leave-plan write is off unless this is explicitly truthy.
+    vaultWriteEnabled: raw.OBSIDIAN_VAULT_WRITE_ENABLED?.trim() ?? '',
+  };
+}
+
 export function derivePaths(raw: RawEnv) {
   return {
     wikiDir: raw.TREK_WIKI_DIR,
@@ -304,6 +311,7 @@ export function deriveAll(raw: RawEnv) {
     backup: deriveBackup(raw),
     db: deriveDb(raw),
     paths: derivePaths(raw),
+    obsidian: deriveObsidian(raw),
     net: deriveNet(raw),
   };
 }

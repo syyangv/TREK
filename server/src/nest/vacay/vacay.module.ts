@@ -7,6 +7,7 @@ import { VacayMcp } from './vacay.mcp';
 import { AuthModule } from '../auth/auth.module';
 import { AddonsModule } from '../addons/addons.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ObsidianLeavePlanWriter } from '../common/obsidianLeavePlanWriter';
 
 /**
  * Vacay addon domain (S1 — Phase 2 trip sub-domain). Registered in AppModule.
@@ -16,7 +17,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 @Module({
   imports: [NotificationsModule, AuthModule, PluginGuardsModule, AddonsModule],
   controllers: [VacayController],
-  providers: [VacayService, VacayMcp, VacayRpc],
+  providers: [VacayService, VacayMcp, VacayRpc, ObsidianLeavePlanWriter],
   exports: [VacayService],
 })
 export class VacayModule {}

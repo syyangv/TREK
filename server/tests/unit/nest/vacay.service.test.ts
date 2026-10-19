@@ -27,6 +27,11 @@ vi.mock('../../../src/config', () => ({
   updateJwtSecret: () => {},
 }));
 
+const planWriter = vi.hoisted(() => ({
+  upsertPlanned: vi.fn((..._args: unknown[]) => 'added'),
+  removePlanned: vi.fn((..._args: unknown[]) => 'removed'),
+}));
+
 const obsidianState = vi.hoisted(() => ({
   available: false,
   notes: ['Obsidian PTO', 'Obsidian 病假', 'Obsidian 公共假期'],
@@ -559,6 +564,57 @@ describe('getEntries', () => {
     obsidianState.available = true;
     obsidianState.notes = [];
     expect(() => svc.getEntries(plan.id, new Date().getFullYear().toString())).not.toThrow();
+  });
+});
+
+describe('toggleEntry → leave plan mirror', () => {
+  const mirrored = new VacayService(new DatabaseService(testDb), new RealtimeService(), notificationsStub(), planWriter as never);
+  const future = (days = 40) => { const d = new Date(Date.now() + days * 86_400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  beforeEach(() => { planWriter.upsertPlanned.mockReset().mockReturnValue('added'); planWriter.removePlanned.mockReset().mockReturnValue('removed'); });
+  // Weekend blocking is on by default; use the owner's plan with it lifted so any weekday/weekend date works.
+  const ownerPlan = () => { const { user, plan } = setupUserWithPlan(); testDb.prepare('UPDATE vacay_plans SET block_weekends = 0 WHERE id = ?').run(plan.id); return { user, plan }; };
+
+  it('VACAY-SVC-034a: a whole vacation day today or later is written to the plan', () => {
+    const { user, plan } = ownerPlan(); const date = future();
+    expect(mirrored.toggleEntry(user.id, plan.id, date, 1, 'vacation').action).toBe('added');
+    expect(planWriter.upsertPlanned).toHaveBeenCalledWith(date, 'PTO');
+  });
+
+  it('VACAY-SVC-034b: clearing that day removes only TREK\'s plan row', () => {
+    const { user, plan } = ownerPlan(); const date = future();
+    mirrored.toggleEntry(user.id, plan.id, date, 1, 'vacation');
+    expect(mirrored.toggleEntry(user.id, plan.id, date, 1, 'vacation').action).toBe('removed');
+    expect(planWriter.removePlanned).toHaveBeenCalledWith(date, 'PTO');
+  });
+
+  it('VACAY-SVC-034c: past days, half days and comp days are not mirrored', () => {
+    const { user, plan } = ownerPlan();
+    mirrored.toggleEntry(user.id, plan.id, '2020-01-02', 1, 'vacation');
+    mirrored.toggleEntry(user.id, plan.id, future(41), 0.5, 'vacation');
+    mirrored.toggleEntry(user.id, plan.id, future(42), 1, 'comp');
+    expect(planWriter.upsertPlanned).not.toHaveBeenCalled();
+  });
+
+  it('VACAY-SVC-034d: converting a whole day to a half day takes the plan row back out', () => {
+    const { user, plan } = ownerPlan(); const date = future();
+    mirrored.toggleEntry(user.id, plan.id, date, 1, 'vacation');
+    mirrored.toggleEntry(user.id, plan.id, date, 0.5, 'vacation');
+    expect(planWriter.removePlanned).toHaveBeenCalledWith(date, 'PTO');
+  });
+
+  it('VACAY-SVC-034e: a failing vault write never undoes or fails the TREK click', () => {
+    const { user, plan } = ownerPlan(); const date = future();
+    planWriter.upsertPlanned.mockImplementation(() => { throw new Error('leave_plan_changed_during_write'); });
+    expect(mirrored.toggleEntry(user.id, plan.id, date, 1, 'vacation').action).toBe('added');
+    expect(testDb.prepare('SELECT 1 FROM vacay_entries WHERE date = ?').get(date)).toBeDefined();
+  });
+
+  it('VACAY-SVC-034f: a member of someone else\'s plan never writes to the vault owner\'s plan file', () => {
+    const owner = setupUserWithPlan(); const { user: member } = createUser(testDb); const date = future();
+    testDb.prepare('UPDATE vacay_plans SET block_weekends = 0 WHERE id = ?').run(owner.plan.id);
+    insertMember(owner.plan.id, member.id, 'accepted');
+    mirrored.toggleEntry(member.id, owner.plan.id, date, 1, 'vacation');
+    expect(planWriter.upsertPlanned).not.toHaveBeenCalled();
   });
 });
 

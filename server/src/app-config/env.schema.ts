@@ -143,6 +143,7 @@ export const envSchema = z.object({
   GOOGLE_CALENDAR_CLIENT_SECRET: anyString,
   GOOGLE_CALENDAR_REFRESH_TOKEN: anyString,
   GOOGLE_CALENDAR_ID: anyString,
+  OBSIDIAN_VAULT_WRITE_ENABLED: boolStr,
   GOOGLE_CALENDAR_SYNC_ENABLED: boolStr,
   MAPBOX_ACCESS_TOKEN: anyString,
   CARTO_API_KEY: anyString,

@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { RealtimeService } from '../realtime/realtime.service';
 import { DatabaseService } from '../database/database.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { isTodayOrLater, ObsidianLeavePlanWriter } from '../common/obsidianLeavePlanWriter';
 import { discardBody, readCappedJson } from '../../utils/cappedFetch';
 import {
   getObsidianHolidayNotes,
@@ -191,8 +192,10 @@ export class VacayService {
     private readonly db: DatabaseService,
     private readonly realtime: RealtimeService,
     private readonly notifications: NotificationsService,
+    private readonly leavePlan: ObsidianLeavePlanWriter = new ObsidianLeavePlanWriter(),
   ) {}
 
+  private readonly logger = new Logger(VacayService.name);
   private readonly holidayCache = new Map<string, { data: unknown; time: number }>();
 
   // -------------------------------------------------------------------------
@@ -1139,12 +1142,15 @@ export class VacayService {
     const plan = this.db.get<VacayPlan>('SELECT * FROM vacay_plans WHERE id = ?', planId);
     const weekendBlocked = plan ? isBlockedWeekend(plan, date) : false;
     const existing = this.db.get<{ id: number; fraction: number; kind: string | null }>('SELECT id, fraction, kind FROM vacay_entries WHERE user_id = ? AND date = ? AND plan_id = ?', userId, date, planId);
+    const wasWholeDay = !!existing && existing.fraction === 1 && (existing.kind || 'vacation') === 'vacation';
+    const isWholeDay = frac === 1 && knd === 'vacation';
     if (existing) {
       // Clicking the exact same day again (same type AND same fraction) clears it;
       // clicking a different type or fraction converts it in place (#552/#1074).
       if (existing.fraction === frac && (existing.kind || 'vacation') === knd) {
         this.db.run('DELETE FROM vacay_entries WHERE id = ?', existing.id);
         this.notifyPlanUsers(planId, socketId);
+        this.mirrorToLeavePlan(plan, userId, date, wasWholeDay, false);
         return { action: 'removed' };
       }
       // Removing a stray entry on a blocked day stays possible; keeping one
@@ -1152,12 +1158,33 @@ export class VacayService {
       if (weekendBlocked) return { error: 'weekend_blocked' };
       this.db.run('UPDATE vacay_entries SET fraction = ?, kind = ? WHERE id = ?', frac, knd, existing.id);
       this.notifyPlanUsers(planId, socketId);
+      this.mirrorToLeavePlan(plan, userId, date, wasWholeDay, isWholeDay);
       return { action: 'updated', fraction: frac, kind: knd };
     }
     if (weekendBlocked) return { error: 'weekend_blocked' };
     this.db.run('INSERT INTO vacay_entries (plan_id, user_id, date, note, fraction, kind) VALUES (?, ?, ?, ?, ?, ?)', planId, userId, date, '', frac, knd);
     this.notifyPlanUsers(planId, socketId);
+    this.mirrorToLeavePlan(plan, userId, date, false, isWholeDay);
     return { action: 'added', fraction: frac, kind: knd };
+  }
+
+  /**
+   * Keeps the Yearly Glance leave plan (请假计划.md) in step with whole-day vacation clicks: it only
+   * models a day, not a fraction, so half and comp days are never mirrored, and past days live in the
+   * daily note instead. Only the plan owner's clicks count (the vault is the owner's). The click has
+   * already been saved; a vault problem is logged and never fails or undoes it.
+   */
+  private mirrorToLeavePlan(plan: VacayPlan | undefined, userId: number, date: string, wasWholeDay: boolean, isWholeDay: boolean): void {
+    if (!plan || plan.owner_id !== userId || wasWholeDay === isWholeDay) return;
+    try {
+      if (isWholeDay) {
+        if (isTodayOrLater(date)) this.leavePlan.upsertPlanned(date, 'PTO');
+      } else {
+        this.leavePlan.removePlanned(date, 'PTO');
+      }
+    } catch (err) {
+      this.logger.warn(`leave plan not updated for ${date}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   toggleCompanyHoliday(planId: number, date: string, note: string | undefined, socketId: string | undefined): { action: string } {
