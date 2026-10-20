@@ -609,6 +609,31 @@ describe('toggleEntry → leave plan mirror', () => {
     expect(testDb.prepare('SELECT 1 FROM vacay_entries WHERE date = ?').get(date)).toBeDefined();
   });
 
+  it('VACAY-SVC-034g: clearing an Obsidian PTO day in company mode also takes TREK\'s plan row out', () => {
+    const { plan } = ownerPlan(); const date = future();
+    testDb.prepare("INSERT INTO vacay_company_holidays (plan_id, date, note) VALUES (?, ?, 'Obsidian PTO')").run(plan.id, date);
+    expect(mirrored.toggleCompanyHoliday(plan.id, date, undefined, undefined).action).toBe('removed');
+    expect(planWriter.removePlanned).toHaveBeenCalledWith(date, 'PTO');
+  });
+
+  it('VACAY-SVC-034h: clearing a manual company day or sick leave never touches the plan', () => {
+    const { plan } = ownerPlan(); const a = future(50); const b = future(51);
+    testDb.prepare("INSERT INTO vacay_company_holidays (plan_id, date, note) VALUES (?, ?, 'Christmas')").run(plan.id, a);
+    testDb.prepare("INSERT INTO vacay_company_holidays (plan_id, date, note) VALUES (?, ?, 'Obsidian 病假')").run(plan.id, b);
+    mirrored.toggleCompanyHoliday(plan.id, a, undefined, undefined);
+    mirrored.toggleCompanyHoliday(plan.id, b, undefined, undefined);
+    expect(planWriter.removePlanned).not.toHaveBeenCalled();
+  });
+
+  it('VACAY-SVC-034i: adding a company day writes nothing, and a vault error on removal does not fail it', () => {
+    const { plan } = ownerPlan(); const date = future(52);
+    mirrored.toggleCompanyHoliday(plan.id, date, 'Offsite', undefined);
+    expect(planWriter.upsertPlanned).not.toHaveBeenCalled();
+    testDb.prepare("UPDATE vacay_company_holidays SET note = 'Obsidian PTO' WHERE plan_id = ? AND date = ?").run(plan.id, date);
+    planWriter.removePlanned.mockImplementation(() => { throw new Error('EROFS'); });
+    expect(mirrored.toggleCompanyHoliday(plan.id, date, undefined, undefined).action).toBe('removed');
+  });
+
   it('VACAY-SVC-034f: a member of someone else\'s plan never writes to the vault owner\'s plan file', () => {
     const owner = setupUserWithPlan(); const { user: member } = createUser(testDb); const date = future();
     testDb.prepare('UPDATE vacay_plans SET block_weekends = 0 WHERE id = ?').run(owner.plan.id);

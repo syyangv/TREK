@@ -1176,22 +1176,32 @@ export class VacayService {
    */
   private mirrorToLeavePlan(plan: VacayPlan | undefined, userId: number, date: string, wasWholeDay: boolean, isWholeDay: boolean): void {
     if (!plan || plan.owner_id !== userId || wasWholeDay === isWholeDay) return;
-    try {
+    this.updateLeavePlan(date, () => {
       if (isWholeDay) {
         if (isTodayOrLater(date)) this.leavePlan.upsertPlanned(date, 'PTO');
       } else {
         this.leavePlan.removePlanned(date, 'PTO');
       }
+    });
+  }
+
+  /** A vault problem is logged, never thrown: the TREK change it mirrors is already saved. */
+  private updateLeavePlan(date: string, write: () => void): void {
+    try {
+      write();
     } catch (err) {
       this.logger.warn(`leave plan not updated for ${date}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
   toggleCompanyHoliday(planId: number, date: string, note: string | undefined, socketId: string | undefined): { action: string } {
-    const existing = this.db.get<{ id: number }>('SELECT id FROM vacay_company_holidays WHERE plan_id = ? AND date = ?', planId, date);
+    const existing = this.db.get<{ id: number; note: string | null }>('SELECT id, note FROM vacay_company_holidays WHERE plan_id = ? AND date = ?', planId, date);
     if (existing) {
       this.db.run('DELETE FROM vacay_company_holidays WHERE id = ?', existing.id);
       this.notifyPlanUsers(planId, socketId);
+      // An Obsidian PTO day TREK itself wrote into the plan would come straight back on the next
+      // reconcile, so clearing it here takes TREK's own plan row out too (user-written rows stay).
+      if (existing.note === 'Obsidian PTO') this.updateLeavePlan(date, () => { this.leavePlan.removePlanned(date, 'PTO'); });
       return { action: 'removed' };
     } else {
       this.db.run('INSERT INTO vacay_company_holidays (plan_id, date, note) VALUES (?, ?, ?)', planId, date, note || '');

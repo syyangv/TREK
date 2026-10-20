@@ -13,6 +13,7 @@
 #   --build-only        stop after the smoke test; the live container is not touched
 #   --rebuild           build even if the image tag already exists (Docker's layer cache still applies)
 #   --no-cache          rebuild every layer from scratch; implies --rebuild (a real test of the memory cap)
+#   (env) TREK_RELEASE_VAULT_RW_SUBDIR  e.g. 个人整理: mount that vault subfolder writable (default: whole vault read-only)
 #   --allow-migrations  needed when server/src/db changed since the running version; the smoke test then
 #                       boots against a copy of the live database (DB migrations cannot be undone)
 #
@@ -42,6 +43,8 @@ done
 container="${TREK_RELEASE_CONTAINER:-trek}"
 app_dir="${TREK_RELEASE_APP_DIR:-$HOME/Projects/TREK}"          # holds data/ and uploads/
 vault_dir="${TREK_RELEASE_VAULT_DIR:-$HOME/obsidian/syyangv}"
+# Optional: one vault subfolder mounted writable on top of the read-only vault (the leave plan lives there).
+vault_rw_subdir="${TREK_RELEASE_VAULT_RW_SUBDIR:-}"
 env_file="${TREK_RELEASE_ENV_FILE:-$HOME/trek.env}"
 network="${TREK_RELEASE_NETWORK:-trek_default}"
 host_port="${TREK_RELEASE_PORT:-3000}"
@@ -88,7 +91,7 @@ run_trek() { # name image
     --read-only --cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID \
     --security-opt no-new-privileges:true --tmpfs /tmp:noexec,nosuid,size=128m \
     -p "127.0.0.1:$host_port:3000" --env-file "$env_file" \
-    -v "$app_dir/data:/app/data" -v "$app_dir/uploads:/app/uploads" -v "$vault_dir:/obsidian-vault:ro" \
+    -v "$app_dir/data:/app/data" -v "$app_dir/uploads:/app/uploads" -v "$vault_dir:/obsidian-vault:ro" ${vault_rw_mount[@]+"${vault_rw_mount[@]}"} \
     --health-cmd 'wget -qO- http://localhost:3000/api/health' --health-interval 30s \
     --health-timeout 10s --health-start-period 15s --health-retries 3 "$2" >/dev/null
 }
@@ -124,6 +127,12 @@ command -v docker >/dev/null || die "docker not found"
 [[ "$(stat -c %a "$env_file")" == 600 ]] || die "$env_file must be mode 600"
 [[ -d "$app_dir/data" && -d "$app_dir/uploads" ]] || die "$app_dir/data and uploads must exist"
 [[ -d "$vault_dir" ]] || die "vault dir $vault_dir missing"
+vault_rw_mount=()
+if [[ -n "$vault_rw_subdir" ]]; then
+  [[ "$vault_rw_subdir" != /* && "$vault_rw_subdir" != *..* ]] || die "TREK_RELEASE_VAULT_RW_SUBDIR must be a relative path inside the vault"
+  [[ -d "$vault_dir/$vault_rw_subdir" ]] || die "writable subfolder $vault_dir/$vault_rw_subdir missing"
+  vault_rw_mount=(-v "$vault_dir/$vault_rw_subdir:/obsidian-vault/$vault_rw_subdir")
+fi
 ((preflight_mb <= $(mem_avail_mb))) || die "only $(mem_avail_mb) MB available, need $preflight_mb MB to build safely (close Obsidian/Chrome?)"
 
 # ---- source ------------------------------------------------------------------------------------------
