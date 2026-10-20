@@ -347,6 +347,7 @@ export class VacayMcp {
       userId = targetUserId;
     }
     const result = this.vacay.toggleEntry(userId, planId, date, fraction, kind, undefined);
+    if (result.error === 'plan_full') return errorResult('Planned days already fill the annual allowance; cancel one first');
     if (result.error) return errorResult(result.error);
     return ok(result);
   }

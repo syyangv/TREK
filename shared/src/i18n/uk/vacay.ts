@@ -118,6 +118,7 @@ const vacay: TranslationStrings = {
   'vacay.share': 'Поділитися',
   'vacay.shareSent': 'Календар надано',
   'vacay.shareFailed': 'Не вдалося поділитися календарем',
+  'vacay.planFull': 'Planned days already fill the annual allowance. Cancel one first.',
   'vacay.stopSharing': 'Припинити доступ',
   'vacay.showInCalendar': 'Показувати в календарі',
   'vacay.hideFromCalendar': 'Приховати з календаря',

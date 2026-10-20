@@ -48,3 +48,9 @@ export function leaveSummary(companyHolidays: { note?: string }[], loggedPtoDays
     sickLeave: count('Obsidian 病假'),
   }
 }
+
+/** True when the server refused a day because the planned days already fill the annual allowance. */
+export function isPlanFullError(err: unknown): boolean {
+  const data = (err as { response?: { data?: { code?: unknown } } } | null)?.response?.data
+  return data?.code === 'plan_full'
+}

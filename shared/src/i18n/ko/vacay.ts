@@ -120,6 +120,7 @@ const vacay: TranslationStrings = {
   'vacay.share': '공유',
   'vacay.shareSent': '캘린더가 공유되었습니다',
   'vacay.shareFailed': '캘린더 공유 실패',
+  'vacay.planFull': 'Planned days already fill the annual allowance. Cancel one first.',
   'vacay.stopSharing': '공유 중지',
   'vacay.showInCalendar': '캘린더에 표시',
   'vacay.hideFromCalendar': '캘린더에서 숨기기',

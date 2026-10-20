@@ -120,6 +120,7 @@ const vacay: TranslationStrings = {
   'vacay.share': 'Megosztás',
   'vacay.shareSent': 'Naptár megosztva',
   'vacay.shareFailed': 'Nem sikerült megosztani a naptárat',
+  'vacay.planFull': 'Planned days already fill the annual allowance. Cancel one first.',
   'vacay.stopSharing': 'Megosztás leállítása',
   'vacay.showInCalendar': 'Megjelenítés a naptárban',
   'vacay.hideFromCalendar': 'Elrejtés a naptárból',

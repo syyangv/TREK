@@ -299,6 +299,25 @@ describe('useMVacay', () => {
     expect(result.current.mode).toBe('vacation');
   });
 
+  it('FE-MOB-MVAC-014a: a day refused because planned days fill the allowance says why, other failures still surface', async () => {
+    const full = { response: { status: 409, data: { code: 'plan_full', error: 'x' } } };
+    const toggleEntry = vi.fn(async (..._args: unknown[]) => { throw full; });
+    act(() => { useVacayStore.setState({ toggleEntry }); });
+    const { result } = await mount();
+    act(() => { result.current.setMonthSlot(0); });
+    act(() => { result.current.toggleView(); });
+
+    await act(async () => { await result.current.handleDayTap('2026-06-15'); });
+    // This file stubs t() to echo the key; the English text is covered by the desktop calendar test.
+    expect(toasts).toEqual([{ type: 'error', message: 'vacay.planFull' }]);
+
+    toasts.length = 0;
+    const boom = new Error('network down');
+    act(() => { useVacayStore.setState({ toggleEntry: vi.fn(async () => { throw boom; }) }); });
+    await expect(act(async () => { await result.current.handleDayTap('2026-06-16'); })).rejects.toBe(boom);
+    expect(toasts).toEqual([]);
+  });
+
   it('FE-MOB-MVAC-015: the year overview never logs a day, it opens that month instead (#1811)', async () => {
     const toggleEntry = vi.fn(async (_date: string, _userId?: number, _fraction?: 0.5 | 1, _kind?: 'vacation' | 'comp') => {});
     act(() => { useVacayStore.setState({ toggleEntry }); });

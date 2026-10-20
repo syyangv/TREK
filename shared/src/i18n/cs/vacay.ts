@@ -120,6 +120,7 @@ const vacay: TranslationStrings = {
   'vacay.share': 'Sdílet',
   'vacay.shareSent': 'Kalendář sdílen',
   'vacay.shareFailed': 'Nepodařilo se sdílet kalendář',
+  'vacay.planFull': 'Planned days already fill the annual allowance. Cancel one first.',
   'vacay.stopSharing': 'Ukončit sdílení',
   'vacay.showInCalendar': 'Zobrazit v kalendáři',
   'vacay.hideFromCalendar': 'Skrýt z kalendáře',

@@ -7,7 +7,8 @@ import { inGridWindow, windowMonths } from '../../vacay/yearWindow'
 import { tripsApi } from '../../api/client'
 import VacayMonthCard from './VacayMonthCard'
 import type { VacayEntry } from '../../types'
-import { companyHolidayColor, isObsidianHolidayNote } from './obsidianHolidays'
+import { companyHolidayColor, isObsidianHolidayNote, isPlanFullError } from './obsidianHolidays'
+import { useToast } from '../shared/Toast'
 import { Building2, MousePointer2 } from 'lucide-react'
 
 type VacayMode = 'vacation' | 'company'
@@ -16,6 +17,7 @@ export type SharedDayMark = { color: string; name: string; fraction?: number; co
 
 export default function VacayCalendar() {
   const { t, locale } = useTranslation()
+  const toast = useToast()
   const { selectedYear, selectedUserId, entries, companyHolidays, toggleEntry, toggleCompanyHoliday, plan, users, holidays, sharedCalendars, yearSettings } = useVacayStore()
   const currentUserId = useAuthStore(s => s.user?.id)
   const [mode, setMode] = useState<VacayMode>('vacation')
@@ -124,8 +126,13 @@ export default function VacayCalendar() {
       return
     }
     if (companyHolidaysEnabled && manualCompanyHolidaySet.has(dateStr)) return
-    await toggleEntry(dateStr, selectedUserId || undefined, halfDay ? 0.5 : 1, compDay ? 'comp' : 'vacation')
-  }, [mode, halfDay, compDay, toggleEntry, toggleCompanyHoliday, manualCompanyHolidaySet, obsidianHolidaySet, blockWeekends, weekendDays, companyHolidaysEnabled, selectedUserId, currentUserId, entryMap])
+    try {
+      await toggleEntry(dateStr, selectedUserId || undefined, halfDay ? 0.5 : 1, compDay ? 'comp' : 'vacation')
+    } catch (err) {
+      if (!isPlanFullError(err)) throw err
+      toast.error(t('vacay.planFull'))
+    }
+  }, [toast, t, mode, halfDay, compDay, toggleEntry, toggleCompanyHoliday, manualCompanyHolidaySet, obsidianHolidaySet, blockWeekends, weekendDays, companyHolidaysEnabled, selectedUserId, currentUserId, entryMap])
 
   // Cells with a half day or a shared overlay report a hover, so the tooltip
   // appears exactly when there's something to explain. Fixed-positioned at the

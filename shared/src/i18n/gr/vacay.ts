@@ -123,6 +123,7 @@ const vacay: TranslationStrings = {
   'vacay.share': 'Κοινοποίηση',
   'vacay.shareSent': 'Το ημερολόγιο κοινοποιήθηκε',
   'vacay.shareFailed': 'Δεν ήταν δυνατή η κοινοποίηση του ημερολογίου',
+  'vacay.planFull': 'Planned days already fill the annual allowance. Cancel one first.',
   'vacay.stopSharing': 'Διακοπή κοινοποίησης',
   'vacay.showInCalendar': 'Εμφάνιση στο ημερολόγιο',
   'vacay.hideFromCalendar': 'Απόκρυψη από το ημερολόγιο',

@@ -121,6 +121,7 @@ const vacay: TranslationStrings = {
   'vacay.share': 'Paylaş',
   'vacay.shareSent': 'Takvim paylaşıldı',
   'vacay.shareFailed': 'Takvim paylaşılamadı',
+  'vacay.planFull': 'Planned days already fill the annual allowance. Cancel one first.',
   'vacay.stopSharing': 'Paylaşımı durdur',
   'vacay.showInCalendar': 'Takvimde göster',
   'vacay.hideFromCalendar': 'Takvimden gizle',

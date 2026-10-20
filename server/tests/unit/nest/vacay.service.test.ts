@@ -28,6 +28,7 @@ vi.mock('../../../src/config', () => ({
 }));
 
 const planWriter = vi.hoisted(() => ({
+  isEnabled: vi.fn(() => true),
   upsertPlanned: vi.fn((..._args: unknown[]) => 'added'),
   removePlanned: vi.fn((..._args: unknown[]) => 'removed'),
 }));
@@ -570,7 +571,7 @@ describe('getEntries', () => {
 describe('toggleEntry → leave plan mirror', () => {
   const mirrored = new VacayService(new DatabaseService(testDb), new RealtimeService(), notificationsStub(), planWriter as never);
   const future = (days = 40) => { const d = new Date(Date.now() + days * 86_400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-  beforeEach(() => { planWriter.upsertPlanned.mockReset().mockReturnValue('added'); planWriter.removePlanned.mockReset().mockReturnValue('removed'); });
+  beforeEach(() => { planWriter.isEnabled.mockReset().mockReturnValue(true); planWriter.upsertPlanned.mockReset().mockReturnValue('added'); planWriter.removePlanned.mockReset().mockReturnValue('removed'); });
   // Weekend blocking is on by default; use the owner's plan with it lifted so any weekday/weekend date works.
   const ownerPlan = () => { const { user, plan } = setupUserWithPlan(); testDb.prepare('UPDATE vacay_plans SET block_weekends = 0 WHERE id = ?').run(plan.id); return { user, plan }; };
 
@@ -632,6 +633,84 @@ describe('toggleEntry → leave plan mirror', () => {
     testDb.prepare("UPDATE vacay_company_holidays SET note = 'Obsidian PTO' WHERE plan_id = ? AND date = ?").run(plan.id, date);
     planWriter.removePlanned.mockImplementation(() => { throw new Error('EROFS'); });
     expect(mirrored.toggleCompanyHoliday(plan.id, date, undefined, undefined).action).toBe('removed');
+  });
+
+  describe('annual allowance cap (PTO + public holidays, not sick leave)', () => {
+    const year = new Date().getFullYear() + 1;
+    const dayN = (n: number) => new Date(Date.UTC(year, 0, 1 + n)).toISOString().slice(0, 10);
+    const target = `${year}-07-15`;
+    // Obsidian leave in `year`: `pto` PTO days, `pub` public holidays and `sick` sick days, all on distinct dates before July.
+    const seedObsidian = (pto: number, pub: number, sick: number) => {
+      obsidianState.available = true;
+      obsidianState.holidays = [
+        ...Array.from({ length: pto }, (_, i) => ({ date: dayN(i), note: 'Obsidian PTO' })),
+        ...Array.from({ length: pub }, (_, i) => ({ date: dayN(40 + i), note: 'Obsidian 公共假期' })),
+        ...Array.from({ length: sick }, (_, i) => ({ date: dayN(80 + i), note: 'Obsidian 病假' })),
+      ];
+    };
+    const allowance = (planId: number, userId: number, days: number) => {
+      testDb.prepare('INSERT OR IGNORE INTO vacay_user_years (user_id, plan_id, year, vacation_days, carried_over) VALUES (?, ?, ?, ?, 0)').run(userId, planId, year, days);
+      testDb.prepare('UPDATE vacay_user_years SET vacation_days = ?, carried_over = 0 WHERE user_id = ? AND plan_id = ? AND year = ?').run(days, userId, planId, year);
+    };
+
+    it('VACAY-SVC-034j: refuses a whole day that would push planned days past the allowance, and records nothing', () => {
+      const { user, plan } = ownerPlan(); allowance(plan.id, user.id, 33); seedObsidian(23, 10, 10);
+      expect(mirrored.toggleEntry(user.id, plan.id, target, 1, 'vacation')).toEqual({ error: 'plan_full' });
+      expect(testDb.prepare('SELECT 1 FROM vacay_entries WHERE date = ?').get(target)).toBeUndefined();
+      expect(planWriter.upsertPlanned).not.toHaveBeenCalled();
+    });
+
+    it('VACAY-SVC-034k: the day that exactly fills the allowance is accepted', () => {
+      const { user, plan } = ownerPlan(); allowance(plan.id, user.id, 33); seedObsidian(22, 10, 10);
+      expect(mirrored.toggleEntry(user.id, plan.id, target, 1, 'vacation').action).toBe('added');
+      expect(planWriter.upsertPlanned).toHaveBeenCalledWith(target, 'PTO');
+    });
+
+    it('VACAY-SVC-034l: sick leave does not use up the allowance', () => {
+      const { user, plan } = ownerPlan(); allowance(plan.id, user.id, 33); seedObsidian(10, 10, 30);
+      expect(mirrored.toggleEntry(user.id, plan.id, target, 1, 'vacation').action).toBe('added');
+    });
+
+    it('VACAY-SVC-034m: clearing a day is always allowed, and frees the allowance again', () => {
+      const { user, plan } = ownerPlan(); allowance(plan.id, user.id, 33); seedObsidian(22, 10, 0);
+      mirrored.toggleEntry(user.id, plan.id, target, 1, 'vacation');
+      seedObsidian(23, 10, 0);
+      expect(mirrored.toggleEntry(user.id, plan.id, target, 1, 'vacation').action).toBe('removed');
+      seedObsidian(22, 10, 0);
+      expect(mirrored.toggleEntry(user.id, plan.id, target, 1, 'vacation').action).toBe('added');
+    });
+
+    it('VACAY-SVC-034n: converting a half day to a whole day is refused when full', () => {
+      const { user, plan } = ownerPlan(); allowance(plan.id, user.id, 33); seedObsidian(10, 10, 0);
+      mirrored.toggleEntry(user.id, plan.id, target, 0.5, 'vacation');
+      seedObsidian(23, 10, 0);
+      expect(mirrored.toggleEntry(user.id, plan.id, target, 1, 'vacation')).toEqual({ error: 'plan_full' });
+      expect(testDb.prepare('SELECT fraction FROM vacay_entries WHERE date = ?').get(target)).toEqual({ fraction: 0.5 });
+    });
+
+    it('VACAY-SVC-034o: clicks that would not be written are not subject to the cap', () => {
+      const { user, plan } = ownerPlan(); allowance(plan.id, user.id, 33); seedObsidian(23, 10, 0);
+      expect(mirrored.toggleEntry(user.id, plan.id, target, 0.5, 'vacation').action).toBe('added');
+      expect(mirrored.toggleEntry(user.id, plan.id, `${year}-08-03`, 1, 'comp').action).toBe('added');
+      expect(mirrored.toggleEntry(user.id, plan.id, '2020-01-02', 1, 'vacation').action).toBe('added');
+    });
+
+    it('VACAY-SVC-034p: a day already in the plan is not counted twice', () => {
+      const { user, plan } = ownerPlan(); allowance(plan.id, user.id, 33); seedObsidian(23, 10, 0);
+      expect(mirrored.toggleEntry(user.id, plan.id, dayN(0), 1, 'vacation').action).toBe('added');
+    });
+
+    it('VACAY-SVC-034q: with vault writing off nothing is refused', () => {
+      const { user, plan } = ownerPlan(); allowance(plan.id, user.id, 33); seedObsidian(23, 10, 0);
+      planWriter.isEnabled.mockReturnValue(false);
+      expect(mirrored.toggleEntry(user.id, plan.id, target, 1, 'vacation').action).toBe('added');
+    });
+
+    it('VACAY-SVC-034r: hand-entered company days count toward the allowance too', () => {
+      const { user, plan } = ownerPlan(); allowance(plan.id, user.id, 33); seedObsidian(22, 10, 0);
+      testDb.prepare("INSERT INTO vacay_company_holidays (plan_id, date, note) VALUES (?, ?, 'Offsite')").run(plan.id, `${year}-09-09`);
+      expect(mirrored.toggleEntry(user.id, plan.id, target, 1, 'vacation')).toEqual({ error: 'plan_full' });
+    });
   });
 
   it('VACAY-SVC-034f: a member of someone else\'s plan never writes to the vault owner\'s plan file', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { render } from '../../../tests/helpers/render'
 import { resetAllStores, seedStore } from '../../../tests/helpers/store'
@@ -197,6 +197,30 @@ describe('VacayCalendar', () => {
     await user.click(screen.getByText('click-0'))
 
     expect(toggleEntry).toHaveBeenCalledWith('2025-01-01', 42, 1, 'vacation')
+  })
+
+  it('FE-COMP-VACAYCALENDAR-006f: a day refused because planned days fill the allowance says why', async () => {
+    const user = userEvent.setup()
+    const toasts: { type: string; message: string }[] = []
+    window.__addToast = ((message: string, type?: string) => { toasts.push({ type: type ?? 'info', message }); return 1 }) as Window['__addToast']
+    const toggleEntry = vi.fn().mockRejectedValue({ response: { status: 409, data: { code: 'plan_full', error: 'x' } } })
+
+    seedStore(useVacayStore, {
+      selectedYear: 2025,
+      entries: [],
+      companyHolidays: [],
+      holidays: {},
+      plan: { ...basePlan, block_weekends: false, company_holidays_enabled: false },
+      users: [],
+      selectedUserId: 42,
+      toggleEntry,
+    })
+
+    render(<VacayCalendar />)
+    await user.click(screen.getByText('click-0'))
+
+    await waitFor(() => expect(toasts).toEqual([{ type: 'error', message: 'Planned days already fill the annual allowance. Cancel one first.' }]))
+    delete window.__addToast
   })
 
   it('FE-COMP-VACAYCALENDAR-006b: half-day mode logs the day as 0.5', async () => {

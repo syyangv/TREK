@@ -119,6 +119,7 @@ const vacay: TranslationStrings = {
   'vacay.share': 'مشاركة',
   'vacay.shareSent': 'تمت مشاركة التقويم',
   'vacay.shareFailed': 'تعذرت مشاركة التقويم',
+  'vacay.planFull': 'Planned days already fill the annual allowance. Cancel one first.',
   'vacay.stopSharing': 'إيقاف المشاركة',
   'vacay.showInCalendar': 'إظهار في التقويم',
   'vacay.hideFromCalendar': 'إخفاء من التقويم',

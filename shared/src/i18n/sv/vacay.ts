@@ -120,6 +120,7 @@ const vacay: TranslationStrings = {
   'vacay.share': 'Dela',
   'vacay.shareSent': 'Kalendern har delats',
   'vacay.shareFailed': 'Kunde inte dela kalendern',
+  'vacay.planFull': 'Planned days already fill the annual allowance. Cancel one first.',
   'vacay.stopSharing': 'Sluta dela',
   'vacay.showInCalendar': 'Visa i kalendern',
   'vacay.hideFromCalendar': 'Dölj från kalendern',

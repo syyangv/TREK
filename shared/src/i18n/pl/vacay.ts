@@ -121,6 +121,7 @@ const vacay: TranslationStrings = {
   'vacay.share': 'Udostępnij',
   'vacay.shareSent': 'Kalendarz został udostępniony',
   'vacay.shareFailed': 'Nie udało się udostępnić kalendarza',
+  'vacay.planFull': 'Planned days already fill the annual allowance. Cancel one first.',
   'vacay.stopSharing': 'Przestań udostępniać',
   'vacay.showInCalendar': 'Pokaż w kalendarzu',
   'vacay.hideFromCalendar': 'Ukryj w kalendarzu',

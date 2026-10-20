@@ -150,6 +150,12 @@ describe('VacayController (parity with the legacy /api/addons/vacay route)', () 
         expect(r).toEqual({ status: 400, body: { error: 'Weekend days are blocked on this plan' } }));
     });
 
+    it('409 with a stable code when the planned days already fill the annual allowance', () => {
+      const toggleEntry = vi.fn().mockReturnValue({ error: 'plan_full' });
+      return thrown(() => makeController({ ...planBase, toggleEntry }).toggleEntry(user, { date: '2026-12-30' })).then((r) =>
+        expect(r).toEqual({ status: 409, body: { error: 'Planned days already fill the annual allowance; cancel one first', code: 'plan_full' } }));
+    });
+
     it('forwards the comp/flex leave type (#1074)', () => {
       const toggleEntry = vi.fn().mockReturnValue({ action: 'added', kind: 'comp' });
       makeController({ ...planBase, toggleEntry }).toggleEntry(user, { date: '2026-07-01', kind: 'comp' }, 'sock');

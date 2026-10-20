@@ -247,6 +247,9 @@ export class VacayController {
     if (result.error === 'weekend_blocked') {
       throw new HttpException({ error: 'Weekend days are blocked on this plan' }, 400);
     }
+    if (result.error === 'plan_full') {
+      throw new HttpException({ error: 'Planned days already fill the annual allowance; cancel one first', code: 'plan_full' }, 409);
+    }
     return result;
   }
 

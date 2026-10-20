@@ -122,6 +122,7 @@ const vacay: TranslationStrings = {
   'vacay.share': 'Compartilhar',
   'vacay.shareSent': 'Calendário compartilhado',
   'vacay.shareFailed': 'Não foi possível compartilhar o calendário',
+  'vacay.planFull': 'Planned days already fill the annual allowance. Cancel one first.',
   'vacay.stopSharing': 'Parar de compartilhar',
   'vacay.showInCalendar': 'Mostrar no calendário',
   'vacay.hideFromCalendar': 'Ocultar do calendário',

@@ -120,6 +120,7 @@ const vacay: TranslationStrings = {
   'vacay.share': 'Bagikan',
   'vacay.shareSent': 'Kalender dibagikan',
   'vacay.shareFailed': 'Gagal membagikan kalender',
+  'vacay.planFull': 'Planned days already fill the annual allowance. Cancel one first.',
   'vacay.stopSharing': 'Berhenti berbagi',
   'vacay.showInCalendar': 'Tampilkan di kalender',
   'vacay.hideFromCalendar': 'Sembunyikan dari kalender',

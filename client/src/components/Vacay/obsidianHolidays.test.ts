@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countsTowardCompanyHolidayTotal, leaveSummary, OBSIDIAN_HOLIDAY_STYLES, vacationPlanLabel } from './obsidianHolidays'
+import { countsTowardCompanyHolidayTotal, isPlanFullError, leaveSummary, OBSIDIAN_HOLIDAY_STYLES, vacationPlanLabel } from './obsidianHolidays'
 
 describe('OBSIDIAN_HOLIDAY_STYLES', () => {
   it('matches the Obsidian Yearly Glance leave-category colors', () => {
@@ -58,5 +58,19 @@ describe('leaveSummary', () => {
 
   it('is all zeros with nothing planned', () => {
     expect(leaveSummary([], 0)).toEqual({ publicHolidays: 0, pto: 0, sickLeave: 0 })
+  })
+})
+
+describe('isPlanFullError', () => {
+  it('recognises the server refusing a day because planned days fill the allowance', () => {
+    expect(isPlanFullError({ response: { status: 409, data: { code: 'plan_full', error: 'x' } } })).toBe(true)
+  })
+
+  it('ignores every other failure', () => {
+    expect(isPlanFullError({ response: { status: 409, data: { code: 'other' } } })).toBe(false)
+    expect(isPlanFullError({ response: { status: 500, data: {} } })).toBe(false)
+    expect(isPlanFullError(new Error('network'))).toBe(false)
+    expect(isPlanFullError(null)).toBe(false)
+    expect(isPlanFullError('plan_full')).toBe(false)
   })
 })

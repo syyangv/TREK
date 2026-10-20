@@ -116,6 +116,7 @@ const vacay: TranslationStrings = {
   'vacay.share': '共享',
   'vacay.shareSent': '日曆已共享',
   'vacay.shareFailed': '無法共享日曆',
+  'vacay.planFull': '已計劃的天數已達年度額度，請先取消一天',
   'vacay.stopSharing': '停止共享',
   'vacay.showInCalendar': '在日曆中顯示',
   'vacay.hideFromCalendar': '從日曆中隱藏',

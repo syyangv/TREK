@@ -121,6 +121,7 @@ const vacay: TranslationStrings = {
   'vacay.share': 'Chia sẻ',
   'vacay.shareSent': 'Đã chia sẻ lịch',
   'vacay.shareFailed': 'Không thể chia sẻ lịch',
+  'vacay.planFull': 'Planned days already fill the annual allowance. Cancel one first.',
   'vacay.stopSharing': 'Ngừng chia sẻ',
   'vacay.showInCalendar': 'Hiển thị trong lịch',
   'vacay.hideFromCalendar': 'Ẩn khỏi lịch',

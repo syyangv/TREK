@@ -10,7 +10,7 @@ import { isWeekend } from '../../../components/Vacay/holidays'
 import { currentPeriodYear, inGridWindow, windowMonths } from '../../../vacay/yearWindow'
 import { FALLBACK_PERSON_COLOR, localDateStr, type DayVisualContext } from './vacayDayModel'
 import { getApiErrorMessage, type Trip } from '../../../types'
-import { companyHolidayColor, isObsidianHolidayNote, leaveSummary, MANUAL_COMPANY_HOLIDAY_COLOR, OBSIDIAN_HOLIDAY_STYLES, vacationPlanLabel } from '../../../components/Vacay/obsidianHolidays'
+import { companyHolidayColor, isObsidianHolidayNote, isPlanFullError, leaveSummary, MANUAL_COMPANY_HOLIDAY_COLOR, OBSIDIAN_HOLIDAY_STYLES, vacationPlanLabel } from '../../../components/Vacay/obsidianHolidays'
 
 export type MVacayView = 'grid' | 'edit'
 export type MVacayMode = 'vacation' | 'company'
@@ -222,8 +222,13 @@ export function useMVacay() {
       return
     }
     if (companyHolidaysEnabled && companyHolidaySet.has(dateStr)) return
-    await toggleEntry(dateStr, selectedUserId || undefined, halfDay ? 0.5 : 1, compDay ? 'comp' : 'vacation')
-  }, [view, months, openMonthSlot, mode, halfDay, compDay, companyHolidaysEnabled, blockWeekends, weekendDays, companyHolidaySet, toggleEntry, toggleCompanyHoliday, selectedUserId, currentUser?.id, entryMap])
+    try {
+      await toggleEntry(dateStr, selectedUserId || undefined, halfDay ? 0.5 : 1, compDay ? 'comp' : 'vacation')
+    } catch (err) {
+      if (!isPlanFullError(err)) throw err
+      toast.error(t('vacay.planFull'))
+    }
+  }, [toast, t, view, months, openMonthSlot, mode, halfDay, compDay, companyHolidaysEnabled, blockWeekends, weekendDays, companyHolidaySet, toggleEntry, toggleCompanyHoliday, selectedUserId, currentUser?.id, entryMap])
 
   // Entitlement stepper: never below what is already used this year
   // (carried-over days cover the difference when used > entitlement).

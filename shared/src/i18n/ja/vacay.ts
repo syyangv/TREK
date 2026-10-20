@@ -120,6 +120,7 @@ const vacay: TranslationStrings = {
   'vacay.share': '共有',
   'vacay.shareSent': 'カレンダーを共有しました',
   'vacay.shareFailed': 'カレンダーを共有できませんでした',
+  'vacay.planFull': 'Planned days already fill the annual allowance. Cancel one first.',
   'vacay.stopSharing': '共有を停止',
   'vacay.showInCalendar': 'カレンダーに表示',
   'vacay.hideFromCalendar': 'カレンダーから非表示',

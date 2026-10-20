@@ -1156,12 +1156,14 @@ export class VacayService {
       // Removing a stray entry on a blocked day stays possible; keeping one
       // there (converted in place) does not.
       if (weekendBlocked) return { error: 'weekend_blocked' };
+      if (isWholeDay && !wasWholeDay && this.leavePlanFull(plan, userId, date)) return { error: 'plan_full' };
       this.db.run('UPDATE vacay_entries SET fraction = ?, kind = ? WHERE id = ?', frac, knd, existing.id);
       this.notifyPlanUsers(planId, socketId);
       this.mirrorToLeavePlan(plan, userId, date, wasWholeDay, isWholeDay);
       return { action: 'updated', fraction: frac, kind: knd };
     }
     if (weekendBlocked) return { error: 'weekend_blocked' };
+    if (isWholeDay && this.leavePlanFull(plan, userId, date)) return { error: 'plan_full' };
     this.db.run('INSERT INTO vacay_entries (plan_id, user_id, date, note, fraction, kind) VALUES (?, ?, ?, ?, ?, ?)', planId, userId, date, '', frac, knd);
     this.notifyPlanUsers(planId, socketId);
     this.mirrorToLeavePlan(plan, userId, date, false, isWholeDay);
@@ -1183,6 +1185,30 @@ export class VacayService {
         this.leavePlan.removePlanned(date, 'PTO');
       }
     });
+  }
+
+  /**
+   * With vault writing on, a whole day that would be written to the leave plan is refused once
+   * the year's planned days (Obsidian PTO + public holidays + hand-entered company days; sick
+   * leave excluded, same as the number beside the year) already fill the allowance. A day the
+   * plan already holds adds nothing. Clearing a day is never refused.
+   */
+  private leavePlanFull(plan: VacayPlan | undefined, userId: number, date: string): boolean {
+    if (!plan || plan.owner_id !== userId || !isTodayOrLater(date) || !this.leavePlan.isEnabled()) return false;
+    if (!isObsidianPublicHolidaySourceAvailable()) return false;
+    const year = Number(date.slice(0, 4));
+    const notes = getObsidianHolidayNotes();
+    const sickNote = notes.find((note) => note.endsWith('病假'));
+    const obsidian = loadObsidianPublicHolidaysForYear(year).filter((h) => h.note !== sickNote);
+    if (obsidian.some((h) => h.date === date)) return false;
+    const manual = this.db.get<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM vacay_company_holidays
+        WHERE plan_id = ? AND date LIKE ? AND COALESCE(note, '') NOT IN (${notes.map(() => '?').join(', ')})`,
+      plan.id, `${year}-%`, ...notes,
+    )?.n ?? 0;
+    const config = this.db.get<VacayUserYear>('SELECT * FROM vacay_user_years WHERE user_id = ? AND plan_id = ? AND year = ?', userId, plan.id, year);
+    const allowance = (config ? config.vacation_days : 30) + (plan.carry_over_enabled && config ? config.carried_over : 0);
+    return obsidian.length + manual + 1 > allowance;
   }
 
   /** A vault problem is logged, never thrown: the TREK change it mirrors is already saved. */
