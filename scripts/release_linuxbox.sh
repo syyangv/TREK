@@ -13,7 +13,8 @@
 #   --build-only        stop after the smoke test; the live container is not touched
 #   --rebuild           build even if the image tag already exists (Docker's layer cache still applies)
 #   --no-cache          rebuild every layer from scratch; implies --rebuild (a real test of the memory cap)
-#   (env) TREK_RELEASE_VAULT_RW_SUBDIR  e.g. 个人整理: mount that vault subfolder writable (default: whole vault read-only)
+#   (env) TREK_RELEASE_VAULT_RW_SUBDIR  e.g. 个人整理: mount that vault subfolder writable (default: whole vault
+#                       read-only, or whatever writable subfolder the running container already has)
 #   --allow-migrations  needed when server/src/db changed since the running version; the smoke test then
 #                       boots against a copy of the live database (DB migrations cannot be undone)
 #
@@ -127,6 +128,11 @@ command -v docker >/dev/null || die "docker not found"
 [[ "$(stat -c %a "$env_file")" == 600 ]] || die "$env_file must be mode 600"
 [[ -d "$app_dir/data" && -d "$app_dir/uploads" ]] || die "$app_dir/data and uploads must exist"
 [[ -d "$vault_dir" ]] || die "vault dir $vault_dir missing"
+# A release must not silently close a writable vault subfolder the running container already has.
+if [[ -z "$vault_rw_subdir" ]] && docker inspect "$container" >/dev/null 2>&1; then
+  vault_rw_subdir=$(docker inspect -f '{{range .Mounts}}{{println .Destination}}{{end}}' "$container" | sed -n 's#^/obsidian-vault/##p' | head -1)
+  [[ -z "$vault_rw_subdir" ]] || log "keeping the writable vault subfolder: $vault_rw_subdir"
+fi
 vault_rw_mount=()
 if [[ -n "$vault_rw_subdir" ]]; then
   [[ "$vault_rw_subdir" != /* && "$vault_rw_subdir" != *..* ]] || die "TREK_RELEASE_VAULT_RW_SUBDIR must be a relative path inside the vault"

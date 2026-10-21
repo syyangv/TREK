@@ -111,6 +111,17 @@ These principles come out of a verified 2026 full-repo audit and shape how all n
   `vacay_entries`, never Obsidian leave. The stored allowance
   (`total_available`) already includes public holidays — don't add them again.
   The number beside the year is `planned/total_available` (e.g. `32/33`).
+- **Vacay → Yearly Glance write-back:** with `OBSIDIAN_VAULT_WRITE_ENABLED=true`, a
+  whole-day vacation click today or later adds `| date | PTO | TREK |` to
+  `请假计划.md` (`ObsidianLeavePlanWriter`); clearing it, or clearing the Obsidian
+  PTO day in company mode, removes only that TREK-marked row. Off by default; the
+  vault stays read-only except one subfolder mounted writable
+  (`TREK_RELEASE_VAULT_RW_SUBDIR=个人整理` in the release script). The write is an
+  atomic replace that refuses if the file changed since it was read, with recovery
+  copies in `data/leave-plan-backups`. Once Obsidian PTO + public holidays +
+  manual company days (no 病假) fill the allowance, further whole-day clicks are
+  refused (409 `plan_full`). The Yearly Glance plugin updates `modified_at` after
+  each write — expected, not a bug.
 - **Production release:** main → CI/Security Scan → stable provenance → signed
   `deploy/production` promotion → verify poller digest and `/api/health`.
   While the fork's Actions is blocked (`gh workflow run` → HTTP 422 "disabled"),
@@ -121,7 +132,9 @@ These principles come out of a verified 2026 full-repo audit and shape how all n
   rolls back on an unhealthy or refused boot. It refuses to deploy a schema change
   without `--allow-migrations`; `--build-only` stops after the smoke test;
   `--no-cache` forces a from-scratch build (`--rebuild` alone still uses Docker's
-  layer cache). Never dump `docker inspect` (it holds secrets). The linuxbox
+  layer cache). A release keeps the writable vault subfolder the running container
+  already has (set it once with `TREK_RELEASE_VAULT_RW_SUBDIR=个人整理`). Never dump
+  `docker inspect` (it holds secrets). The linuxbox
   `trek-deploy-agent` and `trek-deploy-poller` user services are disabled (they
   would deploy an old promotion over a manual release); don't re-enable them, or
   push to `deploy/production`, until releases go through signed promotions again.
