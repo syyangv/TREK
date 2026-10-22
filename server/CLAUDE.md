@@ -102,6 +102,7 @@ access goes through `src/app-config/`:
 - **vitest uses the SWC plugin** (`vitest.config.ts`), not esbuild, because Nest's type-based DI needs emitted decorator metadata — esbuild drops it. Keep that config when touching test tooling. Pool is `forks` (isolated DBs per worker).
 - **Coverage gate is a per-domain ratchet over `src/nest/**`** (statements/branches/functions/lines; ≥80% floor, most domains pinned higher — see `vitest.config.ts`); legacy code is intentionally ungated.
 - The config also aliases `@modelcontextprotocol/sdk/*` to CJS dist files because the SDK's exports map uses unresolvable extension-less wildcards.
+- **A whole-suite `vitest run` is not stable:** it fails 1–3 different files per run (collab, budget, public-stats, days/oauth e2e, …) that pass alone. Rerun the failing file by itself (twice), and stash-compare against the baseline, before blaming your change.
 - **The boot gates are not run by vitest/e2e.** `validateBodyContracts`, `validateRouteGuards` and the schema-drift check live in the real boot path, so e2e can be fully green while the server cannot start (and fixing one gate reveals the next). After touching a route, `@Public()` or `@Body()`: `npm run build`, then boot `dist` with `NODE_ENV=production TREK_DB_FILE=<tmp>/t.db DATA_DIR=<tmp> PORT=<free> JWT_SECRET=<32+ chars> node --require tsconfig-paths/register dist/index.js` from `server/` and `curl /api/health`.
 
 ## Parity discipline (when adding/changing routes)

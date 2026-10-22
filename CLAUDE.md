@@ -121,7 +121,9 @@ These principles come out of a verified 2026 full-repo audit and shape how all n
   copies in `data/leave-plan-backups`. Once Obsidian PTO + public holidays +
   manual company days (no 病假) fill the allowance, further whole-day clicks are
   refused (409 `plan_full`). The Yearly Glance plugin updates `modified_at` after
-  each write — expected, not a bug.
+  each write — expected, not a bug. TREK reads linuxbox's copy of the vault, and
+  Obsidian Sync to the Mac only runs while linuxbox's Obsidian is running: when it
+  is closed, Vacay numbers and the cap go stale.
 - **Production release:** main → CI/Security Scan → stable provenance → signed
   `deploy/production` promotion → verify poller digest and `/api/health`.
   While the fork's Actions is blocked (`gh workflow run` → HTTP 422 "disabled"),
