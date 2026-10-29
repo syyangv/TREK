@@ -8,7 +8,7 @@ const { vaultPath } = vi.hoisted(() => {
   const os = require('node:os');
   const path = require('node:path');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'trek-obsidian-'));
-  const pluginDir = path.join(root, '.obsidian/plugins/yearly-glance');
+  const pluginDir = path.join(root, '.obsidian/plugins/yearly-glance-custom');
   const dailyDir = path.join(root, 'Daily/Yearly Glance');
   fs.mkdirSync(pluginDir, { recursive: true });
   fs.mkdirSync(dailyDir, { recursive: true });
@@ -121,57 +121,8 @@ describe('loadObsidianPublicHolidaysForYear', () => {
     ]);
   });
 
-  it('prefers the Yearly Glance (Custom) data.json over the pre-rename path', () => {
-    const legacyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
-    const customDir = path.join(vaultPath, '.obsidian/plugins/yearly-glance-custom');
-    const originalLegacy = fs.readFileSync(legacyPath, 'utf8');
-    const notePath = path.join(vaultPath, 'Daily/Custom/2025/04/06.md');
-    fs.mkdirSync(path.dirname(notePath), { recursive: true });
-    fs.mkdirSync(customDir, { recursive: true });
-    fs.writeFileSync(notePath, '---\n假期:\n  - PTO\n---\n');
-    fs.writeFileSync(path.join(customDir, 'data.json'), JSON.stringify({
-      config: { dailyNoteSource: 'daily-notes', dailyNoteFolder: 'Daily/Custom', dailyNoteFormat: 'YYYY/MM/DD' },
-      data: { customEvents: [] },
-    }));
-    fs.writeFileSync(legacyPath, JSON.stringify({
-      config: { dailyNoteSource: 'daily-notes', dailyNoteFolder: 'Daily/Missing', dailyNoteFormat: 'YYYY/MM/DD' },
-      data: { customEvents: [] },
-    }));
-
-    try {
-      expect(loadObsidianPublicHolidaysForYear(2025)).toContainEqual({ date: '2025-04-06', note: 'Obsidian PTO' });
-    } finally {
-      fs.writeFileSync(legacyPath, originalLegacy);
-      fs.rmSync(customDir, { recursive: true, force: true });
-      fs.rmSync(path.join(vaultPath, 'Daily/Custom'), { recursive: true, force: true });
-    }
-  });
-
-  it('falls back to the pre-rename data.json when the Custom one is unreadable', () => {
-    const legacyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
-    const customDir = path.join(vaultPath, '.obsidian/plugins/yearly-glance-custom');
-    const originalLegacy = fs.readFileSync(legacyPath, 'utf8');
-    const notePath = path.join(vaultPath, 'Daily/Legacy/2025/04/07.md');
-    fs.mkdirSync(path.dirname(notePath), { recursive: true });
-    fs.mkdirSync(customDir, { recursive: true });
-    fs.writeFileSync(notePath, '---\n假期:\n  - PTO\n---\n');
-    fs.writeFileSync(path.join(customDir, 'data.json'), '{ not json');
-    fs.writeFileSync(legacyPath, JSON.stringify({
-      config: { dailyNoteSource: 'daily-notes', dailyNoteFolder: 'Daily/Legacy', dailyNoteFormat: 'YYYY/MM/DD' },
-      data: { customEvents: [] },
-    }));
-
-    try {
-      expect(loadObsidianPublicHolidaysForYear(2025)).toContainEqual({ date: '2025-04-07', note: 'Obsidian PTO' });
-    } finally {
-      fs.writeFileSync(legacyPath, originalLegacy);
-      fs.rmSync(customDir, { recursive: true, force: true });
-      fs.rmSync(path.join(vaultPath, 'Daily/Legacy'), { recursive: true, force: true });
-    }
-  });
-
   it('uses explicit Yearly Glance daily-note settings and parses a non-periodic note', () => {
-    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
+    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance-custom/data.json');
     const originalYearly = fs.readFileSync(yearlyPath, 'utf8');
     const notePath = path.join(vaultPath, 'Daily/Explicit/2025/04/05.md');
     fs.mkdirSync(path.dirname(notePath), { recursive: true });
@@ -194,7 +145,7 @@ describe('loadObsidianPublicHolidaysForYear', () => {
   });
 
   it('falls back to Obsidian Daily Notes settings and tolerates malformed frontmatter', () => {
-    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
+    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance-custom/data.json');
     const originalYearly = fs.readFileSync(yearlyPath, 'utf8');
     const noteDir = path.join(vaultPath, 'Daily/Other');
     fs.mkdirSync(noteDir, { recursive: true });
@@ -212,7 +163,7 @@ describe('loadObsidianPublicHolidaysForYear', () => {
   });
 
   it('reads nested Periodic Notes settings when the root daily section is absent', () => {
-    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
+    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance-custom/data.json');
     const periodicPath = path.join(vaultPath, '.obsidian/plugins/periodic-notes/data.json');
     const originalYearly = fs.readFileSync(yearlyPath, 'utf8');
     const originalPeriodic = fs.readFileSync(periodicPath, 'utf8');
@@ -232,7 +183,7 @@ describe('loadObsidianPublicHolidaysForYear', () => {
   });
 
   it('ignores Yearly Glance custom events, including leave-like unrelated events', () => {
-    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
+    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance-custom/data.json');
     const originalYearly = fs.readFileSync(yearlyPath, 'utf8');
     fs.writeFileSync(yearlyPath, JSON.stringify({
       config: { dailyNoteSource: 'daily-notes' },
@@ -265,7 +216,7 @@ describe('loadObsidianPublicHolidaysForYear', () => {
   });
 
   it('handles malformed Yearly Glance JSON and a missing leave-plan file', () => {
-    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
+    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance-custom/data.json');
     const leavePath = path.join(vaultPath, '请假计划.md');
     const originalYearly = fs.readFileSync(yearlyPath, 'utf8');
     const originalLeave = fs.readFileSync(leavePath, 'utf8');
@@ -320,7 +271,7 @@ describe('loadObsidianPublicHolidaysForYear', () => {
   });
 
   it('uses default formats for incomplete Periodic Notes and Daily Notes settings', () => {
-    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
+    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance-custom/data.json');
     const periodicPath = path.join(vaultPath, '.obsidian/plugins/periodic-notes/data.json');
     const dailyNotesPath = path.join(vaultPath, '.obsidian/daily-notes.json');
     const originalYearly = fs.readFileSync(yearlyPath, 'utf8');
@@ -349,7 +300,7 @@ describe('loadObsidianPublicHolidaysForYear', () => {
   });
 
   it('supports concise Yearly Glance settings and leap-year scanning', () => {
-    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
+    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance-custom/data.json');
     const originalYearly = fs.readFileSync(yearlyPath, 'utf8');
     const notePath = path.join(vaultPath, 'Daily/Short/2025-11-07.md');
     fs.mkdirSync(path.dirname(notePath), { recursive: true });
@@ -369,7 +320,7 @@ describe('loadObsidianPublicHolidaysForYear', () => {
   });
 
   it('supports a concise format-only setting with the default empty folder', () => {
-    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
+    const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance-custom/data.json');
     const originalYearly = fs.readFileSync(yearlyPath, 'utf8');
     const notePath = path.join(vaultPath, '2025/11/08.md');
     fs.mkdirSync(path.dirname(notePath), { recursive: true });
