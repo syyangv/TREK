@@ -121,6 +121,55 @@ describe('loadObsidianPublicHolidaysForYear', () => {
     ]);
   });
 
+  it('prefers the Yearly Glance (Custom) data.json over the pre-rename path', () => {
+    const legacyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
+    const customDir = path.join(vaultPath, '.obsidian/plugins/yearly-glance-custom');
+    const originalLegacy = fs.readFileSync(legacyPath, 'utf8');
+    const notePath = path.join(vaultPath, 'Daily/Custom/2025/04/06.md');
+    fs.mkdirSync(path.dirname(notePath), { recursive: true });
+    fs.mkdirSync(customDir, { recursive: true });
+    fs.writeFileSync(notePath, '---\n假期:\n  - PTO\n---\n');
+    fs.writeFileSync(path.join(customDir, 'data.json'), JSON.stringify({
+      config: { dailyNoteSource: 'daily-notes', dailyNoteFolder: 'Daily/Custom', dailyNoteFormat: 'YYYY/MM/DD' },
+      data: { customEvents: [] },
+    }));
+    fs.writeFileSync(legacyPath, JSON.stringify({
+      config: { dailyNoteSource: 'daily-notes', dailyNoteFolder: 'Daily/Missing', dailyNoteFormat: 'YYYY/MM/DD' },
+      data: { customEvents: [] },
+    }));
+
+    try {
+      expect(loadObsidianPublicHolidaysForYear(2025)).toContainEqual({ date: '2025-04-06', note: 'Obsidian PTO' });
+    } finally {
+      fs.writeFileSync(legacyPath, originalLegacy);
+      fs.rmSync(customDir, { recursive: true, force: true });
+      fs.rmSync(path.join(vaultPath, 'Daily/Custom'), { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to the pre-rename data.json when the Custom one is unreadable', () => {
+    const legacyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
+    const customDir = path.join(vaultPath, '.obsidian/plugins/yearly-glance-custom');
+    const originalLegacy = fs.readFileSync(legacyPath, 'utf8');
+    const notePath = path.join(vaultPath, 'Daily/Legacy/2025/04/07.md');
+    fs.mkdirSync(path.dirname(notePath), { recursive: true });
+    fs.mkdirSync(customDir, { recursive: true });
+    fs.writeFileSync(notePath, '---\n假期:\n  - PTO\n---\n');
+    fs.writeFileSync(path.join(customDir, 'data.json'), '{ not json');
+    fs.writeFileSync(legacyPath, JSON.stringify({
+      config: { dailyNoteSource: 'daily-notes', dailyNoteFolder: 'Daily/Legacy', dailyNoteFormat: 'YYYY/MM/DD' },
+      data: { customEvents: [] },
+    }));
+
+    try {
+      expect(loadObsidianPublicHolidaysForYear(2025)).toContainEqual({ date: '2025-04-07', note: 'Obsidian PTO' });
+    } finally {
+      fs.writeFileSync(legacyPath, originalLegacy);
+      fs.rmSync(customDir, { recursive: true, force: true });
+      fs.rmSync(path.join(vaultPath, 'Daily/Legacy'), { recursive: true, force: true });
+    }
+  });
+
   it('uses explicit Yearly Glance daily-note settings and parses a non-periodic note', () => {
     const yearlyPath = path.join(vaultPath, '.obsidian/plugins/yearly-glance/data.json');
     const originalYearly = fs.readFileSync(yearlyPath, 'utf8');

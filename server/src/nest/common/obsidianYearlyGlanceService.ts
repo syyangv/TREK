@@ -6,7 +6,11 @@ import {
   OBSIDIAN_VAULT_PATH,
 } from '../../config';
 
-const YEARLY_GLANCE_DATA_PATH = '.obsidian/plugins/yearly-glance/data.json';
+// Fork id first; the pre-rename path stays as a fallback until deployments catch up.
+const YEARLY_GLANCE_DATA_PATHS = [
+  '.obsidian/plugins/yearly-glance-custom/data.json',
+  '.obsidian/plugins/yearly-glance/data.json',
+];
 const DAILY_NOTES_DATA_PATH = '.obsidian/daily-notes.json';
 const PERIODIC_NOTES_DATA_PATH = '.obsidian/plugins/periodic-notes/data.json';
 const LEAVE_PLAN_FILE_NAME = '请假计划.md';
@@ -243,7 +247,9 @@ export function loadObsidianPublicHolidaysForYear(year: number): ObsidianHoliday
   const vaultPath = normalizeVaultPath();
   if (!vaultPath) return [];
 
-  const yearlyGlanceData = readJson(path.join(vaultPath, YEARLY_GLANCE_DATA_PATH));
+  const yearlyGlanceData = YEARLY_GLANCE_DATA_PATHS
+    .map(relPath => readJson(path.join(vaultPath, relPath)))
+    .find(data => data !== null) ?? null;
   const config = asRecord(asRecord(yearlyGlanceData)?.config);
   const source = getString(config, 'dailyNoteSource') ?? 'daily-notes';
   const settings = dailyNotesSettings(vaultPath, source, config);
